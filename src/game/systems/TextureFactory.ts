@@ -14,17 +14,101 @@ function makeBullet(
   key: string,
   glow: number,
   core: number,
+  width = 22,
+  height = 10,
 ): void {
   if (scene.textures.exists(key)) return;
   const graphics = scene.make.graphics({ x: 0, y: 0 }, false);
   graphics.fillStyle(glow, 0.32);
-  graphics.fillRect(0, 0, 22, 10);
+  graphics.fillRect(0, 0, width, height);
   graphics.fillStyle(glow, 1);
-  graphics.fillRect(1, 2, 19, 6);
+  graphics.fillRect(1, 2, width - 3, height - 4);
   graphics.fillStyle(core, 1);
-  graphics.fillRect(4, 3, 14, 4);
-  graphics.generateTexture(key, 22, 10);
+  graphics.fillRect(4, Math.floor(height * 0.3), width - 8, Math.max(2, Math.floor(height * 0.4)));
+  graphics.generateTexture(key, width, height);
   graphics.destroy();
+}
+
+function makeScatterWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-scatter")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Thick twin-bore receiver with a copper break-action hinge.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(4, 5, 62, 18);
+  g.fillStyle(0x8e4520, 1);
+  g.fillRect(7, 8, 52, 12);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(10, 9, 42, 8);
+  g.fillStyle(0xf4e21c, 1);
+  g.fillRect(14, 10, 8, 4);
+  g.fillRect(24, 10, 8, 4);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(54, 6, 18, 7);
+  g.fillRect(54, 15, 18, 7);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(56, 8, 14, 3);
+  g.fillRect(56, 17, 14, 3);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(70, 8, 3, 3);
+  g.fillRect(70, 17, 3, 3);
+
+  // Grip and stock.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(9, 19, 16, 11);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(12, 21, 10, 8);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(13, 22, 8, 2);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(2, 8, 5, 8);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(3, 10, 2, 4);
+
+  g.generateTexture("weapon-scatter", 76, 30);
+  g.destroy();
+}
+
+function makePrecisionWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-precision")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Long graphite rail with a mint scope.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(4, 8, 70, 11);
+  g.fillStyle(0x2a2e34, 1);
+  g.fillRect(7, 10, 62, 7);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(9, 10, 56, 2);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(58, 6, 18, 6);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(60, 7, 13, 2);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(71, 8, 3, 3);
+
+  // Scope.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(26, 1, 20, 8);
+  g.fillStyle(0x1f2227, 1);
+  g.fillRect(28, 2, 16, 6);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(30, 3, 5, 3);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(38, 3, 4, 3);
+
+  // Grip and energy cell.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(11, 18, 14, 12);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(13, 20, 10, 9);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(42, 11, 7, 5);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(43, 12, 5, 2);
+
+  g.generateTexture("weapon-precision", 76, 30);
+  g.destroy();
 }
 
 function makeWeapon(scene: Phaser.Scene): void {
@@ -150,8 +234,12 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makeSpark(scene, "spark-smoke", 0x9aa0a7, 9);
   makeSpark(scene, "spark-cream", 0xf5f3ec, 5);
   makeBullet(scene, "bullet-player", 0xd7ff2e, 0xf5f3ec);
+  makeBullet(scene, "bullet-scatter", 0xc7692f, 0xf4e21c, 13, 8);
+  makeBullet(scene, "bullet-precision", 0x9bd8f2, 0xf5f3ec, 34, 6);
   makeBullet(scene, "bullet-drone", 0xe5484d, 0xffb4b6);
   makeWeapon(scene);
+  makeScatterWeapon(scene);
+  makePrecisionWeapon(scene);
   makeMuzzleFlash(scene);
   makeDrone(scene);
 }

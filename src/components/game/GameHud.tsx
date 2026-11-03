@@ -8,20 +8,21 @@ import {
   type HudSnapshot,
 } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
+import { formatMatchClock } from "@/game/core/match";
 
 interface GameHudProps {
   bridge: GameBridge;
 }
 
-function formatTime(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
 function Keycap({ children }: { children: React.ReactNode }) {
   return <kbd className="keycap">{children}</kbd>;
+}
+
+function placementLabel(placement: number): string {
+  if (placement === 1) return "1ST";
+  if (placement === 2) return "2ND";
+  if (placement === 3) return "3RD";
+  return `${placement}TH`;
 }
 
 function HealthBar({ snapshot }: { snapshot: HudSnapshot }) {
@@ -60,8 +61,22 @@ export function GameHud({ bridge }: GameHudProps) {
   const [booted, setBooted] = useState(false);
   const previousHealth = useRef(snapshot.health);
   const low = isLowHealth(snapshot.health, snapshot.maxHealth);
-  const dead = snapshot.isDead;
+  const matchEnded = snapshot.matchPhase === "ended";
+  const dead = snapshot.isDead && !matchEnded;
   const bootVisible = !snapshot.ready || !booted;
+  const timeCritical = snapshot.matchTimeRemainingMs <= 15_000;
+  const timeWarning = snapshot.matchTimeRemainingMs <= 30_000;
+  const visibleFeed = snapshot.feed
+    .filter((entry) => snapshot.uptimeMs - entry.atMs < 5000)
+    .slice(-3);
+  const recentKill =
+    snapshot.lastPlayerKill &&
+    snapshot.uptimeMs - snapshot.lastPlayerKill.atMs < 2400 &&
+    !matchEnded
+      ? snapshot.lastPlayerKill
+      : null;
+  const accuracy = Math.round(snapshot.playerAccuracy * 100);
+  const victory = snapshot.playerPlacement === 1;
 
   useEffect(() => {
     if (snapshot.health < previousHealth.current) {
@@ -81,19 +96,19 @@ export function GameHud({ bridge }: GameHudProps) {
   }, [snapshot.ready]);
 
   useEffect(() => {
-    if (!dead) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code === "Enter") {
-        bridge.send({ type: "respawn" });
+      if (event.code === "Enter" && matchEnded) {
+        bridge.send({ type: "restart-match" });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [bridge, dead]);
+  }, [bridge, matchEnded]);
 
-  const healthPercent = Math.round((snapshot.health / snapshot.maxHealth) * 100);
-  const fuelPercent = Math.round((snapshot.fuel / snapshot.maxFuel) * 100);
-  const ammoTicks = Array.from({ length: snapshot.magazineSize }, (_, index) => index < snapshot.ammo);
+  const ammoTicks = Array.from(
+    { length: snapshot.magazineSize },
+    (_, index) => index < snapshot.ammo,
+  );
 
   return (
     <>
@@ -121,34 +136,90 @@ export function GameHud({ bridge }: GameHudProps) {
             <div className="hud-identity__meta">
               <span className="hud-pill hud-pill--live">
                 <i className="live-dot" />
-                LIVE
+                {matchEnded ? "FINAL" : "LIVE"}
               </span>
-              <span className="mono-label">LOCAL OPERATOR</span>
+              <span className="mono-label">FFA OPERATOR</span>
             </div>
           </div>
         </section>
 
-        <div className="hud-mode" role="status">
-          <span className="hud-mode__dot" />
-          <span className="hud-mode__strong">SKIRMISH</span>
-          <span className="hud-mode__rule" />
-          <span className="hud-mode__muted">TRAINING GROUND</span>
-          <span className="hud-pill">SECTOR 07</span>
+        <div
+          className={`hud-matchbar${!matchEnded && timeCritical ? " is-critical" : !matchEnded && timeWarning ? " is-warning" : ""}`}
+          data-testid="match-clock"
+          role="status"
+        >
+          <div className="hud-matchbar__mode">
+            <span className="hud-mode__dot" />
+            <span className="hud-matchbar__strong">FREE FOR ALL</span>
+            <span className="hud-matchbar__muted">SECTOR 07</span>
+          </div>
+          <div className="hud-matchbar__clock">
+            <span className="mono-label">TIME</span>
+            <strong className="display">
+              {formatMatchClock(snapshot.matchTimeRemainingMs)}
+            </strong>
+          </div>
+          <div className="hud-matchbar__limit">
+            <span className="mono-label">FIRST TO {snapshot.matchScoreLimit}</span>
+            <span className={`hud-pill${timeCritical ? " hud-pill--danger" : ""}`}>
+              {matchEnded
+                ? "MATCH OVER"
+                : timeCritical
+                  ? `FINAL ${Math.ceil(snapshot.matchTimeRemainingMs / 1000)}`
+                  : `${placementLabel(snapshot.playerPlacement)} OF ${snapshot.standings.length || 4}`}
+            </span>
+          </div>
         </div>
 
-        <section className="hud-panel hud-score">
-          <div className="hud-score__block">
-            <span className="mono-label">DRONES DOWN</span>
-            <div className="hud-score__value">
-              <strong className="display">{String(snapshot.dronesDown).padStart(2, "0")}</strong>
-              <span className="mono-label hud-score__hostiles">
-                HOSTILES {String(snapshot.dronesAlive).padStart(2, "0")}
-              </span>
+        <div className="hud-feed" aria-live="polite">
+          {visibleFeed.map((entry) => (
+            <div className="hud-feed__row" key={entry.id}>
+              <span className="hud-feed__mark" />
+              <span>{entry.text}</span>
             </div>
+          ))}
+        </div>
+
+        <section
+          className="hud-panel hud-leaderboard"
+          data-testid="leaderboard"
+          aria-label="Match leaderboard"
+        >
+          <div className="hud-board__head">
+            <span className="mono-label">LEADERBOARD</span>
+            <span className="mono-label">ELIMS</span>
           </div>
-          <div className="hud-score__side">
-            <span className="mono-label">UPTIME</span>
-            <span className="hud-score__time">{formatTime(snapshot.uptimeMs)}</span>
+          {snapshot.standings.map((entry) => (
+            <div
+              key={entry.id}
+              className={`hud-board__row${entry.isPlayer ? " is-player" : ""}${entry.alive ? "" : " is-out"}`}
+              data-testid={`standing-${entry.id}`}
+            >
+              <span className="hud-board__rank">
+                {String(entry.placement).padStart(2, "0")}
+              </span>
+              <span className="hud-board__name">
+                {entry.name}
+                {entry.isPlayer ? <em>YOU</em> : null}
+              </span>
+              <span className="hud-board__state">
+                {entry.alive
+                  ? "LIVE"
+                  : entry.respawnIn > 0
+                    ? `${entry.respawnIn.toFixed(1)}S`
+                    : "OUT"}
+              </span>
+              <strong className="hud-board__score">
+                {String(entry.score).padStart(2, "0")}
+              </strong>
+            </div>
+          ))}
+          <div className="hud-board__foot">
+            <span className="mono-label">
+              {matchEnded
+                ? "MATCH COMPLETE"
+                : `FIRST TO ${snapshot.matchScoreLimit} OR TIME`}
+            </span>
             <button
               type="button"
               className={`hud-button${snapshot.debug ? " is-active" : ""}`}
@@ -166,7 +237,7 @@ export function GameHud({ bridge }: GameHudProps) {
           <div className="hud-section-head">
             <span className="mono-label">OPERATOR VITALS</span>
             <span className={`hud-signal${low ? " is-danger" : ""}`}>
-              {dead ? "OFFLINE" : low ? "CRITICAL" : "STABLE"}
+              {matchEnded ? "ROUND OVER" : dead ? "OFFLINE" : low ? "CRITICAL" : "STABLE"}
             </span>
           </div>
 
@@ -180,7 +251,9 @@ export function GameHud({ bridge }: GameHudProps) {
             </div>
             <HealthBar snapshot={snapshot} />
             <div className="hud-vital-foot">
-              <span className="mono-label">{healthPercent}%</span>
+              <span className="mono-label">
+                {Math.round((snapshot.health / snapshot.maxHealth) * 100)}%
+              </span>
               <span className="mono-label">AUTO-REGEN 4.0S</span>
             </div>
           </div>
@@ -195,7 +268,9 @@ export function GameHud({ bridge }: GameHudProps) {
             </div>
             <FuelBar snapshot={snapshot} />
             <div className="hud-vital-foot">
-              <span className="mono-label">{fuelPercent}% FUEL</span>
+              <span className="mono-label">
+                {Math.round((snapshot.fuel / snapshot.maxFuel) * 100)}% FUEL
+              </span>
               <span className="mono-label">SPACE TO THRUST</span>
             </div>
           </div>
@@ -204,12 +279,14 @@ export function GameHud({ bridge }: GameHudProps) {
         <section className="hud-panel hud-weapon">
           <div className="hud-section-head">
             <span className="mono-label">EQUIPPED</span>
-            <span className="hud-pill hud-pill--soft">AUTO</span>
+            <span className="hud-pill hud-pill--soft">SLOT {snapshot.weaponSlot}</span>
           </div>
           <div className="hud-weapon__main">
             <div>
-              <h2 className="display hud-weapon__name">VIBE RIFLE</h2>
-              <span className="mono-label hud-weapon__class">KINETIC / MID RANGE</span>
+              <h2 className="display hud-weapon__name" data-testid="weapon-name">
+                {snapshot.weaponName}
+              </h2>
+              <span className="mono-label hud-weapon__class">{snapshot.weaponRole}</span>
             </div>
             <div className="hud-ammo" data-testid="hud-ammo">
               <strong className="display">{String(snapshot.ammo).padStart(2, "0")}</strong>
@@ -243,6 +320,27 @@ export function GameHud({ bridge }: GameHudProps) {
               />
             </div>
           </div>
+          <div className="hud-weapon-slots" role="group" aria-label="Weapon selection">
+            {snapshot.weaponSlots.map((slot) => (
+              <button
+                key={slot.id}
+                type="button"
+                className={`hud-weapon-slot${slot.active ? " is-active" : ""}`}
+                onClick={() =>
+                  bridge.send({ type: "equip-weapon", slot: slot.slot - 1 })
+                }
+                aria-pressed={slot.active}
+                disabled={dead || matchEnded}
+                data-testid={`weapon-slot-${slot.slot}`}
+              >
+                <Keycap>{slot.slot}</Keycap>
+                <span className="hud-weapon-slot__name">{slot.shortName}</span>
+                <span className="hud-weapon-slot__ammo">
+                  {slot.ammo}/{slot.magazineSize}
+                </span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="hud-controls" aria-label="Controls">
@@ -250,36 +348,124 @@ export function GameHud({ bridge }: GameHudProps) {
           <span className="hud-control"><Keycap>SPACE</Keycap><span className="mono-label">JUMP / JET</span></span>
           <span className="hud-control"><Keycap>MOUSE</Keycap><span className="mono-label">AIM</span></span>
           <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
+          <span className="hud-control"><Keycap>1</Keycap><Keycap>2</Keycap><Keycap>3</Keycap><span className="mono-label">SWAP</span></span>
           <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
           <span className="hud-control"><Keycap>F1</Keycap><span className="mono-label">PHYSICS</span></span>
         </section>
+
+        {recentKill ? (
+          <div className="elim-toast" aria-live="polite">
+            <span className="mono-label">ELIMINATION</span>
+            <strong className="display">{recentKill.victimName}</strong>
+            <span className="mono-label">{recentKill.weaponName}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className={`death-overlay${dead && snapshot.ready ? " is-visible" : ""}`}>
         <div className="death-card" role="alertdialog" aria-modal="true" aria-labelledby="death-title">
-          <span className="death-eyebrow">TRAINING PROTOCOL // INTERRUPTED</span>
+          <span className="death-eyebrow">MATCH LIVE // ELIMINATED</span>
           <h2 id="death-title" className="display">SIGNAL LOST</h2>
           <p className="death-copy">
-            VIBER-010 went offline. Automated redeploy is already queued, or you
-            can restart now.
+            {snapshot.lastKillerName
+              ? `${snapshot.lastKillerName} took VIBER-010 out. The match clock is still running.`
+              : "VIBER-010 went offline. The match clock is still running."}
           </p>
           <div className="death-count">
-            <span className="mono-label">REDEPLOY IN</span>
+            <span className="mono-label">AUTO-REDEPLOY IN</span>
             <strong className="display">{snapshot.respawnIn.toFixed(1)}</strong>
             <span className="mono-label">SEC</span>
           </div>
+          <div className="death-foot">
+            <span className="mono-label">SAFE PAD SELECTION</span>
+            <span className="mono-label">MATCH CONTINUES</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className={`results-overlay${matchEnded && snapshot.ready ? " is-visible" : ""}`}
+        data-testid="results-overlay"
+      >
+        <div
+          className={`results-card${victory ? " is-victory" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="results-title"
+        >
+          <div className="results-head">
+            <span className="results-eyebrow">
+              {snapshot.matchEndReason === "time"
+                ? "TIME EXPIRED"
+                : "SCORE LIMIT REACHED"}
+            </span>
+            <span className="mono-label">SECTOR 07 // FREE FOR ALL</span>
+          </div>
+          <h2 id="results-title" className="display results-title">
+            {victory ? "VICTORY" : "MATCH COMPLETE"}
+          </h2>
+          <p className="results-winner">
+            {victory
+              ? "You topped the board."
+              : `Winner: ${snapshot.winnerName ?? "unknown"}.`}
+          </p>
+          <div className="results-placement">
+            <span className="mono-label">YOUR PLACEMENT</span>
+            <strong className="display">
+              {placementLabel(snapshot.playerPlacement)}
+            </strong>
+            <span className="mono-label">OF {snapshot.standings.length || 4}</span>
+          </div>
+          <div className="results-table">
+            <div className="results-table__head">
+              <span>RANK</span>
+              <span>OPERATOR</span>
+              <span>ELIMS</span>
+              <span>DEATHS</span>
+            </div>
+            {snapshot.standings.map((entry) => (
+              <div
+                key={entry.id}
+                className={`results-row${entry.isPlayer ? " is-player" : ""}`}
+              >
+                <span>{String(entry.placement).padStart(2, "0")}</span>
+                <span>
+                  {entry.name}
+                  {entry.isPlayer ? <em>YOU</em> : null}
+                </span>
+                <strong>{String(entry.score).padStart(2, "0")}</strong>
+                <span>{String(entry.deaths).padStart(2, "0")}</span>
+              </div>
+            ))}
+          </div>
+          <div className="results-stats">
+            <div>
+              <span className="mono-label">ELIMINATIONS</span>
+              <strong className="display">{snapshot.playerEliminations}</strong>
+            </div>
+            <div>
+              <span className="mono-label">DEATHS</span>
+              <strong className="display">{snapshot.playerDeaths}</strong>
+            </div>
+            <div>
+              <span className="mono-label">ACCURACY</span>
+              <strong className="display">{accuracy}%</strong>
+            </div>
+          </div>
           <button
             type="button"
-            className="death-cta"
-            onClick={() => bridge.send({ type: "respawn" })}
-            data-testid="respawn-button"
+            className="results-cta"
+            onClick={() => bridge.send({ type: "restart-match" })}
+            data-testid="results-replay"
           >
-            REDEPLOY NOW
+            PLAY AGAIN
             <Keycap>ENTER</Keycap>
           </button>
-          <div className="death-foot">
-            <span className="mono-label">LOADOUT PERSISTS</span>
-            <span className="mono-label">DRONE SCORE PERSISTS</span>
+          <div className="results-foot">
+            <span className="mono-label">
+              {formatMatchClock(snapshot.matchDurationMs)} MATCH
+            </span>
+            <span className="mono-label">LOCAL BOT LOBBY</span>
           </div>
         </div>
       </div>
@@ -298,12 +484,13 @@ export function GameHud({ bridge }: GameHudProps) {
           </div>
           <span className="hud-brand">VIBE MILITIA</span>
           <h2 className="display boot-title">
-            TRAINING
+            FREE FOR
             <br />
-            GROUND
+            ALL
           </h2>
           <p className="boot-copy">
-            Local combat simulation. No accounts, no network, no excuses.
+            Four operators. One arena. First to 10 eliminations, or the highest
+            score when the 90 second clock runs out.
           </p>
           <div className="boot-load" aria-hidden="true">
             <span />
@@ -312,14 +499,15 @@ export function GameHud({ bridge }: GameHudProps) {
             <span className="hud-control"><Keycap>A</Keycap><Keycap>D</Keycap><span className="mono-label">MOVE</span></span>
             <span className="hud-control"><Keycap>SPACE</Keycap><span className="mono-label">JUMP / JETPACK</span></span>
             <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
+            <span className="hud-control"><Keycap>1</Keycap><Keycap>2</Keycap><Keycap>3</Keycap><span className="mono-label">SWAP WEAPON</span></span>
             <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
           </div>
           <span className="boot-status mono-label">
-            {snapshot.ready ? "SIMULATION READY // DEPLOYING" : "BOOTING SIMULATION"}
+            {snapshot.ready ? "MATCH READY // DEPLOYING" : "BOOTING SIMULATION"}
           </span>
         </div>
         <span className="boot-legal mono-label">
-          P0 BUILD . ORIGINAL VIBE VIBERS ARTWORK . SIDE-VIEW PROTOTYPE
+          P1 BUILD . ORIGINAL VIBE VIBERS ARTWORK . LOCAL FREE FOR ALL
         </span>
       </div>
     </>

@@ -2,28 +2,33 @@
 
 ## Current task
 
-P0 playable combat prototype is implemented, verified and committed at `78c4263`. Ready for review.
+P1 is implemented and verified. The working tree is ready for the P1 commit. P0 is the last recorded commit.
 
 ## Done
 
-- Prepared VIBER-010 cutout with deterministic matte, original archive, previews and report.
-- Built Sector 07 arena with collidable platforms, elevated routes, crates, hazard bounds and baked art.
-- Implemented movement, jump, jetpack, 360 aiming, rifle fire, reload, health, regen, damage, death and respawn.
-- Implemented three local training drones with orbit behavior, line-of-sight fire, health and respawn.
-- Implemented weapon/effect layers separate from the character sprite.
-- Implemented React HUD matching the design system, boot and death overlays, damage vignette.
-- Implemented F1/HUD debug collision view.
-- Added pure rule tests, typecheck, lint, production build and a browser smoke test.
-- Added README and character fidelity documentation.
+- Added match timer, elimination scoring, score limit, live leaderboard, kill feed, elimination toast, results and replay.
+- Added Scatter Blaster and Vibe Lance with independent ammo, cadence, reload, recoil, visuals and HUD slots.
+- Added bot A* navigation, terrain colliders, vertical thrusters, stuck recovery, bot-versus-bot combat and automatic respawns.
+- Added safe respawn pad selection and removed manual respawn skipping for fair recovery timing.
+- Added bot callsigns, health bars, spawn protection, debug paths and navigation telemetry.
+- Added 14 respawn pads and updated the Sector 07 sign to free-for-all.
+- Preserved the original VIBER-010 source, cutout, avatar and matte pipeline without modification.
+- Updated README, character fidelity notes, tests, browser verification and agent state.
 
 ## Verified
 
-- Browser smoke test: 16/16 checks against the production build on port 3102.
-- Manual: F1 keyboard toggle, 360 aiming quadrants, manual respawn CTA, drone kill, reload, death overlay, cutout crop against sky.
-- Performance after texture baking: game loop approximately 60 fps at 1440 x 810 in headless Chrome with Intel Iris Xe.
+- `npm run typecheck`: pass
+- `npm test`: 36 tests pass
+- `npm run lint`: pass
+- `npm run build`: pass
+- `npm run verify:browser`: 37/37 checks against the production build.
+- Natural 90-second bot match completed on the timer with a winner and successful replay.
+- Full test observed zero bot-platform penetrations, player scoring, bot respawns, fair pad selection and bot-versus-bot damage.
+- Production renderer measured approximately 60.5 fps at 1440 x 810.
 
 ## Next
 
-1. Add a git remote before pushing. The repository currently has no remote configured.
-2. User review of the static NFT pose and arena look.
-3. Future work: authored side-view character art plus fidelity review, audio, mobile touch controls, server-authoritative simulation.
+1. Commit P1.
+2. Add a git remote before pushing. The repo still has no configured remote.
+3. Review bot loadout variety and audio in a future pass.
+4. Do not start P2 multiplayer until P1 review is complete.

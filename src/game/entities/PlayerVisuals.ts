@@ -13,6 +13,8 @@ interface VisualState {
   shield: boolean;
   flash: boolean;
   alpha: number;
+  weaponTexture: string;
+  muzzleColor: number;
 }
 
 const PIVOT_X = 28;
@@ -127,6 +129,12 @@ export class PlayerVisuals {
     this.weapon.setRotation(state.aimAngle);
     this.weapon.setScale(1, Math.cos(state.aimAngle) < 0 ? -1 : 1);
 
+    if (this.weaponImage.texture.key !== state.weaponTexture) {
+      this.weaponImage.setTexture(state.weaponTexture);
+    }
+    if (this.muzzle.tintTopLeft !== state.muzzleColor) {
+      this.muzzle.setTint(state.muzzleColor);
+    }
     this.muzzle.setAlpha(state.muzzleFlash > 0 ? state.muzzleFlash : 0);
     this.muzzle.setScale(0.9 + state.muzzleFlash * 0.45);
 

@@ -247,7 +247,7 @@ function drawBackground(scene: Phaser.Scene): void {
     .setScrollFactor(0.34)
     .setDepth(-866);
   scene.add
-    .text(946, 580, "TRAINING GROUND // LOCAL", {
+    .text(946, 580, "FREE FOR ALL // SECTOR 07", {
       fontFamily: '"JetBrains Mono", ui-monospace, monospace',
       fontSize: "13px",
       color: "#d7ff2e",

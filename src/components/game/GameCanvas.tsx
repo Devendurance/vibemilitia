@@ -15,7 +15,7 @@ export function GameCanvas({ bridge }: GameCanvasProps) {
   useEffect(() => {
     let cancelled = false;
     let game: Game | null = null;
-    bridge.publish({ ...INITIAL_HUD, ready: false, droneTotal: 3 });
+    bridge.publish({ ...INITIAL_HUD, ready: false });
 
     const boot = async () => {
       try {

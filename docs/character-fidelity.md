@@ -56,7 +56,7 @@ In game, the sprite is rendered at a 128-pixel display height on the arena. The 
 
 The source artwork is a 3/4 frontal voxel portrait. It does not have a side profile, separate limbs, a jaw rig or frames for walking, jumping or aiming.
 
-P0 uses the authored pose as a static body. These elements are rendered as independent layers around it:
+P0 and P1 use the authored pose as a static body. These elements are rendered as independent layers around it:
 
 - Weapon
 - Muzzle flash
@@ -65,7 +65,7 @@ P0 uses the authored pose as a static body. These elements are rendered as indep
 - Damage tint and hit particles
 - Shadow
 
-The body is not mirrored, redrawn or distorted. That means horizontal facing does not change the character's authored orientation. This is a deliberate fidelity tradeoff, documented rather than hidden.
+The body is not mirrored, redrawn or distorted. That means horizontal facing does not change the character's authored orientation. This is a deliberate fidelity tradeoff, documented rather than hidden. P1 added match scoring, bot navigation and two new weapons without touching the source artwork, the archived original, the cutout, the avatar derivative or the matte pipeline.
 
 A future animated sprite requires new authored or rigged source art. It must go through a separate visual-fidelity review before replacing this asset.
 
@@ -77,4 +77,4 @@ The same pipeline works for other flat-background Vibe Vibers portraits:
 python scripts/prepare_character.py --source public/brand/vibe_vibers_characters/<file>.png --id viber-<id>
 ```
 
-Each output should be reviewed against the contrast preview before being added to gameplay. The roster is intentionally out of scope for P0.
+Each output should be reviewed against the contrast preview before being added to gameplay. The roster is intentionally out of scope for P1.

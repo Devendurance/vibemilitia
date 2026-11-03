@@ -2,51 +2,56 @@
 
 ## What this is
 
-Vibe Militia P0: a playable local side-view arena shooter built with Next.js 16, React 19, Phaser 4.2.1 and TypeScript. The first operator is VIBER-010, prepared from the original Vibe Vibers NFT artwork.
+Vibe Militia P1: a complete local free-for-all arena shooter built with Next.js 16, React 19, Phaser 4.2.1 and TypeScript. The player operator is VIBER-010, preserved from the original Vibe Vibers NFT artwork. Three bot drones complete the four-operator match.
 
 ## Current build
 
-- One arena: Sector 07, 3600 x 1500, ground lane, tiered left route, center bridge, right elevated route and floating perches.
-- Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, Vibe Rifle, reload, damage, death, auto respawn, invulnerability shield.
-- Enemies: three local hover drones with orbit AI, line-of-sight gating, burst fire, health bars and respawn.
-- Rendering: player cutout, separate weapon, muzzle flash, jet exhaust, shield, shadows, particles, damage numbers, camera shake.
-- HUD: identity, health, jetpack, ammo, reload, score, uptime, controls, debug, death overlay, boot overlay.
-- Debug: F1 and HUD button draw platform AABBs, player and drone bodies, active bullets and aim vector.
-- Browser test API: `window.__VIBE_MILITIA__.getProbe()` and `.send(command)` for local verification.
+- One arena: Sector 07, 3600 x 1500, with a ground lane, tiered left route, center bridge, right elevated route, floating perches and fourteen respawn pads.
+- Match: 90 seconds, first to 10 eliminations, live leaderboard, kill feed, elimination toast, timed finish and results screen with replay.
+- Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, automatic fair-pad respawn and 1.5 s spawn protection.
+- Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision). Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
+- Bots: three drones with A* navigation on a 64 px grid, platform colliders, path smoothing, line-of-sight burst fire, vertical thruster movement, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns.
+- Respawn: safe pad scoring uses enemy distance, line-of-sight cover, occupancy and last death position. All participants wait out their recovery timer; no manual skip.
+- Visuals: static VIBER-010 cutout, separate weapon/effects layers, baked arena art, navigation debug paths, bot callsigns, health bars, shield rings and thruster exhaust.
+- HUD: identity, health, jetpack, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results and boot overlay.
+- Browser test API: `window.__VIBE_MILITIA__.getProbe()` and `.send(command)`.
 
 ## Architecture
 
-- `src/game/core`: pure TypeScript rules and Vitest coverage for jetpack, weapon and combat.
-- `src/game/config`: tuning constants.
-- `src/game/arena`: arena data, collision helpers, baked visual builder.
-- `src/game/entities`: Player, PlayerVisuals, Drone.
-- `src/game/systems`: input adapter, projectile groups, effects, generated textures.
-- `src/game/scenes/ArenaScene.ts`: Phaser orchestration and local physics.
+- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking and spawn selection.
+- `src/game/ai`: pure navigation grid and A* pathfinding.
+- `src/game/config`: tuning for movement, weapons, bots and match.
+- `src/game/arena`: arena data, baked visuals, collision helpers.
+- `src/game/entities`: Player, PlayerVisuals, Drone (local bot).
+- `src/game/systems`: input, projectile groups, effects, generated textures.
+- `src/game/scenes/ArenaScene.ts`: Phaser orchestration, local AI, scoring and match flow.
 - `src/game/bridge.ts`: typed HUD snapshot and command transport.
-- `src/components/game`: React shell, canvas mount, HUD.
-- `scripts/prepare_character.py`: deterministic cutout pipeline.
-- `scripts/verify-browser.mjs`: Playwright browser smoke test.
+- `src/components/game`: game shell, canvas mount, match HUD, results and overlays.
+- `scripts/prepare_character.py`: deterministic NFT cutout pipeline.
+- `scripts/verify-browser.mjs`: Playwright production smoke test.
 
 ## Key decisions
 
-- Static authored NFT pose is intentional. The source is 3/4 frontal and has no side-view rig. Weapon and effects are separate layers. No generative reconstruction was used.
-- Static arena art is baked to GPU textures. This moved the measured game loop from about 12 fps to about 60 fps at 1440 x 810 in headless Chrome.
-- Rules remain free of Phaser imports so a future server simulation can reuse them. Arcade Physics and projectile simulation are still client-side.
-- HUD follows `DESIGN.md` tokens: graphite panels, lime signal color, mono telemetry, Archivo display type.
-- Local browser smoke test is committed but requires Chrome and a running server.
+- Static authored NFT pose is intentional. Weapon and effects remain separate layers.
+- Auto-only respawns keep the recovery timer fair for the human and bots.
+- Bots are full FFA combatants and can eliminate each other.
+- A* plus colliders is the bot navigation contract. Bots do not phase through platforms.
+- Static arena art is baked to GPU textures. Production measured about 60.5 fps at 1440 x 810.
+- HUD follows `DESIGN.md`: graphite panels, lime signal color, mono telemetry, Archivo display type.
 
 ## Known limitations
 
-- Drone movement ignores terrain collision, though firing uses line of sight.
-- Character body does not animate or mirror. It is the authored 3/4 pose.
+- Bots use the same chassis and burst weapon. Their callsigns and AI behaviors are the only differentiation.
+- Character body does not animate or mirror because the NFT is a 3/4 frontal portrait.
 - No audio.
-- No networking, accounts, wallets, progression or full roster.
+- Physics and match simulation are local. No networking, accounts, wallets, progression or full roster.
 
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 18 tests pass
+- `npm test`: 36 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
-- `npm run verify:browser`: 16/16 checks pass against production build
-- Manual checks: F1 toggle, four-quadrant aiming, manual respawn button, drone kill, reload, cutout crop, death overlay.
+- `npm run verify:browser`: 37/37 checks pass against the production build
+- Natural 90-second bot match ended on the clock, produced a winner and replayed correctly.
+- Production renderer: approximately 60.5 fps at 1440 x 810 in headless Chrome on Intel Iris Xe.

@@ -16,7 +16,12 @@ export interface PointDefinition {
 
 export interface DroneSpawn extends PointDefinition {
   id: string;
+  name: string;
   orbitRadius: number;
+}
+
+export interface ArenaSpawnPoint extends PointDefinition {
+  id: string;
 }
 
 export interface ArenaDefinition {
@@ -26,6 +31,7 @@ export interface ArenaDefinition {
   playerSpawn: PointDefinition;
   platforms: PlatformDefinition[];
   droneSpawns: DroneSpawn[];
+  spawnPoints: ArenaSpawnPoint[];
 }
 
 export const ARENA: ArenaDefinition = {
@@ -52,8 +58,24 @@ export const ARENA: ArenaDefinition = {
     { id: "crate-c", x: 1660, y: 1250, width: 82, height: 90, style: "crate" },
   ],
   droneSpawns: [
-    { id: "drone-a", x: 1040, y: 880, orbitRadius: 190 },
-    { id: "drone-b", x: 2440, y: 760, orbitRadius: 265 },
-    { id: "drone-c", x: 3180, y: 980, orbitRadius: 205 },
+    { id: "drone-a", name: "NULL-7", x: 1040, y: 880, orbitRadius: 190 },
+    { id: "drone-b", name: "GLITCH-3", x: 2440, y: 760, orbitRadius: 265 },
+    { id: "drone-c", name: "SCRAP-9", x: 3180, y: 980, orbitRadius: 205 },
+  ],
+  spawnPoints: [
+    { id: "pad-left", x: 420, y: 1340 },
+    { id: "pad-spawn", x: 640, y: 1340 },
+    { id: "pad-mid", x: 1350, y: 1340 },
+    { id: "pad-right", x: 2150, y: 1340 },
+    { id: "pad-far", x: 3150, y: 1340 },
+    { id: "left-ledge", x: 330, y: 1180 },
+    { id: "left-high", x: 360, y: 960 },
+    { id: "bridge", x: 1450, y: 960 },
+    { id: "center-perch", x: 1600, y: 720 },
+    { id: "top-shelf", x: 960, y: 560 },
+    { id: "right-mid", x: 2650, y: 940 },
+    { id: "right-perch", x: 2200, y: 720 },
+    { id: "right-high", x: 3150, y: 740 },
+    { id: "far-low", x: 3300, y: 1040 },
   ],
 };

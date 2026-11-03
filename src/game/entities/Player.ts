@@ -1,5 +1,12 @@
 import Phaser from "phaser";
-import { PLAYER_CONFIG, JETPACK_CONFIG, JETPACK_MAX_RISE_SPEED, JETPACK_THRUST_ACCELERATION, PLAYER_WEAPON } from "@/game/config/gameplay";
+import {
+  PLAYER_CONFIG,
+  JETPACK_CONFIG,
+  JETPACK_MAX_RISE_SPEED,
+  JETPACK_THRUST_ACCELERATION,
+  PLAYER_WEAPONS,
+  type PlayerWeapon,
+} from "@/game/config/gameplay";
 import { applyDamage, stepHealthRegen } from "@/game/core/combat";
 import { createJetpackState, stepJetpack } from "@/game/core/jetpack";
 import type { JetpackState } from "@/game/core/jetpack";
@@ -28,7 +35,9 @@ export interface PlayerUpdateResult {
 export class Player {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   readonly visuals: PlayerVisuals;
-  readonly weapon: WeaponState = createWeaponState(PLAYER_WEAPON);
+  readonly weaponStates: WeaponState[] = PLAYER_WEAPONS.map((definition) =>
+    createWeaponState(definition),
+  );
   readonly jetpack: JetpackState = createJetpackState(JETPACK_CONFIG);
   health: number = PLAYER_CONFIG.maxHealth;
   dead = false;
@@ -38,11 +47,14 @@ export class Player {
   damageSeq = 0;
   respawnRemainingMs = 0;
   invulnerableRemainingMs = 0;
+  equippedWeaponIndex = 0;
+  eliminations = 0;
+  deaths = 0;
+  shotsFired = 0;
+  shotsHit = 0;
   msSinceDamage: number = PLAYER_CONFIG.damageRegenDelayMs;
 
   private scene: Phaser.Scene;
-  private readonly spawnX: number;
-  private readonly spawnY: number;
   private coyoteRemainingMs = 0;
   private wasGrounded = false;
   private flashRemainingMs = 0;
@@ -52,8 +64,6 @@ export class Player {
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
-    this.spawnX = x;
-    this.spawnY = y;
     this.sprite = scene.physics.add.sprite(x, y, "player-viber").setOrigin(0.5, 1).setDepth(20);
     this.sprite.setCollideWorldBounds(true);
     const textureHeight = this.sprite.height;
@@ -82,6 +92,14 @@ export class Player {
 
   get body(): Phaser.Physics.Arcade.Body {
     return this.sprite.body as Phaser.Physics.Arcade.Body;
+  }
+
+  get weapon(): WeaponState {
+    return this.weaponStates[this.equippedWeaponIndex];
+  }
+
+  get weaponDefinition(): PlayerWeapon {
+    return PLAYER_WEAPONS[this.equippedWeaponIndex];
   }
 
   get x(): number {
@@ -179,6 +197,7 @@ export class Player {
       aimWorld.y - (this.y - 58),
       aimWorld.x - (this.sprite.x + 28),
     );
+    const weaponDefinition = this.weaponDefinition;
     this.visuals.update({
       x: this.sprite.x,
       y: this.sprite.y,
@@ -192,6 +211,8 @@ export class Player {
       shield: this.invulnerableRemainingMs > 0,
       flash: this.flashRemainingMs > 0,
       alpha: 1,
+      weaponTexture: weaponDefinition.weaponTexture,
+      muzzleColor: weaponDefinition.muzzleColor,
     });
 
     this.wasGrounded = this.grounded;
@@ -205,11 +226,26 @@ export class Player {
     };
   }
 
+  equipWeapon(index: number): boolean {
+    if (index < 0 || index >= PLAYER_WEAPONS.length || index === this.equippedWeaponIndex) {
+      return false;
+    }
+    this.equippedWeaponIndex = index;
+    this.recoil = 0;
+    this.muzzleFlashRemainingMs = 0;
+    return true;
+  }
+
   stepWeapon(dtMs: number, input: ControlFrame): { fired: boolean; startedReload: boolean; finishedReload: boolean } {
     if (this.dead) {
       return { fired: false, startedReload: false, finishedReload: false };
     }
-    const result = stepWeapon(this.weapon, PLAYER_WEAPON, {
+    if (input.weaponSlotPressed !== null) {
+      this.equipWeapon(input.weaponSlotPressed);
+    }
+
+    const definition = this.weaponDefinition;
+    const result = stepWeapon(this.weapon, definition, {
       fire: input.fire,
       reload: input.reloadPressed,
       dtMs,
@@ -219,6 +255,7 @@ export class Player {
     if (result.fired) {
       this.recoil = 1;
       this.muzzleFlashRemainingMs = 80;
+      this.shotsFired += definition.pellets;
       this.visuals.kick();
     }
     return result;
@@ -262,29 +299,23 @@ export class Player {
   tickRespawn(dtMs: number): boolean {
     if (!this.dead) return false;
     this.respawnRemainingMs = Math.max(0, this.respawnRemainingMs - dtMs);
-    if (this.respawnRemainingMs <= 0) {
-      this.respawn();
-      return true;
-    }
-    return false;
+    return this.respawnRemainingMs <= 0;
   }
 
-  forceRespawn(): void {
-    if (this.dead) {
-      this.respawnRemainingMs = 0;
-      this.respawn();
-    }
-  }
-
-  respawn(): void {
+  respawnAt(x: number, y: number): void {
     this.dead = false;
+    this.recoil = 0;
+    this.muzzleFlashRemainingMs = 0;
     this.health = PLAYER_CONFIG.maxHealth;
     this.jetpack.fuel = JETPACK_CONFIG.maxFuel;
     this.jetpack.msSinceThrust = JETPACK_CONFIG.regenDelayMs;
-    this.weapon.ammo = PLAYER_WEAPON.magazineSize;
-    this.weapon.reloading = false;
-    this.weapon.reloadRemainingMs = 0;
-    this.weapon.cooldownMs = 0;
+    for (let index = 0; index < this.weaponStates.length; index += 1) {
+      const state = this.weaponStates[index];
+      state.ammo = PLAYER_WEAPONS[index].magazineSize;
+      state.reloading = false;
+      state.reloadRemainingMs = 0;
+      state.cooldownMs = 0;
+    }
     this.invulnerableRemainingMs = PLAYER_CONFIG.invulnerabilityMs;
     this.msSinceDamage = PLAYER_CONFIG.damageRegenDelayMs;
     this.respawnRemainingMs = 0;
@@ -292,8 +323,8 @@ export class Player {
     this.thrusting = false;
     this.damageSeq += 1;
     this.wasGrounded = false;
-    this.sprite.setPosition(this.spawnX, this.spawnY);
-    this.body.reset(this.spawnX, this.spawnY);
+    this.sprite.setPosition(x, y);
+    this.body.reset(x, y);
     this.sprite.setActive(true).setVisible(true);
     this.sprite.setAlpha(1);
     this.sprite.clearTint();
@@ -303,8 +334,4 @@ export class Player {
     this.visuals.setShield(true);
   }
 
-  setSpawn(x: number, y: number): void {
-    this.sprite.setPosition(x, y);
-    this.body.reset(x, y);
-  }
 }

@@ -11,16 +11,33 @@ export interface ControlFrame {
   jumpHeld: boolean;
   fire: boolean;
   reloadPressed: boolean;
+  weaponSlotPressed: number | null;
   aimWorld: Phaser.Math.Vector2;
 }
 
 export class InputController {
   private readonly scene: Phaser.Scene;
-  private readonly keys: Record<"left" | "right" | "space" | "reload" | "debug" | "leftArrow" | "rightArrow", Phaser.Input.Keyboard.Key>;
+  private readonly keys: Record<
+    | "left"
+    | "right"
+    | "space"
+    | "reload"
+    | "debug"
+    | "weapon1"
+    | "weapon2"
+    | "weapon3"
+    | "leftArrow"
+    | "rightArrow",
+    Phaser.Input.Keyboard.Key
+  >;
   private readonly aim = new Phaser.Math.Vector2(0, 0);
   private readonly cameraPoint = new Phaser.Math.Vector2();
   private hasPointer = false;
   private lastPointer = new Phaser.Math.Vector2();
+  private bufferedJump = false;
+  private bufferedReload = false;
+  private bufferedDebug = false;
+  private bufferedWeaponSlot: number | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -36,16 +53,43 @@ export class InputController {
       space: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       reload: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R),
       debug: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1),
+      weapon1: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+      weapon2: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+      weapon3: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
     };
     keyboard.addCapture([
       Phaser.Input.Keyboard.KeyCodes.SPACE,
       Phaser.Input.Keyboard.KeyCodes.A,
       Phaser.Input.Keyboard.KeyCodes.D,
       Phaser.Input.Keyboard.KeyCodes.R,
+      Phaser.Input.Keyboard.KeyCodes.ONE,
+      Phaser.Input.Keyboard.KeyCodes.TWO,
+      Phaser.Input.Keyboard.KeyCodes.THREE,
       Phaser.Input.Keyboard.KeyCodes.LEFT,
       Phaser.Input.Keyboard.KeyCodes.RIGHT,
       Phaser.Input.Keyboard.KeyCodes.F1,
     ]);
+
+    // Buffer one-shot actions on keydown. A fast tap can begin and end between
+    // two rendered frames, so polling JustDown alone can drop it.
+    this.keys.space.on("down", () => {
+      this.bufferedJump = true;
+    });
+    this.keys.reload.on("down", () => {
+      this.bufferedReload = true;
+    });
+    this.keys.debug.on("down", () => {
+      this.bufferedDebug = true;
+    });
+    this.keys.weapon1.on("down", () => {
+      this.bufferedWeaponSlot = 0;
+    });
+    this.keys.weapon2.on("down", () => {
+      this.bufferedWeaponSlot = 1;
+    });
+    this.keys.weapon3.on("down", () => {
+      this.bufferedWeaponSlot = 2;
+    });
 
     scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       this.hasPointer = true;
@@ -70,18 +114,28 @@ export class InputController {
       this.aim.set(fallbackX + 200, fallbackY - 56);
     }
 
+    const jumpPressed = this.bufferedJump;
+    const reloadPressed = this.bufferedReload;
+    const weaponSlotPressed = this.bufferedWeaponSlot;
+    this.bufferedJump = false;
+    this.bufferedReload = false;
+    this.bufferedWeaponSlot = null;
+
     return {
       moveX,
-      jumpPressed: Phaser.Input.Keyboard.JustDown(this.keys.space),
+      jumpPressed,
       jumpHeld: this.keys.space.isDown,
       fire: pointer.primaryDown,
-      reloadPressed: Phaser.Input.Keyboard.JustDown(this.keys.reload),
+      reloadPressed,
+      weaponSlotPressed,
       aimWorld: this.aim.clone(),
     };
   }
 
   debugPressed(): boolean {
-    return Phaser.Input.Keyboard.JustDown(this.keys.debug);
+    const pressed = this.bufferedDebug;
+    this.bufferedDebug = false;
+    return pressed;
   }
 
   aimPointer(): Phaser.Math.Vector2 {

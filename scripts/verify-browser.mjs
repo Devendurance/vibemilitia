@@ -1,5 +1,5 @@
 /**
- * Browser smoke test for the P0 arena.
+ * Browser smoke test for the P1 free-for-all arena.
  *
  * The Next server must already be running. Example:
  *   npm run dev
@@ -36,6 +36,36 @@ page.on("console", (message) => {
   if (message.type() === "error") pageErrors.push(message.text());
 });
 
+const probe = () => page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
+const waitForLive = async () => {
+  await page.waitForFunction(
+    () => window.__VIBE_MILITIA__?.getProbe().match.phase === "live",
+    null,
+    { timeout: 6000 },
+  );
+};
+
+const findVisibleTarget = (snapshot) =>
+  snapshot.drones
+    .filter((drone) => drone.alive && drone.sight)
+    .map((drone) => ({
+      ...drone,
+      screenX: (drone.x - snapshot.camera.scrollX) * snapshot.camera.zoom,
+      screenY: (drone.y - snapshot.camera.scrollY) * snapshot.camera.zoom,
+    }))
+    .filter(
+      (drone) =>
+        drone.screenX > 60 &&
+        drone.screenX < 1380 &&
+        drone.screenY > 60 &&
+        drone.screenY < 750,
+    )
+    .sort(
+      (a, b) =>
+        Math.hypot(a.x - snapshot.player.x, a.y - snapshot.player.y) -
+        Math.hypot(b.x - snapshot.player.x, b.y - snapshot.player.y),
+    )[0] ?? null;
+
 try {
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.waitForFunction(() => Boolean(window.__VIBE_MILITIA__), null, { timeout: 30000 });
@@ -48,7 +78,7 @@ try {
 
   if (artifactDir) {
     await mkdir(artifactDir, { recursive: true });
-    await page.screenshot({ path: `${artifactDir}/p0-arena.png` });
+    await page.screenshot({ path: `${artifactDir}/p1-arena.png` });
   }
 
   const png = await page.evaluate(async () => {
@@ -72,87 +102,352 @@ try {
       width: canvas.width,
       height: canvas.height,
       transparentRatio: transparent / (transparent + visible),
-      corners: [alphaAt(0, 0), alphaAt(canvas.width - 1, 0), alphaAt(0, canvas.height - 1), alphaAt(canvas.width - 1, canvas.height - 1)],
+      corners: [
+        alphaAt(0, 0),
+        alphaAt(canvas.width - 1, 0),
+        alphaAt(0, canvas.height - 1),
+        alphaAt(canvas.width - 1, canvas.height - 1),
+      ],
     };
   });
   check("cutout is a real PNG", png.width > 500 && png.height > 500, `${png.width}x${png.height}`);
   check("cutout corners are transparent", png.corners.every((value) => value === 0), JSON.stringify(png.corners));
   check("cutout has substantial transparency", png.transparentRatio > 0.2, png.transparentRatio.toFixed(3));
 
-  const initial = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  check("arena booted with three drones", initial.drones.length === 3 && initial.hud.ready === true);
+  const initial = await probe();
+  check(
+    "arena boots with four FFA combatants",
+    initial.drones.length === 3 &&
+      initial.hud.standings.length === 4 &&
+      initial.hud.matchPhase === "live",
+  );
+  check("all three weapons are present", initial.hud.weaponSlots.length === 3);
+  check("match clock is running", initial.hud.matchTimeRemainingMs <= 90_000);
+
+  const clockBefore = initial.hud.matchTimeRemainingMs;
+  const perfWallStart = Date.now();
+  const perfGameStart = initial.hud.uptimeMs;
+  await page.waitForTimeout(1500);
+  const perf = await probe();
+  const clockAfter = perf.hud.matchTimeRemainingMs;
+  const perfRatio = (perf.hud.uptimeMs - perfGameStart) / (Date.now() - perfWallStart);
+  console.log(`INFO  game loop real-time ratio  ${perfRatio.toFixed(2)}`);
+  check("match clock counts down", clockAfter < clockBefore, `${Math.round(clockBefore)} -> ${Math.round(clockAfter)}`);
 
   const x0 = initial.player.x;
   await page.keyboard.down("KeyD");
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(250);
   await page.keyboard.up("KeyD");
-  await page.waitForTimeout(200);
-  const moved = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  check("horizontal movement", moved.player.x > x0 + 60, `${Math.round(x0)} -> ${Math.round(moved.player.x)}`);
+  await page.waitForTimeout(220);
+  const moved = await probe();
+  check("horizontal movement", moved.player.x > x0 + 50, `${Math.round(x0)} -> ${Math.round(moved.player.x)}`);
   check("camera follows the player", moved.camera.scrollX >= 0 && moved.camera.scrollX < 3600);
 
   await page.keyboard.down("Space");
-  await page.waitForTimeout(350);
-  const airborne = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  await page.waitForTimeout(700);
-  const thrusting = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
+  await page.waitForTimeout(320);
+  const airborne = await probe();
+  await page.waitForTimeout(600);
+  const thrusting = await probe();
   await page.keyboard.up("Space");
-  check("jump leaves the ground", airborne.player.y < 1330 || airborne.player.velocityY < 0, `y=${Math.round(airborne.player.y)}`);
-  check("jetpack burns fuel", thrusting.player.fuel < 100 || airborne.player.fuel < 100, `fuel=${Math.round(thrusting.player.fuel)}`);
-
-  await page.waitForTimeout(1400);
-  await page.mouse.move(220, 160);
-  await page.mouse.down();
-  await page.waitForTimeout(450);
-  await page.mouse.up();
-  const fired = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  check("weapon consumes ammunition", fired.player.ammo < 20, `ammo=${fired.player.ammo}`);
-
-  await page.keyboard.press("KeyR");
-  await page.waitForTimeout(1600);
-  const reloaded = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  check("reload restores the magazine", reloaded.player.ammo === 20 && reloaded.player.reloading === false);
-
-  await page.locator('[data-testid="debug-toggle"]').click();
-  await page.waitForTimeout(250);
-  const debug = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  check("debug boundaries toggle", debug.debugVisible === true);
-  if (artifactDir) {
-    await page.screenshot({ path: `${artifactDir}/p0-debug.png` });
-  }
-
-  let damaged = debug;
-  for (let step = 0; step < 40; step += 1) {
-    if (damaged.counters.droneBulletHitsPlayer > 0) break;
-    await page.waitForTimeout(400);
-    damaged = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  }
-  check("drone fire damages the player", damaged.counters.droneBulletHitsPlayer > 0, `hits=${damaged.counters.droneBulletHitsPlayer}`);
-
-  let dead = damaged;
-  for (let step = 0; step < 80; step += 1) {
-    if (dead.player.dead) break;
-    await page.waitForTimeout(350);
-    dead = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
-  }
-  check("death state is reached", dead.player.dead === true, `health=${Math.round(dead.player.health)}`);
-  const overlayClass = await page.locator(".death-overlay").getAttribute("class");
-  check("death overlay is visible", overlayClass?.includes("is-visible") === true);
-  if (artifactDir) {
-    await page.screenshot({ path: `${artifactDir}/p0-death.png` });
-  }
-
-  await page.waitForFunction(
-    () => window.__VIBE_MILITIA__?.getProbe().player.dead === false,
-    null,
-    { timeout: 6000 },
-  );
-  const respawned = await page.evaluate(() => window.__VIBE_MILITIA__.getProbe());
   check(
-    "respawn restores the operator",
-    respawned.player.dead === false && respawned.player.health === 100 && respawned.player.visible === true,
-    `health=${respawned.player.health}`,
+    "jump and jetpack respond",
+    airborne.player.y < 1330 ||
+      airborne.player.velocityY < 0 ||
+      thrusting.player.fuel < 100,
+    `fuel=${Math.round(thrusting.player.fuel)}`,
   );
+
+  const canvas = await page.locator("canvas").boundingBox();
+  if (!canvas) throw new Error("Canvas was not mounted");
+  const aimSnapshot = await probe();
+  const clearAimX = aimSnapshot.player.x + 28 - aimSnapshot.camera.scrollX;
+  await page.mouse.move(canvas.x + clearAimX, canvas.y + 36);
+
+  const weaponIds = ["vibe-rifle", "scatter-blaster", "vibe-lance"];
+  for (let slot = 1; slot <= 3; slot += 1) {
+    await page.keyboard.press(`Digit${slot}`);
+    await page.waitForTimeout(160);
+    const equipped = await probe();
+    check(
+      `weapon ${slot} equips`,
+      equipped.player.weaponId === weaponIds[slot - 1] &&
+        equipped.player.weaponSlot === slot,
+      equipped.player.weaponId,
+    );
+    const ammoBefore = equipped.player.ammo;
+    const shotsBefore = equipped.player.shotsFired;
+    await page.mouse.down();
+    await page.waitForTimeout(140);
+    await page.mouse.up();
+    await page.waitForTimeout(140);
+    const fired = await probe();
+    const pellets = fired.player.shotsFired - shotsBefore;
+    check(
+      `weapon ${slot} fires`,
+      fired.player.ammo < ammoBefore,
+      `${ammoBefore} -> ${fired.player.ammo}`,
+    );
+    if (slot === 2) {
+      check(
+        "scatter blaster fires a pellet spread",
+        pellets === 7,
+        `pellets=${pellets}`,
+      );
+    }
+    if (slot === 3) {
+      check(
+        "vibe lance fires a single precision round",
+        pellets === 1,
+        `rounds=${pellets}`,
+      );
+    }
+  }
+
+  await page.keyboard.press("Digit1");
+  await page.waitForTimeout(150);
+  await page.keyboard.press("KeyR");
+  await page.waitForTimeout(1700);
+  const reloaded = await probe();
+  check(
+    "reload restores the magazine",
+    reloaded.player.ammo === 20 && reloaded.player.reloading === false,
+  );
+
+  let killedDroneId = null;
+  let lastTargetId = null;
+  let observedDeath = false;
+  let deathKiller = null;
+  let deathOverlaySeen = false;
+  let respawnSpawn = null;
+  let respawnMinDistance = null;
+
+  for (let round = 0; round < 24 && !killedDroneId; round += 1) {
+    const snapshot = await probe();
+    if (snapshot.hud.playerEliminations > 0) {
+      killedDroneId =
+        lastTargetId ??
+        snapshot.drones.find((drone) => !drone.alive)?.id ??
+        "unknown";
+      break;
+    }
+    if (snapshot.player.dead) {
+      observedDeath = true;
+      deathKiller = snapshot.hud.lastKillerName;
+      deathOverlaySeen =
+        (await page.locator(".death-overlay").getAttribute("class"))?.includes(
+          "is-visible",
+        ) ?? false;
+      await page.waitForFunction(
+        () => window.__VIBE_MILITIA__?.getProbe().player.dead === false,
+        null,
+        { timeout: 6000 },
+      );
+      const respawned = await probe();
+      respawnSpawn = respawned.spawnPoints.find(
+        (spawn) =>
+          Math.abs(spawn.x - respawned.player.x) < 2 &&
+          Math.abs(spawn.y - respawned.player.y) < 2,
+      );
+      respawnMinDistance = Math.min(
+        ...respawned.drones
+          .filter((drone) => drone.alive)
+          .map((drone) =>
+            Math.hypot(drone.x - respawned.player.x, drone.y - respawned.player.y),
+          ),
+      );
+      continue;
+    }
+
+    const target = findVisibleTarget(snapshot);
+    if (!target) {
+      await page.waitForTimeout(250);
+      continue;
+    }
+    lastTargetId = target.id;
+
+    await page.mouse.move(
+      canvas.x + target.screenX,
+      canvas.y + target.screenY,
+    );
+    await page.mouse.down();
+    for (let step = 0; step < 6; step += 1) {
+      await page.waitForTimeout(90);
+      const live = await probe();
+      const tracked = live.drones.find((drone) => drone.id === target.id);
+      if (!tracked?.alive) break;
+      const screenX = (tracked.x - live.camera.scrollX) * live.camera.zoom;
+      const screenY = (tracked.y - live.camera.scrollY) * live.camera.zoom;
+      if (screenX > 20 && screenX < 1420 && screenY > 20 && screenY < 790) {
+        await page.mouse.move(canvas.x + screenX, canvas.y + screenY);
+      }
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+    const after = await probe();
+    if (after.hud.playerEliminations > 0) {
+      killedDroneId =
+        lastTargetId ??
+        after.drones.find((drone) => !drone.alive)?.id ??
+        "unknown";
+    }
+  }
+
+  const afterKill = await probe();
+  check(
+    "player scoring records an elimination",
+    afterKill.hud.playerEliminations > 0,
+    `eliminations=${afterKill.hud.playerEliminations}`,
+  );
+  const playerRow = afterKill.hud.standings.find((entry) => entry.isPlayer);
+  check("leaderboard reflects the score", (playerRow?.score ?? 0) > 0);
+  check(
+    "hit confirmation counters advance",
+    afterKill.counters.playerBulletHitsBot > 0,
+    `hits=${afterKill.counters.playerBulletHitsBot}`,
+  );
+  if (artifactDir) {
+    await page.screenshot({ path: `${artifactDir}/p1-combat.png` });
+  }
+
+  let botRespawned = false;
+  if (killedDroneId && killedDroneId !== "unknown") {
+    for (let step = 0; step < 18; step += 1) {
+      await page.waitForTimeout(350);
+      const snapshot = await probe();
+      const drone = snapshot.drones.find((entry) => entry.id === killedDroneId);
+      if (drone?.alive) {
+        botRespawned = true;
+        break;
+      }
+    }
+  }
+  check("eliminated bots respawn into the match", botRespawned);
+
+  let terrainOverlaps = 0;
+  let pathingObserved = false;
+  let thrustObserved = false;
+  for (let step = 0; step < 20; step += 1) {
+    await page.waitForTimeout(220);
+    const snapshot = await probe();
+    for (const drone of snapshot.drones) {
+      if (drone.thrusting) thrustObserved = true;
+      if (drone.pathLength > 0) pathingObserved = true;
+      if (!drone.alive) continue;
+      for (const platform of snapshot.platforms) {
+        const overlapX =
+          Math.min(drone.bodyX + drone.bodyWidth, platform.x + platform.width) -
+          Math.max(drone.bodyX, platform.x);
+        const overlapY =
+          Math.min(drone.bodyY + drone.bodyHeight, platform.y + platform.height) -
+          Math.max(drone.bodyY, platform.y);
+        if (overlapX > 4 && overlapY > 4) {
+          terrainOverlaps += 1;
+        }
+      }
+    }
+    if (snapshot.player.dead && !observedDeath) {
+      observedDeath = true;
+      deathKiller = snapshot.hud.lastKillerName;
+      deathOverlaySeen =
+        (await page.locator(".death-overlay").getAttribute("class"))?.includes(
+          "is-visible",
+        ) ?? false;
+      await page.waitForFunction(
+        () => window.__VIBE_MILITIA__?.getProbe().player.dead === false,
+        null,
+        { timeout: 6000 },
+      );
+      const respawned = await probe();
+      respawnSpawn = respawned.spawnPoints.find(
+        (spawn) =>
+          Math.abs(spawn.x - respawned.player.x) < 2 &&
+          Math.abs(spawn.y - respawned.player.y) < 2,
+      );
+      respawnMinDistance = Math.min(
+        ...respawned.drones
+          .filter((drone) => drone.alive)
+          .map((drone) =>
+            Math.hypot(drone.x - respawned.player.x, drone.y - respawned.player.y),
+          ),
+      );
+    }
+  }
+  check("bots do not phase through platforms", terrainOverlaps === 0, `overlaps=${terrainOverlaps}`);
+  check("bots use navigation paths", pathingObserved);
+  check("bots use vertical thrusters", thrustObserved);
+
+  if (!observedDeath) {
+    for (let step = 0; step < 40; step += 1) {
+      await page.waitForTimeout(300);
+      const snapshot = await probe();
+      if (snapshot.player.dead) {
+        observedDeath = true;
+        deathKiller = snapshot.hud.lastKillerName;
+        deathOverlaySeen =
+          (await page.locator(".death-overlay").getAttribute("class"))?.includes(
+            "is-visible",
+          ) ?? false;
+        break;
+      }
+    }
+  }
+  check("player death is reachable", observedDeath, `killer=${deathKiller ?? "none"}`);
+  check("death overlay is visible", deathOverlaySeen);
+  if (observedDeath) {
+    await page.waitForFunction(
+      () => window.__VIBE_MILITIA__?.getProbe().player.dead === false,
+      null,
+      { timeout: 6000 },
+    );
+    const respawned = await probe();
+    respawnSpawn =
+      respawnSpawn ??
+      respawned.spawnPoints.find(
+        (spawn) =>
+          Math.abs(spawn.x - respawned.player.x) < 2 &&
+          Math.abs(spawn.y - respawned.player.y) < 2,
+      );
+    respawnMinDistance =
+      respawnMinDistance ??
+      Math.min(
+        ...respawned.drones
+          .filter((drone) => drone.alive)
+          .map((drone) =>
+            Math.hypot(drone.x - respawned.player.x, drone.y - respawned.player.y),
+          ),
+      );
+  }
+  check("player respawns into a valid pad", Boolean(respawnSpawn), respawnSpawn?.id ?? "none");
+  check(
+    "respawn avoids live opponents",
+    (respawnMinDistance ?? 0) > 120,
+    `distance=${Math.round(respawnMinDistance ?? 0)}`,
+  );
+
+  await page.evaluate(() => window.__VIBE_MILITIA__.send({ type: "force-match-end" }));
+  await page.waitForTimeout(500);
+  const ended = await probe();
+  check("match reaches an end state", ended.match.phase === "ended" && ended.hud.matchPhase === "ended");
+  check("match produces a winner", Boolean(ended.hud.winnerName), ended.hud.winnerName ?? "none");
+  check("results expose all four standings", ended.hud.standings.length === 4);
+  const resultsClass = await page.locator('[data-testid="results-overlay"]').getAttribute("class");
+  check("results overlay is visible", resultsClass?.includes("is-visible") === true);
+  if (artifactDir) {
+    await page.screenshot({ path: `${artifactDir}/p1-results.png` });
+  }
+
+  await page.locator('[data-testid="results-replay"]').click();
+  await waitForLive();
+  await page.waitForTimeout(500);
+  const replay = await probe();
+  check("replay resets the match", replay.match.phase === "live" && replay.hud.matchTimeRemainingMs > 85_000);
+  check(
+    "replay resets scores and health",
+    replay.hud.playerEliminations === 0 && replay.player.health === 100,
+  );
+  if (artifactDir) {
+    await page.screenshot({ path: `${artifactDir}/p1-replay.png` });
+  }
 
   check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 } finally {

@@ -1,14 +1,29 @@
 import Phaser from "phaser";
-import { PLAYER_WEAPON, PROJECTILE_LIFETIME_MS } from "@/game/config/gameplay";
+import type { PlayerWeapon } from "@/game/config/gameplay";
+import {
+  DRONE_WEAPON,
+  PROJECTILE_LIFETIME_MS,
+} from "@/game/config/gameplay";
 import type { EffectsSystem } from "@/game/systems/EffectsSystem";
 
-export type ProjectileOwner = "player" | "drone";
+export type ProjectileOwnerKind = "player" | "bot";
 
-interface BulletData {
+export interface BulletData {
   damage: number;
   expiresAt: number;
-  owner: ProjectileOwner;
+  ownerId: string;
+  ownerKind: ProjectileOwnerKind;
+  weaponId: string;
+  weaponName: string;
+  maxRange?: number;
 }
+
+const BODY_SIZES: Record<string, { width: number; height: number }> = {
+  "bullet-player": { width: 16, height: 7 },
+  "bullet-scatter": { width: 9, height: 6 },
+  "bullet-precision": { width: 28, height: 4 },
+  "bullet-drone": { width: 16, height: 7 },
+};
 
 export class ProjectileSystem {
   readonly playerBullets: Phaser.Physics.Arcade.Group;
@@ -31,7 +46,8 @@ export class ProjectileSystem {
       // the projectile by its data payload instead of trusting argument order.
       const bullet = this.asBullet(objectA) ?? this.asBullet(objectB);
       if (!bullet) return;
-      this.impact(bullet, this.ownerOf(bullet) === "player" ? "world" : "drone");
+      const data = this.dataOf(bullet);
+      this.impact(bullet, data?.ownerKind === "bot" ? "drone" : "world");
     };
     scene.physics.add.collider(this.playerBullets, platforms, onPlatformHit);
     scene.physics.add.collider(this.droneBullets, platforms, onPlatformHit);
@@ -47,52 +63,118 @@ export class ProjectileSystem {
   private createGroup(): Phaser.Physics.Arcade.Group {
     return this.scene.physics.add.group({
       allowGravity: false,
-      maxSize: 80,
+      maxSize: 140,
       runChildUpdate: false,
     });
   }
 
-  firePlayer(x: number, y: number, angle: number, now: number): void {
-    const spread = (Math.random() - 0.5) * 2 * PLAYER_WEAPON.spreadRadians;
-    this.fire(this.playerBullets, "bullet-player", x, y, angle + spread, PLAYER_WEAPON.damage, "player", now);
-  }
-
-  fireDrone(x: number, y: number, angle: number, spread: number, damage: number, speed: number, now: number): void {
-    const offset = (Math.random() - 0.5) * 2 * spread;
-    this.fire(this.droneBullets, "bullet-drone", x, y, angle + offset, damage, "drone", now, speed);
-  }
-
-  private fire(
-    group: Phaser.Physics.Arcade.Group,
-    texture: string,
+  firePlayer(
+    weapon: PlayerWeapon,
     x: number,
     y: number,
     angle: number,
-    damage: number,
-    owner: ProjectileOwner,
     now: number,
-    speedOverride?: number,
   ): void {
-    const bullet = group.get(x, y, texture) as Phaser.Physics.Arcade.Image | null;
+    const pellets = weapon.pellets;
+    for (let index = 0; index < pellets; index += 1) {
+      let offset: number;
+      if (pellets === 1) {
+        offset = (Math.random() - 0.5) * 2 * weapon.spreadRadians;
+      } else {
+        const step = (weapon.spreadRadians * 2) / Math.max(1, pellets - 1);
+        offset = -weapon.spreadRadians + step * index;
+        offset += (Math.random() - 0.5) * weapon.spreadRadians * 0.18;
+      }
+      this.spawnBullet({
+        group: this.playerBullets,
+        texture: weapon.projectileTexture,
+        x,
+        y,
+        angle: angle + offset,
+        damage: weapon.damage,
+        ownerId: "player",
+        ownerKind: "player",
+        weaponId: weapon.id,
+        weaponName: weapon.name,
+        speed: weapon.projectileSpeed,
+        lifetimeMs: weapon.projectileLifetimeMs,
+        now,
+      });
+    }
+  }
+
+  fireDrone(
+    ownerId: string,
+    x: number,
+    y: number,
+    angle: number,
+    spread: number,
+    damage: number,
+    speed: number,
+    now: number,
+  ): void {
+    const offset = (Math.random() - 0.5) * 2 * spread;
+    this.spawnBullet({
+      group: this.droneBullets,
+      texture: "bullet-drone",
+      x,
+      y,
+      angle: angle + offset,
+      damage,
+      ownerId,
+      ownerKind: "bot",
+      weaponId: DRONE_WEAPON.id,
+      weaponName: DRONE_WEAPON.name,
+      speed,
+      lifetimeMs: PROJECTILE_LIFETIME_MS,
+      now,
+    });
+  }
+
+  private spawnBullet(options: {
+    group: Phaser.Physics.Arcade.Group;
+    texture: string;
+    x: number;
+    y: number;
+    angle: number;
+    damage: number;
+    ownerId: string;
+    ownerKind: ProjectileOwnerKind;
+    weaponId: string;
+    weaponName: string;
+    speed: number;
+    lifetimeMs: number;
+    now: number;
+  }): void {
+    const bullet = options.group.get(options.x, options.y, options.texture) as
+      | Phaser.Physics.Arcade.Image
+      | null;
     if (!bullet) return;
 
     const body = bullet.body as Phaser.Physics.Arcade.Body;
-    bullet.setActive(true).setVisible(true).setDepth(owner === "player" ? 37 : 36);
-    bullet.setPosition(x, y);
-    bullet.setRotation(angle);
-    bullet.setTexture(texture);
+    bullet
+      .setActive(true)
+      .setVisible(true)
+      .setDepth(options.ownerKind === "player" ? 37 : 36);
+    bullet.setPosition(options.x, options.y);
+    bullet.setRotation(options.angle);
+    bullet.setTexture(options.texture);
     body.enable = true;
     body.setAllowGravity(false);
-    body.setSize(16, 7);
+    const size = BODY_SIZES[options.texture] ?? { width: 16, height: 7 };
+    body.setSize(size.width, size.height);
     body.setVelocity(
-      Math.cos(angle) * (speedOverride ?? PLAYER_WEAPON.projectileSpeed),
-      Math.sin(angle) * (speedOverride ?? PLAYER_WEAPON.projectileSpeed),
+      Math.cos(options.angle) * options.speed,
+      Math.sin(options.angle) * options.speed,
     );
 
     const data: BulletData = {
-      damage,
-      expiresAt: now + PROJECTILE_LIFETIME_MS,
-      owner,
+      damage: options.damage,
+      expiresAt: options.now + options.lifetimeMs,
+      ownerId: options.ownerId,
+      ownerKind: options.ownerKind,
+      weaponId: options.weaponId,
+      weaponName: options.weaponName,
     };
     bullet.setData("bullet", data);
   }
@@ -102,7 +184,7 @@ export class ProjectileSystem {
       for (const child of group.getChildren()) {
         const bullet = child as Phaser.Physics.Arcade.Image;
         if (!bullet.active) continue;
-        const data = bullet.getData("bullet") as BulletData | undefined;
+        const data = this.dataOf(bullet);
         if (
           !data ||
           now >= data.expiresAt ||
@@ -117,12 +199,24 @@ export class ProjectileSystem {
     }
   }
 
-  damageOf(bullet: Phaser.Physics.Arcade.Image): number {
-    return (bullet.getData("bullet") as BulletData | undefined)?.damage ?? 0;
+  dataOf(bullet: Phaser.Physics.Arcade.Image): BulletData | null {
+    return (bullet.getData("bullet") as BulletData | undefined) ?? null;
   }
 
-  ownerOf(bullet: Phaser.Physics.Arcade.Image): ProjectileOwner | null {
-    return (bullet.getData("bullet") as BulletData | undefined)?.owner ?? null;
+  damageOf(bullet: Phaser.Physics.Arcade.Image): number {
+    return this.dataOf(bullet)?.damage ?? 0;
+  }
+
+  ownerIdOf(bullet: Phaser.Physics.Arcade.Image): string | null {
+    return this.dataOf(bullet)?.ownerId ?? null;
+  }
+
+  ownerKindOf(bullet: Phaser.Physics.Arcade.Image): ProjectileOwnerKind | null {
+    return this.dataOf(bullet)?.ownerKind ?? null;
+  }
+
+  weaponNameOf(bullet: Phaser.Physics.Arcade.Image): string {
+    return this.dataOf(bullet)?.weaponName ?? "UNKNOWN";
   }
 
   consumePlayerHit(bullet: Phaser.Physics.Arcade.Image, x: number, y: number): void {
@@ -131,7 +225,7 @@ export class ProjectileSystem {
     this.deactivate(bullet);
   }
 
-  consumeDroneHit(bullet: Phaser.Physics.Arcade.Image, x: number, y: number): void {
+  consumeBotHit(bullet: Phaser.Physics.Arcade.Image, x: number, y: number): void {
     if (!bullet.active) return;
     this.effects.droneHit(x, y);
     this.deactivate(bullet);
@@ -151,21 +245,46 @@ export class ProjectileSystem {
     bullet.setVisible(false);
   }
 
-  activeCount(owner: ProjectileOwner): number {
-    const group = owner === "player" ? this.playerBullets : this.droneBullets;
+  clearAll(): void {
+    for (const group of [this.playerBullets, this.droneBullets]) {
+      for (const child of group.getChildren()) {
+        const bullet = child as Phaser.Physics.Arcade.Image;
+        if (bullet.active) this.deactivate(bullet);
+      }
+    }
+  }
+
+  activeCount(ownerKind: ProjectileOwnerKind): number {
+    const group = ownerKind === "player" ? this.playerBullets : this.droneBullets;
     return group.getChildren().filter((child) => child.active).length;
   }
 
-  listActive(): Array<{ x: number; y: number; owner: ProjectileOwner }> {
-    const output: Array<{ x: number; y: number; owner: ProjectileOwner }> = [];
+  listActive(): Array<{
+    x: number;
+    y: number;
+    ownerId: string;
+    ownerKind: ProjectileOwnerKind;
+    weaponId: string;
+  }> {
+    const output: Array<{
+      x: number;
+      y: number;
+      ownerId: string;
+      ownerKind: ProjectileOwnerKind;
+      weaponId: string;
+    }> = [];
     for (const group of [this.playerBullets, this.droneBullets]) {
       for (const child of group.getChildren()) {
         const bullet = child as Phaser.Physics.Arcade.Image;
         if (!bullet.active) continue;
+        const data = this.dataOf(bullet);
+        if (!data) continue;
         output.push({
           x: bullet.x,
           y: bullet.y,
-          owner: this.ownerOf(bullet) ?? "player",
+          ownerId: data.ownerId,
+          ownerKind: data.ownerKind,
+          weaponId: data.weaponId,
         });
       }
     }
