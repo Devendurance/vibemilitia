@@ -2,7 +2,7 @@
 
 ## Current task
 
-P0 playable combat prototype is implemented, verified and committed at `a88a576`. Ready for review.
+P0 playable combat prototype is implemented, verified and committed at `78c4263`. Ready for review.
 
 ## Done
 
