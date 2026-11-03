@@ -48,15 +48,15 @@
 
 - Always ask clarifying questions.
 - Never assume the design, tech stack, or features.
-- Use deep-dive sub-agents to assist with research.
-- For research work or research assist sub-agents, use SWE-2 model with a high reasoning/thinking effort if not available use muse spark-1.3 contributor with x-high reasoning effort.
-- Use deep-dive sub-agents to review the different aspects of your plan before presenting it to the user.
+<!-- - Use deep-dive sub-agents to assist with research. -->
+<!-- - For research work or research assist sub-agents, use SWE-2 model with a high reasoning/thinking effort if not available use muse spark-1.3 contributor with x-high reasoning effort.
+- Use deep-dive sub-agents to review the different aspects of your plan before presenting it to the user. -->
 
 ## CHANGE / EDIT MODE
 
-- Never implement features yourself when possible; use sub-agents.
+<!-- - Never implement features yourself when possible; use sub-agents.
 - Identify changes from the plan that can be implemented in parallel, and use sub-agents to implement the features efficiently.
-- When using sub-agents to implement features, act as a coordinator only.
+- When using sub-agents to implement features, act as a coordinator only. -->
 - After completing features, whether large or small, always run commands such as lint, type check, and next build to check code quality.
 
 ## DATABASE SCHEMA CHANGES
@@ -74,3 +74,13 @@
 
 - Always follow or reference the UI design system when creating or reviewing components or pages.
 - Design System: @DESIGN.md
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
