@@ -2,7 +2,7 @@
 
 ## Current task
 
-P1 is implemented and verified. The working tree is ready for the P1 commit. P0 is the last recorded commit.
+P1 is implemented, verified and committed at `ea40760`. P0 remains at `78c4263` with its checkpoint at `115649a`.
 
 ## Done
 
@@ -28,7 +28,7 @@ P1 is implemented and verified. The working tree is ready for the P1 commit. P0 
 
 ## Next
 
-1. Commit P1.
-2. Add a git remote before pushing. The repo still has no configured remote.
+1. Add a git remote before pushing. The repo still has no configured remote.
+2. User review of P1 match pacing, bot pressure and HUD density.
 3. Review bot loadout variety and audio in a future pass.
 4. Do not start P2 multiplayer until P1 review is complete.
