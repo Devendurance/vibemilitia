@@ -1,6 +1,6 @@
 # Vibe Militia
 
-A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. The local build is a complete 90-second match against three navigation-capable bot drones. The online build adds server-authoritative rooms for up to eight combatants. Online bots draw from ten validated official Viber skins and use the same Vibe Rifle and PlayerVisuals layers as human players.
+A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. The local build is a complete 90-second match against three navigation-capable bot drones. The online build adds server-authoritative rooms for up to eight combatants, a ten-character picker and ten validated official Viber skins. Online bots use the same Vibe Rifle and PlayerVisuals layers as human players.
 
 The operator is VIBER-010, prepared from the original Vibe Vibers NFT artwork.
 
@@ -104,7 +104,10 @@ The `/online` route adds a Colyseus lobby and independent free-for-all rooms. Th
 - The server ticks at 60 Hz and broadcasts snapshots at 20 Hz. Input is capped at 45 messages per second per client.
 - Online bots share the human character renderer. They show the equipped Vibe Rifle, 360-degree aim, muzzle flash, recoil, jetpack exhaust, health bars, damage reactions, spawn shields and death/respawn presentation.
 - The server assigns stable `skinId` values from ten validated official Viber assets. Bots prefer unique non-default skins within a room, keep them through death and respawn, and receive a valid skin after disconnect backfill.
-- Humans remain VIBER-010 for this slice. The skin system is ready for a future character picker without adding selection UI now.
+- The online lobby has a keyboard-accessible ten-card character picker with a large selected preview. Every official Viber is unlocked immediately.
+- The selected `skinId` is stored locally and sent on Quick Match, Create Room, Join Room and invite-link joins. The server validates it against the official roster and falls back to VIBER-010 for invalid, removed or corrupted values.
+- The selected character is server-authoritative in snapshots, persists through death, respawn and replay, and cannot be changed during a live match.
+- The online HUD portrait, identity name and in-world body all use the selected character.
 - Bot damage and projectile speed remain on the existing server tuning, so the current burst balance is preserved while the presentation matches a player weapon.
 - The local human is predicted with the shared AABB movement model and softly reconciled against authoritative snapshots.
 - Remote combatants are interpolated, and projectiles are extrapolated between snapshots.
@@ -216,6 +219,7 @@ Run the browser suites while Next and the game server are running. Set `BASE_URL
 npm run verify:browser
 npm run verify:online:countdown
 npm run verify:online:matchmaking
+npm run verify:online:characters
 npm run verify:online:bots
 npm run verify:online:match
 npm run verify:online:rooms
@@ -229,9 +233,11 @@ HEADED=1 npm run verify:online:perf
 
 `verify:online:matchmaking` checks the most-populated-room preference, launches 15 concurrent Quick Match joins, verifies the 8 + 7 split, waits for the second room to count down and fill its bot, then checks the next joins and an independent Create Room.
 
+`verify:online:characters` checks all ten cards, every selection, keyboard arrow navigation, mobile layout, refresh persistence and corrupt-storage fallback. It creates a room with BUREAU-023, invite-joins with VIBER-123, Quick Matches with another skin, verifies cross-client agreement and bot variety, checks eight independent human choices, confirms selected skins through death and respawn, and rejects arbitrary server skin IDs.
+
 `verify:online:bots` opens a live room with one human and seven bots, checks that all eight views use distinct validated roster textures, waits for bot projectiles, player damage, bot-versus-bot eliminations, bot death and respawn, verifies BOT labels and damaged health bars, checks that death and respawn retain the same skin, joins a second browser to verify identical skin assignments and bot replacement, reconnects a bot after disconnect, and fills all eight seats to confirm no bot visuals remain.
 
-`verify:online:match` opens two independent Chromium contexts in one room, fills the other six seats with SDK clients, waits for the 90-second clock, checks identical results on both browsers, then clicks replay and checks both clients return to a live match with reset scores.
+`verify:online:match` opens two independent Chromium contexts with different selected skins in one room, fills the other six seats with SDK clients, waits for the 90-second clock, checks identical results on both browsers, then clicks replay and checks both clients return to a live match with reset scores and their original character selections.
 
 `verify:online:rooms` creates two concurrent rooms, checks state isolation, rejects a ninth human with the full-room message, releases a seat and rejoins, then waits for an independent match to end and checks the replay error.
 
@@ -240,24 +246,24 @@ HEADED=1 npm run verify:online:perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 52 tests pass
+- `npm test`: 53 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass
 - `npm run verify:online:countdown`: 16/16 checks pass, including HUD and lobby card synchronization
 - `npm run verify:online:matchmaking`: 11/11 checks pass
+- `npm run verify:online:characters`: 35/35 checks pass against the production build
 - `npm run verify:online:bots`: 32/32 checks pass against the production build
-- Ten validated official skins are available. A one-human, seven-bot room rendered eight distinct skins with no bot using the human default.
-- All ten roster textures loaded, and death/respawn retained the same bot skin.
-- A late-joining browser saw identical skin assignments. Human replacement preserved the six remaining bot skins, and disconnect backfill added one valid unused skin.
-- 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
-- The eight-human room started immediately. The seven-human room counted down, then filled one bot and started.
-- `verify:online:match`: 22/22 checks pass, 8 humans, time-limit result, identical standings, replay reset, 0.09 ms average server tick
-- `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 58 fps with eight Viber combatants while moving and firing, 0.30 ms average server tick, 0.60 ms p95
-- `MATCH_COUNTDOWN_MS=2500` on a separate server produced a 2.5-second countdown and a live match with seven bots
-- Bot verification observed Vibe Rifle projectiles, player damage, bot-versus-bot eliminations, bot death and respawn, BOT labels, damaged health bars, human replacement, disconnect backfill and an eight-human no-bot match
-- Original source PNGs, the archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts passed the transparency checks.
+- All ten character cards render, every card is selectable, keyboard arrows change selection, mobile shows two readable columns, and refresh plus corrupt-storage fallback behave correctly.
+- Create Room, invite join and Quick Match all use the selected skin. Two clients choosing different characters see the same assignments, and bots avoid those skins where possible.
+- Eight human clients kept eight independently requested skins with no bot visuals.
+- Selected humans retained their skin while dead, after respawn, and after replay.
+- The server rejected an arbitrary asset URL and fell back to VIBER-010.
+- 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms.
+- `verify:online:match`: 25/25 checks pass, 8 humans, time-limit result, identical standings, replay reset, and preserved VIBER-123/BUREAU-023 selections.
+- `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors.
+- `HEADED=1 npm run verify:online:perf`: 59 fps with eight Viber combatants while moving and firing, 0.23 ms average server tick, 0.46 ms p95.
+- Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
 
@@ -267,7 +273,8 @@ Last verification against the production build:
 - Room discovery uses the Colyseus lobby and in-memory room metadata. It is not a persistent matchmaking service and does not survive a server restart.
 - Combat input is frozen during the pre-match countdown. Players can aim but cannot move, fire or use the jetpack until the clock starts.
 - Under extreme simultaneous contention, Quick Match can fall back to creating a fresh room after repeated seat races.
-- All ten online skins are validated, but players cannot choose one yet. Humans remain VIBER-010 until the P3A character picker.
+- Character selection is only available in the lobby. A player cannot switch skins during a live match.
+- Humans may choose the same character. Human selections take priority at bot assignment time, but bots keep their existing skins if a late human joins with the same appearance.
 - Bots share the same Vibe Rifle presentation and differ by official character skin, callsign and BOT label. Per-skin loadouts are not implemented.
 - Bot navigation still uses the compact movement body while damage uses the character-sized hitbox. This preserves A* traversal, but a character can visually overlap tight cover more than the navigation body does.
 - If the validated roster ever drops below the number of combatants, bot skin assignment safely reuses entries rather than inventing assets.
@@ -287,7 +294,7 @@ Last verification against the production build:
 
 ## Next steps
 
-1. Add the P3A player-facing character picker using the validated roster and `skinId` state.
+1. Await approval before beginning P3B.
 2. Add reconnection tokens and mid-match resume.
 3. Add server-side lag compensation and a configurable latency test harness.
 4. Add audio and richer hit confirmation through the existing effects layer.

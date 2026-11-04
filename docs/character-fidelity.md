@@ -98,6 +98,8 @@ npm run prepare:roster
 
 All ten assets passed the alpha checks: transparent corners, zero near-background pixels inside the cutout, clean cream and checkerboard previews, and no square backdrop or pale halo.
 
-`viber-010` remains the human default. Online bots draw unique non-default skins from the remaining valid roster entries, retain their skin through death and respawn, and receive a valid skin when backfilled after a disconnect. Human joins replace bots without changing the remaining bot skins.
+`viber-010` remains the fallback for new or invalid profiles. P3A added the player-facing picker: all ten characters are available immediately, the selected `skinId` is stored locally, and the server validates it against this manifest before storing it in the authoritative human state.
 
-A full player-facing character picker remains out of scope until P3A.
+Online bots draw unique skins from roster entries not already occupied by humans or other bots, retain their skin through death and respawn, and receive a valid skin when backfilled after a disconnect. Human joins replace bots without rerandomizing the remaining bot skins. Humans may choose the same character. Human selections take priority at bot assignment time.
+
+Selected characters persist through death, respawn and match replay. Players cannot change skin during a live match.

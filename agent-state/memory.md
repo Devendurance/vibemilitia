@@ -36,7 +36,11 @@
 - `enableRealtimeListing()` is required for room cards to update after the lobby already exists.
 - Bots fill rooms at countdown expiry. A later human removes one bot. A human disconnect creates one bot if below eight combatants.
 - Online combatants use `CombatantView` and `PlayerVisuals` with the texture resolved from server snapshot `skinId`. Human default is `viber-010`. BOT labels are separate copper text objects.
-- `GameSimulation` assigns bot skins from the validated roster with a dedicated fixed-seed skin RNG. Bots avoid duplicate skins and the human default when alternatives exist, keep their skin through death/respawn, and get a valid skin on backfill.
+- `GameSimulation` assigns bot skins from the validated roster with a room-seeded skin RNG plus an optional test seed. Bots avoid duplicate skins and skins occupied by humans when alternatives exist, keep their skin through death/respawn, and get a valid skin on backfill.
+- P3A adds human skin selection. `JoinOptions.skinId` is validated in `FFARoom.onAuth` and again in `GameSimulation.addHuman`. Invalid IDs fall back to `viber-010`.
+- The lobby uses a native radio fieldset for the ten-card picker, so arrow keys and focus behavior work natively. Selection is stored under `vibe-militia-skin`.
+- The selected skin is sent through Quick Match, Create Room, Join Room and invite joins. It persists through death, respawn and replay and cannot be changed in a live session.
+- The online HUD portrait, identity name and in-world sprite all use the selected skin.
 - OnlineScene preloads all ten roster textures. The browser loads all ten even when a room uses eight.
 - Bot snapshots use feet coordinates, like humans. Bot damage uses a `52 x 118` human-sized hitbox. Bot navigation and platform collision keep the original compact `56 x 36` movement body.
 - Bot firing uses a Vibe Rifle presentation with the previous balance values: 7 damage, 900 projectile speed, 0.055 spread, 3-shot burst, 150 ms spacing and 1600 ms cycle.
@@ -69,8 +73,8 @@
 
 - Always measure production, not the dev server.
 - Headless Chrome can pace WebGL at 30 fps regardless of scene cost. Use `HEADED=1` for real gameplay frame rate.
-- Production headed Chrome measured 56 to 60 fps at 1440 x 810 with one human and seven Viber bots while moving and firing. The final Slice C run measured 58 fps, matching the baseline.
-- Server tick averaged 0.07 to 0.30 ms in final verification. Occasional 8 to 11 ms spikes are GC or scheduler noise, not sustained load.
+- Production headed Chrome measured 58 to 60 fps at 1440 x 810 with one human and seven Viber bots while moving and firing. The final P3A run measured 59 fps.
+- Server tick averaged 0.06 to 0.30 ms in final verification. Occasional 8 to 11 ms spikes are GC or scheduler noise, not sustained load.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
@@ -93,6 +97,7 @@
 - `npm run verify:browser` after a client server is running
 - `npm run verify:online:countdown`
 - `npm run verify:online:matchmaking`
+- `npm run verify:online:characters`
 - `npm run verify:online:bots`
 - `npm run verify:online:match`
 - `npm run verify:online:rooms`

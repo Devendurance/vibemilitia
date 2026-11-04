@@ -1,4 +1,5 @@
 import { Client, Room } from "colyseus";
+import { getCharacterSkin } from "../src/game/characters/roster";
 import { GameSimulation } from "../src/game/multiplayer/GameSimulation";
 import {
   DEFAULT_MATCH_COUNTDOWN_MS,
@@ -13,6 +14,12 @@ import {
 interface RateBucket {
   windowStart: number;
   count: number;
+}
+
+interface AuthenticatedJoinOptions extends JoinOptions {
+  name: string;
+  roomName: string;
+  skinId: string;
 }
 
 export class FFARoom extends Room {
@@ -41,7 +48,7 @@ export class FFARoom extends Room {
     this.onMessage("rematch", () => this.onRematch());
   }
 
-  onAuth(_client: Client, options: JoinOptions): JoinOptions {
+  onAuth(_client: Client, options: JoinOptions): AuthenticatedJoinOptions {
     if (this.simulation && this.simulation.phase === "ended") {
       throw new Error("MATCH_ENDED");
     }
@@ -51,10 +58,15 @@ export class FFARoom extends Room {
     return {
       name: sanitizeGuestName(options?.name ?? ""),
       roomName: this.matchName,
+      skinId: getCharacterSkin(options?.skinId).skinId,
     };
   }
 
-  onJoin(client: Client, options: JoinOptions): void {
+  onJoin(
+    client: Client,
+    options: JoinOptions,
+    auth?: AuthenticatedJoinOptions,
+  ): void {
     if (!this.simulation) {
       this.simulation = new GameSimulation({
         roomId: this.roomId,
@@ -62,9 +74,14 @@ export class FFARoom extends Room {
         countdownMs: this.countdownMs,
       });
     }
+    const name =
+      auth?.name ?? sanitizeGuestName(options?.name ?? "");
+    const skinId =
+      auth?.skinId ?? getCharacterSkin(options?.skinId).skinId;
     const result = this.simulation.addHuman(
       client.sessionId,
-      sanitizeGuestName(options?.name ?? ""),
+      name,
+      skinId,
     );
     if (!result.ok) {
       throw new Error(result.error ?? "JOIN_REJECTED");

@@ -1,8 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Client, Room, RoomAvailable } from "@colyseus/sdk";
+import {
+  CHARACTER_ROSTER,
+  HUMAN_DEFAULT_SKIN_ID,
+  getCharacterSkin,
+} from "@/game/characters/roster";
 import { GameBridge } from "@/game/bridge";
 import { GameHud } from "@/components/game/GameHud";
 import { OnlineGameCanvas } from "@/components/online/OnlineGameCanvas";
@@ -14,6 +20,7 @@ type AvailableRoom = RoomAvailable<OnlineRoomMetadata>;
 
 const SERVER_URL =
   process.env.NEXT_PUBLIC_COLYSEUS_URL ?? "http://localhost:2567";
+const SKIN_STORAGE_KEY = "vibe-militia-skin";
 
 interface LobbyRoomLike extends AvailableRoom {
   roomId: string;
@@ -51,10 +58,12 @@ function mergeRoom(
 function OnlineGameSession({
   room,
   playerName,
+  skinId,
   onLeave,
 }: {
   room: OnlineRoom;
   playerName: string;
+  skinId: string;
   onLeave: () => void;
 }) {
   const bridge = useMemo(() => new GameBridge(), []);
@@ -107,7 +116,12 @@ function OnlineGameSession({
       <div className="militia-page__glow" aria-hidden="true" />
       <section className="game-frame" aria-label="Vibe Militia online arena">
         <OnlineGameCanvas room={room} bridge={bridge} playerName={playerName} />
-        <GameHud bridge={bridge} mode="online" playerName={playerName} />
+        <GameHud
+          bridge={bridge}
+          mode="online"
+          playerName={playerName}
+          playerSkinId={skinId}
+        />
         <div className="online-session-bar">
           <span className="mono-label">
             ROOM {room.roomId.slice(0, 8)}
@@ -142,6 +156,7 @@ function OnlineGameSession({
 
 export function OnlineShell() {
   const [name, setName] = useState("VIBER-GUEST");
+  const [skinId, setSkinId] = useState(HUMAN_DEFAULT_SKIN_ID);
   const [rooms, setRooms] = useState<LobbyRoomLike[]>([]);
   const [connected, setConnected] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -160,6 +175,12 @@ export function OnlineShell() {
     const timer = window.setTimeout(() => {
       const saved = window.localStorage.getItem("vibe-militia-guest");
       setName(saved || randomGuestName());
+      const savedSkin = window.localStorage.getItem(SKIN_STORAGE_KEY);
+      const restoredSkin = getCharacterSkin(savedSkin).skinId;
+      setSkinId(restoredSkin);
+      if (!savedSkin || savedSkin !== restoredSkin) {
+        window.localStorage.setItem(SKIN_STORAGE_KEY, restoredSkin);
+      }
       const roomParam = new URLSearchParams(window.location.search).get("room");
       if (roomParam) setInviteRoomId(roomParam);
     }, 0);
@@ -167,6 +188,21 @@ export function OnlineShell() {
       window.clearTimeout(timer);
       mountedRef.current = false;
     };
+  }, []);
+
+  const selectedSkin = useMemo(
+    () => getCharacterSkin(skinId),
+    [skinId],
+  );
+
+  const chooseSkin = useCallback((nextSkinId: string) => {
+    const validSkinId = getCharacterSkin(nextSkinId).skinId;
+    setSkinId(validSkinId);
+    try {
+      window.localStorage.setItem(SKIN_STORAGE_KEY, validSkinId);
+    } catch {
+      // Selection still applies for this session when storage is unavailable.
+    }
   }, []);
 
   useEffect(() => {
@@ -285,10 +321,14 @@ export function OnlineShell() {
       setJoining(true);
       try {
         const room = roomId
-          ? await client.joinById(roomId, { name: guest })
+          ? await client.joinById(roomId, {
+              name: guest,
+              skinId,
+            })
           : await client.create("ffa", {
               name: guest,
               roomName: "SECTOR 07",
+              skinId,
             });
         await adoptRoom(room);
       } catch (joinError) {
@@ -305,7 +345,7 @@ export function OnlineShell() {
         if (mountedRef.current) setJoining(false);
       }
     },
-    [adoptRoom, joining, name],
+    [adoptRoom, joining, name, skinId],
   );
 
   const quickMatch = useCallback(async () => {
@@ -323,6 +363,7 @@ export function OnlineShell() {
           room = await client.joinOrCreate("ffa", {
             name: guest,
             roomName: "SECTOR 07",
+            skinId,
             open: true,
           });
         } catch (attemptError) {
@@ -341,6 +382,7 @@ export function OnlineShell() {
         room = await client.create("ffa", {
           name: guest,
           roomName: "SECTOR 07",
+          skinId,
         });
       }
       await adoptRoom(room);
@@ -357,7 +399,7 @@ export function OnlineShell() {
     } finally {
       if (mountedRef.current) setJoining(false);
     }
-  }, [adoptRoom, joining, name]);
+  }, [adoptRoom, joining, name, skinId]);
 
   const leaveRoom = useCallback(async () => {
     const room = joinedRef.current;
@@ -386,6 +428,7 @@ export function OnlineShell() {
       <OnlineGameSession
         room={joinedRoom}
         playerName={name}
+        skinId={skinId}
         onLeave={() => void leaveRoom()}
       />
     );
@@ -427,6 +470,100 @@ export function OnlineShell() {
             </button>
           </div>
         ) : null}
+
+        <section
+          className="skin-select"
+          aria-labelledby="skin-select-title"
+          data-testid="skin-selection"
+        >
+          <div className="skin-select__spotlight">
+            <div className="skin-select__heading">
+              <span className="mono-label">OPERATOR BAY // 10 AVAILABLE</span>
+              <h2 id="skin-select-title" className="display">
+                CHOOSE YOUR VIBER
+              </h2>
+              <p>
+                Every official Viber is unlocked. Pick a character before you
+                join. Your selection is saved on this device and never changes
+                during a live match.
+              </p>
+            </div>
+            <div className="skin-preview" data-testid="skin-preview">
+              <div className="skin-preview__stage">
+                <Image
+                  src={selectedSkin.cutoutPath}
+                  alt={`${selectedSkin.displayName} character preview`}
+                  fill
+                  sizes="(max-width: 900px) 50vw, 260px"
+                  className="skin-preview__image"
+                />
+                <span className="skin-preview__scan" aria-hidden="true" />
+              </div>
+              <div className="skin-preview__meta">
+                <span className="mono-label">SELECTED OPERATOR</span>
+                <strong
+                  className="display"
+                  data-testid="selected-skin-name"
+                  aria-live="polite"
+                >
+                  {selectedSkin.displayName}
+                </strong>
+                <span className="mono-label">
+                  {`${selectedSkin.skinId} // COSMETIC ONLY`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <fieldset className="skin-select__roster">
+            <legend className="mono-label skin-select__legend">
+              OFFICIAL VIBER ROSTER
+            </legend>
+            <div className="skin-grid">
+              {CHARACTER_ROSTER.map((skin) => {
+                const selected = skin.skinId === selectedSkin.skinId;
+                return (
+                  <label
+                    className={`skin-card${selected ? " is-selected" : ""}`}
+                    key={skin.skinId}
+                    data-testid={`skin-card-${skin.skinId}`}
+                    data-skin-id={skin.skinId}
+                    data-selected={selected}
+                  >
+                    <input
+                      className="skin-card__input"
+                      type="radio"
+                      name="online-skin"
+                      value={skin.skinId}
+                      checked={selected}
+                      onChange={() => chooseSkin(skin.skinId)}
+                      aria-label={`Select ${skin.displayName}`}
+                    />
+                    <span className="skin-card__art">
+                      <Image
+                        src={skin.avatarPath}
+                        alt=""
+                        fill
+                        sizes="140px"
+                        className="skin-card__image"
+                      />
+                      <span className="skin-card__check" aria-hidden="true">
+                        SELECTED
+                      </span>
+                    </span>
+                    <span className="skin-card__name">
+                      {skin.displayName}
+                    </span>
+                    <span className="skin-card__id">{skin.skinId}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <span className="mono-label skin-select__hint">
+              ARROW KEYS TO BROWSE // SELECTION SAVED LOCALLY
+            </span>
+          </fieldset>
+        </section>
 
         <div className="online-layout">
           <section className="online-main">

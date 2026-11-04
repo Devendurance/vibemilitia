@@ -89,6 +89,38 @@ describe("authoritative match simulation", () => {
     ).toBe(true);
   });
 
+  it("uses valid human selections, falls back safely and prioritizes humans", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 0,
+      skinSeed: 0x51c0ffee,
+    });
+    sim.addHuman("one", "ONE", "bureau-023");
+    sim.addHuman("two", "TWO", "not-a-real-skin");
+    sim.addHuman("three", "THREE", "bureau-023");
+    const snapshot = sim.snapshot();
+    const humans = snapshot.participants.filter(
+      (entry) => entry.kind === "human",
+    );
+    const bots = snapshot.participants.filter((entry) => entry.kind === "bot");
+    expect(humans.map((entry) => entry.skinId)).toEqual([
+      "bureau-023",
+      HUMAN_DEFAULT_SKIN_ID,
+      "bureau-023",
+    ]);
+    expect(
+      bots.every(
+        (entry) =>
+          entry.skinId !== "bureau-023" &&
+          entry.skinId !== HUMAN_DEFAULT_SKIN_ID,
+      ),
+    ).toBe(true);
+    expect(new Set(bots.map((entry) => entry.skinId)).size).toBe(
+      bots.length,
+    );
+  });
+
   it("assigns deterministic skins and keeps them through human replacement", () => {
     const first = new GameSimulation({
       roomId: "room-a",
@@ -230,7 +262,7 @@ describe("authoritative match simulation", () => {
       botsEnabled: false,
       countdownMs: 0,
     });
-    sim.addHuman("one", "ONE");
+    sim.addHuman("one", "ONE", "viber-123");
     runTicks(sim, 60 * 91);
     expect(sim.snapshot().phase).toBe("ended");
     expect(sim.snapshot().endReason).toBe("time");
@@ -240,6 +272,7 @@ describe("authoritative match simulation", () => {
     expect(restarted.phase).toBe("live");
     expect(restarted.remainingMs).toBeGreaterThan(89_000);
     expect(restarted.participants[0].health).toBe(100);
+    expect(restarted.participants[0].skinId).toBe("viber-123");
   });
 
   it("backs a disconnected human seat with a bot", () => {

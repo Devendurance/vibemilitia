@@ -6,6 +6,7 @@ export interface CharacterSkin {
   sourcePath: string;
   archivedSourcePath: string;
   cutoutPath: string;
+  avatarPath: string;
   textureKey: string;
   reportPath: string;
   previewPath: string;

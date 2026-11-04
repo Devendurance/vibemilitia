@@ -411,6 +411,7 @@ def _manifest_entry(report: dict) -> dict:
         "sourcePath": report["source"],
         "archivedSourcePath": report["archived_source"],
         "cutoutPath": cutout_path,
+        "avatarPath": f"/sprites/{skin_id}/{skin_id}-avatar.png",
         "textureKey": f"character-{skin_id}",
         "reportPath": report["report_path"],
         "previewPath": "/" + report["preview_path"].removeprefix("public/"),

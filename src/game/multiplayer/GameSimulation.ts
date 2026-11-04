@@ -12,6 +12,7 @@ import { pointInRect, segmentIntersectsRect, type Rect } from "@/game/arena/coll
 import {
   CHARACTER_ROSTER,
   HUMAN_DEFAULT_SKIN_ID,
+  getCharacterSkin,
 } from "@/game/characters/roster";
 import { buildNavigationGrid, findPath, lineClear, type NavGrid, type NavPoint } from "@/game/ai/navigation";
 import { applyDamage, stepHealthRegen } from "@/game/core/combat";
@@ -321,7 +322,11 @@ export class GameSimulation {
     return this.humans.size === 0;
   }
 
-  addHuman(id: string, requestedName: string): { ok: boolean; error?: string } {
+  addHuman(
+    id: string,
+    requestedName: string,
+    requestedSkinId?: string,
+  ): { ok: boolean; error?: string } {
     if (this.timer.phase === "ended") {
       return { ok: false, error: "MATCH_ENDED" };
     }
@@ -334,7 +339,8 @@ export class GameSimulation {
 
     const firstHuman = this.humans.size === 0;
     const name = requestedName.slice(0, 18) || `VIBER-${id.slice(0, 4)}`;
-    const human = this.createHuman(id, name);
+    const skinId = getCharacterSkin(requestedSkinId).skinId;
+    const human = this.createHuman(id, name, skinId);
     this.humans.set(id, human);
 
     if (firstHuman) {
@@ -585,12 +591,12 @@ export class GameSimulation {
     return events;
   }
 
-  private createHuman(id: string, name: string): HumanRuntime {
+  private createHuman(id: string, name: string, skinId: string): HumanRuntime {
     return {
       kind: "human",
       id,
       name,
-      skinId: HUMAN_DEFAULT_SKIN_ID,
+      skinId,
       kin: createHumanKinematics(ARENA.playerSpawn.x, ARENA.playerSpawn.y),
       health: PLAYER_CONFIG.maxHealth,
       maxHealth: PLAYER_CONFIG.maxHealth,

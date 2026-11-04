@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { getCharacterSkin, HUMAN_DEFAULT_SKIN_ID } from "@/game/characters/roster";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
@@ -10,6 +11,7 @@ interface GameHudProps {
   bridge: GameBridge;
   mode?: "local" | "online";
   playerName?: string;
+  playerSkinId?: string;
 }
 
 function Keycap({ children }: { children: React.ReactNode }) {
@@ -49,7 +51,15 @@ function FuelBar({ snapshot }: { snapshot: HudSnapshot }) {
   );
 }
 
-export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
+export function GameHud({
+  bridge,
+  mode = "local",
+  playerName,
+  playerSkinId,
+}: GameHudProps) {
+  const playerSkin = getCharacterSkin(
+    mode === "online" ? playerSkinId : HUMAN_DEFAULT_SKIN_ID,
+  );
   const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
     bridge.getSnapshot(),
   );
@@ -129,8 +139,8 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
         <section className="hud-panel hud-identity">
           <div className="hud-avatar">
             <Image
-              src="/sprites/viber-010/viber-010-avatar.png"
-              alt="VIBER-010 character portrait"
+              src={playerSkin.avatarPath}
+              alt={`${playerSkin.displayName} character portrait`}
               width={60}
               height={79}
               priority
@@ -139,7 +149,9 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
           </div>
           <div className="hud-identity__copy">
             <span className="hud-brand">VIBE MILITIA</span>
-            <h1 className="display hud-identity__name">VIBER-010</h1>
+            <h1 className="display hud-identity__name">
+              {playerSkin.displayName}
+            </h1>
             <div className="hud-identity__meta">
               <span className="hud-pill hud-pill--live">
                 <i className="live-dot" />

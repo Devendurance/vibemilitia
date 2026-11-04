@@ -171,6 +171,7 @@ export interface OnlineInputPayload {
 export interface JoinOptions {
   name?: string;
   roomName?: string;
+  skinId?: string;
   open?: boolean;
 }
 

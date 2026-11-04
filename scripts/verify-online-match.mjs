@@ -65,9 +65,13 @@ const waitOnlineReady = async (page) => {
 const probe = (page) =>
   page.evaluate(() => {
     const value = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    const local = value.snapshot?.participants.find(
+      (participant) => participant.id === value.sessionId,
+    );
     return {
       roomId: value.roomId,
       sessionId: value.sessionId,
+      skinId: local?.skinId ?? null,
       phase: value.snapshot?.phase ?? null,
       endReason: value.snapshot?.endReason ?? null,
       remainingMs: Math.round(value.snapshot?.remainingMs ?? 0),
@@ -91,6 +95,13 @@ const probe = (page) =>
     };
   });
 
+await pageA.addInitScript(() => {
+  window.localStorage.setItem("vibe-militia-skin", "viber-123");
+});
+await pageB.addInitScript(() => {
+  window.localStorage.setItem("vibe-militia-skin", "bureau-023");
+});
+
 const fillers = [];
 try {
   await pageA.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
@@ -109,6 +120,11 @@ try {
     initialA.phase === "countdown" && initialA.countdownMs > 0,
     `phase=${initialA.phase} countdown=${initialA.countdownMs}`,
   );
+  check(
+    "host enters with the selected skin",
+    initialA.skinId === "viber-123",
+    initialA.skinId ?? "none",
+  );
 
   await pageB.goto(roomUrl, { waitUntil: "networkidle" });
   await pageB.waitForTimeout(500);
@@ -116,6 +132,11 @@ try {
   await waitOnlineReady(pageB);
   const joinedB = await probe(pageB);
   check("second browser joins the same room", joinedB.roomId === roomId);
+  check(
+    "guest enters with the selected skin",
+    joinedB.skinId === "bureau-023",
+    joinedB.skinId ?? "none",
+  );
   check(
     "second browser joins during the countdown without bots",
     joinedB.phase === "countdown" && joinedB.humans >= 2 && joinedB.bots === 0,
@@ -222,6 +243,11 @@ try {
     "replay keeps all eight human seats",
     replayA.humans === 8 && replayA.bots === 0,
     `humans=${replayA.humans} bots=${replayA.bots}`,
+  );
+  check(
+    "replay preserves each selected skin",
+    replayA.skinId === "viber-123" && replayB.skinId === "bureau-023",
+    `${replayA.skinId} / ${replayB.skinId}`,
   );
 
   const averageTick = tickSamples > 0 ? tickTotal / tickSamples : 0;
