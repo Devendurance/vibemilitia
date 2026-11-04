@@ -564,7 +564,7 @@ describe("authoritative match simulation", () => {
     });
     sim.addHuman("one", "ONE");
     const before = sim.snapshot();
-    expect(before.pickups).toHaveLength(23);
+    expect(before.pickups).toHaveLength(25);
     const medkits = before.pickups.filter(
       (pickup) => pickup.type === "medkit",
     );

@@ -15,6 +15,7 @@ export interface ControlFrame {
   medkitPressed: boolean;
   grenadeSlotPressed: number | null;
   grenadeThrowPressed: boolean;
+  swapPressed: boolean;
   aimWorld: Phaser.Math.Vector2;
 }
 
@@ -34,6 +35,7 @@ export class InputController {
     | "grenade5"
     | "grenade6"
     | "grenadeThrow"
+    | "swapWeapon"
     | "leftArrow"
     | "rightArrow",
     Phaser.Input.Keyboard.Key
@@ -49,6 +51,7 @@ export class InputController {
   private bufferedMedkit = false;
   private bufferedGrenadeSlot: number | null = null;
   private bufferedGrenadeThrow = false;
+  private bufferedSwap = false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -72,6 +75,7 @@ export class InputController {
       grenade5: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
       grenade6: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX),
       grenadeThrow: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G),
+      swapWeapon: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E),
     };
     keyboard.addCapture([
       Phaser.Input.Keyboard.KeyCodes.SPACE,
@@ -86,6 +90,7 @@ export class InputController {
       Phaser.Input.Keyboard.KeyCodes.FIVE,
       Phaser.Input.Keyboard.KeyCodes.SIX,
       Phaser.Input.Keyboard.KeyCodes.G,
+      Phaser.Input.Keyboard.KeyCodes.E,
       Phaser.Input.Keyboard.KeyCodes.LEFT,
       Phaser.Input.Keyboard.KeyCodes.RIGHT,
       Phaser.Input.Keyboard.KeyCodes.F1,
@@ -126,6 +131,9 @@ export class InputController {
     this.keys.grenadeThrow.on("down", () => {
       this.bufferedGrenadeThrow = true;
     });
+    this.keys.swapWeapon.on("down", () => {
+      this.bufferedSwap = true;
+    });
 
     scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       this.hasPointer = true;
@@ -156,12 +164,14 @@ export class InputController {
     const medkitPressed = this.bufferedMedkit;
     const grenadeSlotPressed = this.bufferedGrenadeSlot;
     const grenadeThrowPressed = this.bufferedGrenadeThrow;
+    const swapPressed = this.bufferedSwap;
     this.bufferedJump = false;
     this.bufferedReload = false;
     this.bufferedWeaponSlot = null;
     this.bufferedMedkit = false;
     this.bufferedGrenadeSlot = null;
     this.bufferedGrenadeThrow = false;
+    this.bufferedSwap = false;
 
     return {
       moveX,
@@ -173,6 +183,7 @@ export class InputController {
       medkitPressed,
       grenadeSlotPressed,
       grenadeThrowPressed,
+      swapPressed,
       aimWorld: this.aim.clone(),
     };
   }

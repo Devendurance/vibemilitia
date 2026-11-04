@@ -69,7 +69,21 @@
 - Bots start with one of each grenade, 0 medkits, and server-owned cooldowns. They collect nearby supplies, seek medkits below 55 HP, use medkits, throw grenades on a 9 to 14 second decision cooldown with range/LoS gates, and apply a short local repulsion away from toxic clouds.
 - `verify:online:grenades` covers HUD inventory, selection, a shared frag fuse, five-second server fuse, warning visuals, a real contact-grenade bot elimination, kill-feed credit, medkit use and room isolation.
 - `verify:online:stinking` covers three-slot HUD inventory, green cache art, cloud activation, 6 HP toxic ticks, self-elimination without credit, respawn loadout restoration, opponent toxic damage/elimination with owner credit, late-join cloud visibility and room isolation.
-- `verify:online:grenade-perf` fills a room with 8 humans, throws all grenade types, and measures FPS, tick, active entities, cloud overlap and snapshot size while a second room stays live.
+- `verify:online:grenade-perf` fills a room with 8 humans, throws all grenade types, creates dynamic loot through gated elimination hooks, and measures FPS, tick, active entities, peak loot, cloud overlap and snapshot size while a second room stays live.
+- P3C-A adds `src/game/core/weaponInventory.ts` with `STARTER_WEAPON_LOADOUT = ["vibe-rifle", "scatter-blaster", null]`. Online humans own three slots. Slot selection is a 0-based index and the server ignores empty or unowned slots. Clients never send weapon IDs.
+- `HumanRuntime.weaponIds` stores per-slot ownership alongside the existing `WeaponState[]`. `equippedIndex` is the selected slot. Firing and reloading read the equipped slot's definition. Empty slots cannot fire.
+- Duplicate weapon pickup refills one full magazine. The target is the equipped copy if it owns that weapon, otherwise the lowest-ammo owned copy, then the lowest slot index on a tie. The refill never exceeds `magazineSize`.
+- Full-loadout automatic weapon pickup is skipped and the loot remains active. `E` sends an edge-triggered `swapWeapon` request. The server replaces the equipped slot and scraps the old weapon, so no duplication is possible.
+- `initState` / respawn restore the starter loadout, full rifle and scatter magazines, zero medkits, one of each grenade and slot 0. Bots keep `BOT_WEAPON` with id `vibe-rifle`.
+- P3C-A adds `src/game/core/loot.ts`. `LOOT_CONFIG` is 12,000 ms lifetime, 82 px collection radius, 46 px scatter, 48 active entities per room.
+- Hostile eliminations create exactly three loot items: the victim's equipped weapon with authoritative magazine ammo, one medkit and one grenade. Bots drop a normal Vibe Rifle. Grenade reward is the victim's most-carried type, ties contact/frag/stinking, empty falls back to contact.
+- Loot IDs are `loot-<roomId>-<counter>`. Each item stores elimination ID, room ID, active state, createdAt and expiresAt. Self and duplicate deaths produce no loot.
+- Loot settles on the first platform top below the death point, clamps x to the arena, and is client-animated with a drop-in, beam, glow, bob and expiry blink.
+- Static caches now include `vibe-lance` at mid-step (1000, 1144) and right-high (3250, 724). `VIBE_LANCE_PICKUP_RESPAWN_MS` is 25,000. Existing medkit and grenade cache behavior is unchanged.
+- Server snapshots add `loot`, per-slot `weapons` with `owned`, and `equippedSlot`. Events add `loot-collected`, `loot-expired`, `weapon-swapped`, and elimination `eliminationId`, `lootIds`, x/y.
+- `OnlineScene` prioritizes weapon pickup feedback over medkit/grenade when several loot events arrive in the same batch. `supplyFeedbackDetail` shows the payload.
+- `verify:online:loot` needs `VIBE_MILITIA_TEST_HOOKS=1` and `MATCH_COUNTDOWN_MS=0` on the server. Hooks are registered only when explicitly enabled and cover eliminate, teleport, teleportBot, endMatch and guard.
+- The loot suite uses real Playwright browser sessions and the gated hooks only for deterministic setup. It verifies 43 checks including both-client view rendering, swap, contest, expiry, late join, respawn, match-end and replay.
 
 ## Phaser 4 gotchas
 
@@ -99,6 +113,8 @@
 - Production headed Chrome measured 56 to 60 fps at 1440 x 810 with one human and seven Viber bots. P3B-C clean runs measured 59 fps standard and 60 fps with 8 active toxic clouds.
 - Server tick averaged 0.15 to 0.36 ms on clean P3B-C runs, with p95 0.27 to 1.10 ms. The grenade stress run measured 0.21 ms average, 0.27 ms p95 and 5.04 ms max with 8 peak grenades, 8 clouds, 8 humans and two concurrent rooms.
 - Snapshot size with 23 pickups, 8 clouds and grenades in an eight-human room was about 14.5 KB at 20 Hz. Occasional max spikes are GC or scheduler noise. Restart the server before a clean perf measurement.
+- P3C-A standard perf with one human and seven bots measured 57 fps, 0.28 ms average tick and 0.67 ms p95, close to the P3B-C baseline.
+- P3C-A grenade and loot stress with 8 humans, 8 peak grenades, 7 clouds, 2 overlapping clouds, 9 peak loot entities, 25 pickups and two rooms measured 51 fps, 1.04 ms average tick, 0.65 ms p95 and a 15,460-byte snapshot. The P3B-C baseline was 60 fps, 0.21 ms average, 0.27 ms p95 and 14,471 bytes.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
@@ -127,7 +143,8 @@
 - `npm run verify:online:pickups`
 - `npm run verify:online:grenades`
 - `npm run verify:online:stinking`
-- `npm run verify:online:grenade-perf` (add `HEADED=1` for real frame rate)
+- `npm run verify:online:loot` (server must run with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0`)
+- `npm run verify:online:grenade-perf` (add `HEADED=1` for real frame rate, hooks recommended for loot stress)
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)
 - `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test

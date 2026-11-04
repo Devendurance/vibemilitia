@@ -14,7 +14,9 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Matchmaking: Quick Match filters to rooms with open human seats, prefers the most populated room, and creates a new room when current rooms fill. Seat races retry safely.
 - Character selection: a keyboard-accessible ten-card picker with a large preview sits in the online lobby. The selection is stored locally, sent on every join path, validated by the server and shown in the HUD portrait, HUD name and in-world body. Invalid saved or submitted IDs fall back to VIBER-010.
 - Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, medkit inventory, automatic fair-pad respawn and 1.5 s spawn protection.
-- Supplies: twenty-three fixed server-authoritative caches, fourteen medkits plus three contact, three frag and three stinking grenade caches. Players carry up to two medkits and three grenades total. Collected caches disappear for every client and respawn after 20 to 22 seconds.
+- Supplies: twenty-five fixed server-authoritative caches: fourteen medkits, three contact, three frag, three stinking and two Vibe Lance weapon caches. Players carry up to two medkits and three grenades total. Collected caches disappear for every client and respawn after 20 to 25 seconds depending on type.
+- Online weapons: server-authoritative three-slot inventory. Starter loadout is Vibe Rifle, Scatter Blaster and an empty slot. Vibe Lance is acquired from authored world pickups or elimination drops. Full loadouts require an explicit `E` swap. Duplicate pickups refill one full magazine. Empty slots cannot fire. Death and respawn restore the starter loadout.
+- Elimination loot: every valid hostile human or bot elimination creates one equipped-weapon drop, one medkit and one grenade. Items scatter and settle on reachable platform tops, last 12 seconds of server time, use server proximity collection, cap at 48 active entities per room, and are cleared on match start, end and replay. Self and duplicate deaths create no loot.
 - Grenades: contact grenades detonate on terrain or combatant impact. Frag grenades bounce and detonate after five seconds of server simulation time. Stinking grenades bounce, activate a 160 px toxic cloud after 900 ms, and apply 24 HP/s in deterministic 250 ms ticks for six seconds. All use gravity, swept substeps, owner clearance, blast falloff or toxic damage, self-damage and existing elimination attribution.
 - Bots: online bots now carry the one-of-each grenade loadout, collect nearby supplies, seek medkits when injured, use medkits, throw finite server-owned grenades with conservative cooldowns, and steer away from nearby toxic clouds. Existing A* movement, targeting and rifle combat are preserved.
 - Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision). Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
@@ -26,7 +28,9 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 
 ## Architecture
 
-- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking, spawn selection, pickup/medkit supply rules, grenade physics/damage and toxic cloud configuration.
+- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking, spawn selection, pickup/medkit supply rules, grenade physics/damage, toxic cloud configuration, weapon-slot ownership and dynamic loot.
+- `src/game/core/weaponInventory.ts`: starter loadout, slot ownership, duplicate and replacement decisions.
+- `src/game/core/loot.ts`: dynamic loot creation, deterministic grenade reward, platform settling, expiry, room cap and nearest-collectable search.
 - `src/game/ai`: pure navigation grid and A* pathfinding.
 - `src/game/config`: tuning for movement, weapons, bots and match.
 - `src/game/arena`: arena data, baked visuals and collision helpers.
@@ -43,7 +47,8 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `scripts/verify-online-pickups.mjs`: P3B-A pickup, medkit and room-isolation suite.
 - `scripts/verify-online-grenades.mjs`: P3B-B grenade inventory, fuse, explosion, elimination and room-isolation suite.
 - `scripts/verify-online-stinking.mjs`: P3B-C stinking cloud, toxic damage, attribution, late join, HUD and green cache suite.
-- `scripts/verify-online-grenade-perf.mjs`: headed grenade stress performance and entity/snapshot measurement.
+- `scripts/verify-online-loot.mjs`: P3C-A starter loadout, elimination bundle, weapon pickup, full-loadout swap, contest, expiry, late join, respawn, match-end and replay suite.
+- `scripts/verify-online-grenade-perf.mjs`: headed grenade and dynamic-loot stress performance and snapshot measurement.
 
 ## Key decisions
 
@@ -64,6 +69,15 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Bot projectiles use the Vibe Rifle presentation while preserving the previous 7 damage, 900 speed, 0.055 spread and 3-shot burst cadence.
 - Replay restarts the same room, resets scores and health, and keeps its human occupants.
 - Pickups are server-owned room state. Collection validates proximity and capacity, a pickup can be granted once, and the item respawns after a fixed cooldown. Late joins read the same authoritative state.
+- Online loadout lives on `HumanRuntime.weaponIds` plus per-slot `WeaponState`. Slot 3 starts empty. The server ignores selection of an empty or unowned slot. Clients send a slot index, never a weapon ID.
+- Duplicate weapon pickup refills one full magazine on the equipped copy when it owns that weapon, otherwise the lowest-ammo owned copy. This is the only duplicate rule.
+- A full inventory never auto-consumes an unowned weapon. `E` replaces the currently equipped slot and scraps the old weapon, so a swap cannot duplicate either gun.
+- Elimination loot uses the victim's equipped weapon ID and authoritative magazine ammo. A bot drops its Vibe Rifle. The grenade reward is the most-carried victim type, ties resolve contact, frag, stinking, empty inventory falls back to contact.
+- Dynamic loot is separate from static caches. Static caches keep timed respawns. Dynamic loot never respawns, expires after 12 seconds and is capped at 48 active entities per room with oldest-first cleanup.
+- Loot settles on the first platform top below the death point. The client adds the outward drop-in animation over the final server position.
+- Vibe Lance caches are authored in Sector 07 at mid-step and right-high. Static weapon collection uses the same empty-slot and `E` replacement rules and a 25-second respawn.
+- Bots do not collect dynamic elimination loot. They keep their existing static supply behavior, which avoids rewriting bot combat or supply AI.
+- Elimination bursts use one-shot voxel cube emitters with bounded counts. They are triggered from server elimination events, not from repeated snapshots.
 - Medkits are instant, capped at 100 HP, consumed from a two-slot inventory and gated by a 900 ms server cooldown. A player loses carried medkits on death/respawn. Pickups reset when a match starts, when it ends and on replay.
 - Fourteen fixed medkit spawns and nine grenade caches sit on platform tops near, but outside, spawn bodies. Contact, frag and stinking caches use distinct artworks. Bots collect nearby supplies, seek medkits when injured and throw finite grenades through the existing movement/targeting systems.
 - Grenade config: contact 180 max damage, 220 blast radius, immediate impact; frag 120 max damage, 215 blast radius, 5000 ms server fuse; stinking 760 px/s, 1400 gravity, 900 ms activation, 160 px cloud, 6000 ms cloud life, 24 HP/s in 250 ms ticks. All use 700 ms throw cooldowns, swept collision and a 64-entity active cap.
@@ -77,7 +91,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 102 tests pass
+- `npm test`: 134 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks against the production build
@@ -86,9 +100,12 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `npm run verify:online:characters`: 35/35 checks against the production build
 - `npm run verify:online:bots`: 32/32 checks against the production build
 - `npm run verify:online:pickups`: 29/29 checks against the production build
-- `npm run verify:online:grenades`: 29/29 checks against the production build
+- `npm run verify:online:grenades`: all checks pass against the production build
 - `npm run verify:online:stinking`: 25/25 checks against the production build
-- `npm run verify:online:grenade-perf`: 11/11 checks against the production build
+- `npm run verify:online:loot`: 43/43 checks against the production build
+- `npm run verify:online:rooms`: 16/16 checks
+- `npm run verify:online:match`: 25/25 checks
+- `npm run verify:online:grenade-perf`: 14/14 checks
 - All ten cards render and select, keyboard arrows work, mobile keeps two columns, refresh persists the choice, and corrupt storage falls back to VIBER-010
 - Create Room, invite join and Quick Match all used the selected skin, and two clients with different selections agreed on shared combatant skins
 - Eight independent human clients kept eight requested skins with no bot visuals
@@ -97,11 +114,11 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
 - `npm run verify:online:match`: 25/25 checks, 8 humans, time-limit result, identical standings, replay reset, preserved selected skins
 - `npm run verify:online:rooms`: 16/16 checks, including countdown auto-start, full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server. Accumulated history measured 56 fps, 0.23 ms average and 0.50 ms p95.
-- `HEADED=1 npm run verify:online:grenade-perf`: 60 fps, 0.21 ms average tick, 0.27 ms p95, 5.04 ms max with 8 humans, 8 peak in-flight grenades, 8 active clouds, 2 overlapping clouds, 23 pickups, 14,471-byte snapshots and a second concurrent room.
-- Pickup suite covered the 23-cache set, cross-client disappearance, late-join isolation, independent second-room state, the respawn cycle, H healing, HUD feedback and duplicate-use rejection.
-- Grenade suite covered HUD selection, the one-of-each starting inventory, a shared frag fuse, contact bot elimination and credit, medkit use and independent second-room state.
-- Stinking suite covered a 6 HP toxic tick, self-elimination without kill credit, respawn loadout restoration, an opponent toxic elimination with owner credit, late-join cloud visibility and green cache artwork.
+- P3C-A loot suite: 25 shared static caches, starter rifle/scatter/empty HUD, exact three-item hostile bundle, identical loot ids and Phaser views on two clients, rifle pickup into slot 3 with authoritative ammo, full-loadout E swap to Vibe Lance, duplicate-free replacement, late-join remaining loot, one-winner medkit contest, server-clock expiry, human death dropping the Lance, starter respawn loadout, match-end cleanup and replay reset
+- P3C-A screenshots: `artifacts/p3c-a/` includes elimination burst, three dropped rewards, weapon pickup, swap prompt, inventory swap, contested loot, respawn loadout, match-end cleanup and replay reset
+- P3B-C baseline performance: 59 fps clean, 0.36 ms average tick, 1.10 ms p95; grenade stress 60 fps, 0.21 ms average, 0.27 ms p95, 14,471-byte snapshots
+- P3C-A grenade and loot stress: 51 fps, 1.04 ms average tick, 0.65 ms p95, 9 peak loot entities, 8 peak grenades, 7 clouds, 2 overlapping clouds, 25 pickups, 15,460-byte snapshots, 8 humans and a second concurrent room
+- P3C-A standard perf: 57 fps, 0.28 ms average tick, 0.67 ms p95, 6/6 checks
 - Original public sources, archived sources and VIBER-010 cutout hash are unchanged
 - Local P1 remains 37/37 with no regression
 
@@ -125,7 +142,12 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Bot grenade decisions are conservative and cooldown-gated, but not coordinated with other bots. Cloud avoidance is a short local repulsion, not full hazard pathfinding.
 - Toxic clouds are fully blocked by solid terrain, not attenuated. Overlapping clouds apply one responsible cloud per 250 ms tick, so damage does not stack.
 - A disconnected cloud owner keeps kill-feed name attribution, but there is no live standing entry to update.
-- Pickup spawns are fixed authored caches, not dynamic random spawns.
+- Pickup spawns are fixed authored caches, not dynamic random spawns. Dynamic loot exists only as elimination rewards.
+- Bots do not collect dynamic elimination loot. They keep the existing static supply behavior.
+- A full-loadout `E` swap scraps the replaced weapon rather than dropping it. This is deliberate anti-duplication behavior.
+- Dynamic loot settles on the first platform top below the death point. The outward scatter is a client animation over the final server point.
+- Dynamic loot is capped at 48 active entities per room and is cleared on match start, match end and replay.
+- Verification-only server hooks (`VIBE_MILITIA_TEST_HOOKS=1`) support deterministic browser placement and eliminations. They are disabled by default and are not gameplay messages.
 - Blast cover uses a uniform 55 percent reduction when a platform blocks the blast line, not full occlusion.
 - Grenade and toxic damage are not counted in weapon accuracy. Each grenade and cloud has a stable ID and owner for attribution.
 - No audio, accounts, wallets, XP or persistent stats.

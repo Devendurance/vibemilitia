@@ -2,30 +2,31 @@
 
 ## Current task
 
-P3B-C stinking grenades, toxic clouds, bot supplies and final P3B integration are implemented and verified. P3C has not started.
+P3C-A elimination loot, real online weapon ownership and authored Vibe Lance pickups are implemented and verified. Stop before P3C-B.
 
 ## Done
 
-- Extended the shared grenade system with `stinking`, slot 6, 760 px/s, 1400 gravity, 900 ms activation, 160 px cloud, 6000 ms duration, 24 HP/s and 250 ms ticks.
-- Added a server-owned toxic cloud entity with a global 250 ms damage clock, catch-up for uneven step sizes, 6 HP ticks, one responsible cloud per combatant, closest-cloud selection with lower-ID tie-breaking, invulnerability checks and terrain blocking.
-- Added cloud owner ID and name retention for kill-feed attribution after disconnect.
-- Added stinking cloud creation and expiry events, snapshot cloud state and per-combatant stinking inventory.
-- Added three green stinking caches at mid-step, right-low and the crate-b top, preserving all medkit, contact and frag caches.
-- Added green canister and green supply artwork, a thicker layered toxic cloud with bubbles and a strong hazard boundary, toxic damage colors and cloud effects.
-- Added the third HUD throwable slot with a stinking icon, counts, selection, throw label and data attributes.
-- Added key 6 selection and extended the existing G throw path.
-- Added bot medkit inventory, grenade inventory, cooldowns, nearby supply collection, medkit use below 55 HP, range-based medkit/grenade seeking, conservative grenade throws and local toxic cloud avoidance.
-- Added bot throw creation through the same shared grenade function as humans.
-- Added 16 new unit/integration tests for stinking config, inventory, slots, cloud activation, toxic damage, step-size stability, overlap policy, owner attribution, terrain blocking, invulnerability, cloud expiry, late join, the cloud cap, replay cleanup, room isolation and bot supply/grenade behavior.
-- Added `scripts/verify-online-stinking.mjs` with 25 production browser checks.
-- Added `scripts/verify-online-grenade-perf.mjs` with 10 controlled stress performance checks.
-- Updated the pickup and grenade suites for 23 caches and the three-slot loadout.
-- Updated README, project state and memory.
+- Added `src/game/core/weaponInventory.ts`: three-slot online ownership, starter rifle/scatter/empty loadout, empty and duplicate outcomes, explicit replacement rules and unowned-slot rejection.
+- Added server-owned `HumanRuntime.weaponIds` and per-slot `WeaponState`. Empty slots cannot fire or reload. Death and respawn restore the starter loadout.
+- Added duplicate magazine refill: equipped copy first, otherwise the lowest-ammo owned copy, capped at one full magazine.
+- Added full-loadout `E` swap. The server replaces the equipped slot, scraps the old weapon and emits `weapon-swapped`. No weapon duplication path remains.
+- Added `src/game/core/loot.ts`: three-item elimination bundles, victim weapon and ammo, deterministic grenade selection, platform settling, 12-second expiry, 48-entity room cap, oldest-first cleanup and nearest collectable search.
+- Added hostile elimination generation for bullets, contact, frag and toxic damage, including bot victims and disconnected toxic owners. Self and duplicate deaths create no loot.
+- Added server proximity collection, capacity-gated medkits/grenades, explicit full-inventory swap, two-client contest safety and match start/end/replay cleanup.
+- Added two authored Vibe Lance caches at mid-step and right-high with 25-second respawn. Existing medkit and grenade caches keep their behavior.
+- Added snapshot `loot`, per-slot `owned` weapon data, `equippedSlot`, and events `loot-collected`, `loot-expired`, `weapon-swapped`, extended elimination payloads.
+- Added HUD empty slots, owned and reload states, nearby weapon prompt, clickable swap control, field pickup payload text and batch feedback priority.
+- Added one-shot voxel cube elimination bursts, loot drop-in/beam/glow/bob/expiry presentation, and loot-expired/swap effects.
+- Added `E` to the buffered input controller. Local P1 still ignores it and keeps all three training weapons.
+- Added 32 focused unit tests across weapon inventory, loot rules and simulation integration.
+- Added `scripts/verify-online-loot.mjs` with 43 production browser checks and screenshots.
+- Extended the grenade stress suite with dynamic loot metrics and headed anti-throttling flags.
+- Updated README, agent state and Fast Build state.
 
 ## Verified
 
 - `npm run typecheck`: pass
-- `npm test`: 102 tests pass
+- `npm test`: 134 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37
@@ -33,25 +34,24 @@ P3B-C stinking grenades, toxic clouds, bot supplies and final P3B integration ar
 - `npm run verify:online:matchmaking`: 11/11
 - `npm run verify:online:characters`: 35/35
 - `npm run verify:online:bots`: 32/32
-- `npm run verify:online:pickups`: 29/29
-- `npm run verify:online:grenades`: 29/29
-- `npm run verify:online:stinking`: 25/25
-- `npm run verify:online:grenade-perf`: 11/11
 - `npm run verify:online:match`: 25/25
+- `npm run verify:online:pickups`: 29/29
+- `npm run verify:online:grenades`: all checks pass
+- `npm run verify:online:stinking`: 25/25
+- `npm run verify:online:loot`: 43/43
 - `npm run verify:online:rooms`: 16/16
-- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average tick, 1.10 ms p95 on a clean server. Accumulated history measured 56 fps, 0.23 ms average and 0.50 ms p95.
-- `HEADED=1 npm run verify:online:grenade-perf`: 60 fps, 0.21 ms average tick, 0.27 ms p95, 5.04 ms max with 8 humans, 8 peak in-flight grenades, 8 active clouds, 2 overlapping clouds, 23 pickups, 14,471-byte snapshots and a second concurrent room.
-- Stinking evidence: cloud activation, self toxic damage and self-elimination without credit, an opponent toxic damage and elimination with owner credit, late-join cloud visibility, green cache art and the three-slot HUD.
-- Visual evidence is in `artifacts/p3b-c/`: HUD/green cache, cloud activation, self damage, self elimination, opponent damage, opponent elimination, multi-grenade battle, late join and grenade stress battle.
-- The 10-character roster, original NFT sources and VIBER-010 cutout remain unchanged.
-- Local P1 mode remains 37/37.
+- `HEADED=1 npm run verify:online:perf`: 6/6, 57 fps, 0.28 ms average tick, 0.67 ms p95
+- `HEADED=1 npm run verify:online:grenade-perf`: 14/14, 51 fps, 1.04 ms average tick, 0.65 ms p95, 9 peak loot, 8 peak grenades, 7 clouds, 2 overlapping clouds, 25 pickups, 15,460-byte snapshot, second room live
+- P3B-C baseline: 60 fps, 0.21 ms average, 0.27 ms p95, 14,471-byte snapshot
+- Screenshots in `artifacts/p3c-a/`: elimination burst, three dropped rewards, weapon pickup, swap prompt, inventory swap, contested loot, respawn loadout, match-end cleanup, replay reset
+- Local P1 remains 37/37. The ten NFT skins and VIBER-010 cutout are unchanged.
 
 ## Next
 
-1. Stop here and report P3B-C evidence.
-2. Wait for a new P3C instruction before loot, new weapons, progression or other milestones.
-3. Future: reconnect/resume and lag compensation remain unfinished.
+1. Stop and report P3C-A.
+2. Wait for P3C-B instructions.
+3. Known limitations: bots do not collect dynamic loot, swapped weapons are scrapped, and loot settles instantly with a client-only scatter animation.
 
 ## Checkpoint
 
-P3B-C code, tests and docs are committed at `b124b44` on `main`. P3C has not started.
+P3C-A is ready to commit on `main`. The last verified base checkpoint was `be249c3`.

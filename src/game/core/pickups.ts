@@ -7,21 +7,33 @@ export type PickupType =
   | "medkit"
   | "contact-grenade"
   | "frag-grenade"
-  | "stinking-grenade";
+  | "stinking-grenade"
+  | "vibe-lance";
 
 export const PICKUP_RADIUS = 78;
+
+export const VIBE_LANCE_PICKUP_RESPAWN_MS = 25_000;
 
 export const PICKUP_LABELS: Record<PickupType, string> = {
   medkit: "MEDKIT",
   "contact-grenade": "CONTACT GRENADE",
   "frag-grenade": "FRAG GRENADE",
   "stinking-grenade": "STINKING GRENADE",
+  "vibe-lance": "VIBE LANCE",
 };
 
 export function pickupRespawnMs(type: PickupType): number {
-  return type === "medkit"
-    ? MEDKIT_CONFIG.respawnMs
-    : GRENADE_INVENTORY_CONFIG.pickupRespawnMs;
+  if (type === "medkit") return MEDKIT_CONFIG.respawnMs;
+  if (type === "vibe-lance") return VIBE_LANCE_PICKUP_RESPAWN_MS;
+  return GRENADE_INVENTORY_CONFIG.pickupRespawnMs;
+}
+
+export function isWeaponPickup(type: PickupType): boolean {
+  return type === "vibe-lance";
+}
+
+export function weaponIdFromPickup(type: PickupType): string | null {
+  return type === "vibe-lance" ? "vibe-lance" : null;
 }
 
 export function grenadeTypeFromPickup(type: PickupType): GrenadeType | null {

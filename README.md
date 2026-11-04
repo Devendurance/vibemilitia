@@ -56,7 +56,8 @@ Bots fight each other as well as the player. A match can be won or lost while th
 | `Space` | Jump. Hold while airborne to fire the jetpack |
 | Mouse | Aim the weapon in 360 degrees |
 | Left mouse button | Fire |
-| `1` / `2` / `3` | Equip the rifle, scatter blaster or vibe lance |
+| `1` / `2` / `3` | Equip an owned online weapon or the local training rifle, scatter blaster and vibe lance |
+| `E` | Swap the equipped weapon for a nearby dropped weapon when all three online slots are occupied |
 | `4` / `5` / `6` | Select the contact, frag or stinking grenade |
 | `G` | Throw the selected grenade |
 | `H` | Use a carried medkit in online matches |
@@ -75,6 +76,30 @@ The input layer samples a plain `ControlFrame` object. A future virtual joystick
 | Vibe Lance | 3 | 50 | 4 | 650 ms | 1.65 s | Precision, two-shot kill |
 
 Each weapon has its own magazine state, weapon texture, projectile texture, muzzle colour, spread, recoil and crosshair size. Switching preserves the other magazines. Reload progress belongs to the equipped weapon.
+
+### Online weapon ownership
+
+Online humans own three weapon slots. The starter loadout is Vibe Rifle in slot 1, Scatter Blaster in slot 2 and an empty slot 3. The Vibe Lance is a real battlefield acquisition: two authored Lance caches sit in Sector 07, and a defeated combatant drops its equipped weapon. Local P1 mode keeps its original three-weapon training loadout.
+
+- A dropped weapon fills the first empty slot and becomes equipped.
+- A duplicate owned weapon refills the magazine of the equipped copy, or the lowest-ammo owned copy when the equipped slot holds a different gun. The refill is capped at one full magazine.
+- When all three slots are occupied and the nearby weapon is not owned, automatic collection leaves it on the ground. Press `E` to replace the currently equipped weapon. The replaced weapon is scrapped instead of re-dropped, which prevents duplication.
+- Empty slots cannot fire or reload. Slot selection and weapon identity are server-owned. Clients send only a slot index.
+- Death and respawn restore the starter loadout. Ammunition, cooldowns and reload state never come from the client.
+
+## Elimination loot
+
+Every valid hostile elimination of a human or bot creates one dynamic loot bundle at the victim's position:
+
+- The victim's actual equipped weapon, carrying its authoritative magazine ammo. A bot's Vibe Rifle drops as a normal Vibe Rifle.
+- One medkit.
+- One grenade. The reward type is the victim's most-carried grenade, with contact, frag, stinking tie order. An empty victim inventory falls back to contact.
+
+The three items scatter 46 px outward and settle on the first platform top below the death point. They expire after 12 seconds of server simulation time, are collected by server proximity, and are capped at 48 active entities per room. Oldest entities are removed first when the cap is exceeded. Collected and expired loot disappears permanently and never respawns.
+
+Self-eliminations, duplicate death events and invalid killer attribution never create loot. Both real browser clients and late joiners receive the same active loot from snapshots. Match start, match end and replay clear all dynamic loot. Static supply caches keep their original respawn behavior.
+
+Weapon drops show the actual rifle, scatter blaster or lance artwork. Loot is presented with a short beam, glow and bob, plus a drop-in animation. A nearby weapon shows an interaction prompt, and a full loadout shows the explicit `E` replacement control.
 
 ## Grenades
 
@@ -101,7 +126,7 @@ Frag grenades show a flashing fuse indicator as the server-owned timer counts do
 - Cloud ownership stores the owner ID and display name. A cloud can still credit the correct name in the kill feed after its owner disconnects, although a departed player has no live standing to update.
 - Self-damage remains a self-elimination and does not award an opponent a kill.
 
-Nine grenade caches sit across Sector 07: three contact, three frag and three stinking, in addition to the fourteen medkit caches. Grenade caches use distinct orange-red, olive and green supply artworks, share the contested-pickup and respawn rules, and disappear for every client when collected.
+Nine grenade caches sit across Sector 07: three contact, three frag and three stinking, in addition to the fourteen medkit caches and two Vibe Lance weapon caches. Grenade caches use distinct orange-red, olive and green supply artworks, share the contested-pickup and respawn rules, and disappear for every client when collected. Lance caches use the precision weapon artwork with a sky-blue beam and a 25-second respawn.
 
 Online bots carry the same three-grenade loadout, use medkits when injured, seek nearby supplies through a short-range supply goal, throw conservative server-owned grenades and steer away from nearby toxic clouds. They still use the existing A* movement, rifle combat and targeting systems.
 
@@ -111,10 +136,14 @@ Online bots carry the same three-grenade loadout, use medkits when injured, seek
 - Jumping, gravity, coyote-time jumping and fuel-limited jetpack flight.
 - Independent 360-degree aiming with a separate weapon layer.
 - Automatic rifle, seven-pellet shotgun and precision two-shot rail weapon.
+- Online three-slot weapon ownership, an empty starter slot, authored Vibe Lance pickups and explicit `E` replacement swaps.
+- Hostile eliminations drop one weapon, one medkit and one grenade with server-authoritative scatter, proximity collection, a 12-second lifetime and a per-room entity cap.
+- A short voxel cube burst and a clear three-item reveal on every server-confirmed elimination.
 - Terrain collisions for the player, bots and projectiles.
 - Health, delayed regeneration, damage, eliminations, deaths and respawns.
 - Fourteen fixed medkit caches across ground routes and elevated platforms. Online players carry up to two, use them with `H`, and heal 50 HP without exceeding maximum health.
 - Nine grenade caches with orange-red contact, olive frag and green stinking identities. Players carry up to three grenades total and throw with `G`.
+- Two authored Vibe Lance caches on reachable mid and high routes, with server-owned collection and a 25-second respawn.
 - Server-authoritative contact, frag and stinking grenades with gravity, terrain bouncing, swept collision, five-second frag fuses and toxic clouds.
 - Toxic clouds apply server-owned 24 HP/s damage in 250 ms ticks, respect invulnerability, stop when a combatant leaves, block behind solid terrain, and use a deterministic one-cloud-per-tick stacking policy.
 - Online bots collect medkits and grenade supplies, use medkits when injured, throw finite server-owned grenades and avoid nearby toxic clouds.
@@ -136,8 +165,8 @@ The `/online` route adds a Colyseus lobby and independent free-for-all rooms. Th
 - New rooms count down before combat. The HUD, lobby card and room metadata share the same countdown and phase state.
 - Quick Match uses server-side matchmaking. It filters to open rooms, sorts by the most connected humans, and creates a new room when existing rooms fill.
 - Full-room and ended-room races retry before falling back to a fresh room, so simultaneous joins are not stranded.
-- Rooms run concurrently with their own simulation, clock, leaderboard, bots, projectiles, grenades, toxic clouds, pickups and results.
-- The Node server owns movement, health, ammunition, grenade flight and fuses, explosions, toxic clouds, medkit inventory, pickup collection, bot supplies and grenade decisions, the match clock and the outcome.
+- Rooms run concurrently with their own simulation, clock, leaderboard, bots, projectiles, grenades, toxic clouds, pickups, dynamic elimination loot and results.
+- The Node server owns movement, health, weapon ownership, ammunition, grenade flight and fuses, explosions, toxic clouds, medkit inventory, pickup and loot collection, bot supplies and grenade decisions, the match clock and the outcome.
 - Browsers send input frames only. They never send positions, hit confirmations or scores.
 - The server ticks at 60 Hz and broadcasts snapshots at 20 Hz. Input is capped at 45 messages per second per client.
 - Online bots share the human character renderer. They show the equipped Vibe Rifle, 360-degree aim, muzzle flash, recoil, jetpack exhaust, health bars, damage reactions, spawn shields and death/respawn presentation.
@@ -263,6 +292,7 @@ npm run verify:online:match
 npm run verify:online:pickups
 npm run verify:online:grenades
 npm run verify:online:stinking
+npm run verify:online:loot
 npm run verify:online:grenade-perf
 npm run verify:online:rooms
 npm run verify:online:perf
@@ -282,13 +312,15 @@ HEADED=1 npm run verify:online:grenade-perf
 
 `verify:online:match` opens two independent Chromium contexts with different selected skins in one room, fills the other six seats with SDK clients, waits for the 90-second clock, checks identical results on both browsers, then clicks replay and checks both clients return to a live match with reset scores and their original character selections.
 
-`verify:online:pickups` joins two browsers to one room, compares all twenty-three supply caches, walks a player onto a medkit, checks both clients hide the collected pickup and the HUD reports the carried count, verifies late-join inventory isolation, confirms a concurrent room keeps its own pickup active, verifies the 20-second respawn cycle, then waits for bot damage and verifies `H` consumes a medkit, heals without exceeding 100 HP, shows the HUD feedback and rejects a duplicate use during cooldown.
+`verify:online:pickups` joins two browsers to one room, compares all twenty-five supply caches, walks a player onto a medkit, checks both clients hide the collected pickup and the HUD reports the carried count, verifies late-join inventory isolation, confirms a concurrent room keeps its own pickup active, verifies the 20-second respawn cycle, then waits for bot damage and verifies `H` consumes a medkit, heals without exceeding 100 HP, shows the HUD feedback and rejects a duplicate use during cooldown.
 
-`verify:online:grenades` joins two browsers to one room, checks all twenty-three supply caches and the three-grenade HUD inventory, selects contact and frag with `4` and `5`, throws a frag with `G`, confirms both clients see the same server-owned fuse and warning indicator, verifies detonation after about five seconds of server simulation time, tops up from a medkit, then chases a clear-line bot and verifies a contact grenade consumes one item, eliminates the bot, credits the kill and appears in the kill feed. A second room confirms grenade and pickup state isolation.
+`verify:online:grenades` joins two browsers to one room, checks all twenty-five supply caches and the three-grenade HUD inventory, selects contact and frag with `4` and `5`, throws a frag with `G`, confirms both clients see the same server-owned fuse and warning indicator, verifies detonation after about five seconds of server simulation time, tops up from a medkit, then chases a clear-line bot and verifies a contact grenade consumes one item, eliminates the bot, credits the kill and appears in the kill feed. A second room confirms grenade and pickup state isolation.
 
 `verify:online:stinking` fills a room with eight humans so self-exposure is deterministic, selects the stinking grenade with `6`, verifies the canister and cloud snapshots on both clients, confirms 6 HP toxic ticks, self-elimination without kill credit, the configured respawn loadout, a late join seeing an active cloud, and an SDK opponent receiving toxic damage and a correctly attributed toxic elimination. It also checks the green cache artwork and a second room's independent pickup state.
 
-`verify:online:grenade-perf` measures one human with seven bots, then fills the room with seven SDK humans and throws all three grenade types while a second room stays live. It reports client FPS, average/p95/max server tick, active grenade and cloud counts, maximum cloud overlap, pickup count and snapshot byte size. Use `HEADED=1` for the client frame-rate number.
+`verify:online:loot` joins two real browser clients to one live room and checks the starter loadout and empty third slot, a hostile bot elimination producing one weapon, medkit and grenade, matching loot ids and Phaser views on both clients, weapon pickup into the empty slot with authoritative ammo, the full-loadout `E` swap prompt and a Vibe Lance swap, duplicate-free replacement, a late joiner receiving remaining loot, a two-client medkit contest awarding exactly one item, server-clock expiry, a human death dropping the equipped Lance, starter loadout restoration after respawn, match-end cleanup and replay reset. It requires a server started with `VIBE_MILITIA_TEST_HOOKS=1` and `MATCH_COUNTDOWN_MS=0` for deterministic placement.
+
+`verify:online:grenade-perf` measures one human with seven bots, then fills the room with seven SDK humans and throws all three grenade types while a second room stays live. Elimination hooks create up to nine dynamic loot entities. It reports client FPS, average/p95/max server tick, active grenade and cloud counts, maximum cloud overlap, pickup and peak loot counts and snapshot byte size. Use `HEADED=1` for the client frame-rate number.
 
 `verify:online:rooms` creates two concurrent rooms, checks state isolation, rejects a ninth human with the full-room message, releases a seat and rejoins, then waits for an independent match to end and checks the replay error.
 
@@ -297,7 +329,7 @@ HEADED=1 npm run verify:online:grenade-perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 102 tests pass
+- `npm test`: 134 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass
@@ -312,12 +344,14 @@ Last verification against the production build:
 - The server rejected an arbitrary asset URL and fell back to VIBER-010.
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms.
 - `verify:online:match`: 25/25 checks pass, 8 humans, time-limit result, identical standings, replay reset, and preserved VIBER-123/BUREAU-023 selections.
-- `verify:online:pickups`: 29/29 checks pass. Two clients saw the same twenty-three supply caches, a collected medkit disappeared for both, a late join saw no duplicated inventory, a second room kept independent pickup state, the respawn cycle completed, `H` healed without exceeding the cap, the HUD showed the heal amount, and a duplicate use consumed no extra medkit.
-- `verify:online:grenades`: 29/29 checks pass. Both clients saw the same contact, frag and stinking caches and distinct artworks, key selection and the throw control worked, the frag detonated after about 5 seconds of server simulation time, a contact grenade eliminated a bot with correct kill-feed credit, self-damage did not award an opponent a kill, medkits still healed, and a second room had independent grenade and pickup state.
+- `verify:online:pickups`: 29/29 checks pass. Two clients saw the same twenty-five supply caches, a collected medkit disappeared for both, a late join saw no duplicated inventory, a second room kept independent pickup state, the respawn cycle completed, `H` healed without exceeding the cap, the HUD showed the heal amount, and a duplicate use consumed no extra medkit.
+- `verify:online:grenades`: all checks pass. Both clients saw the same contact, frag and stinking caches and distinct artworks, key selection and the throw control worked, the frag detonated after about 5 seconds of server simulation time, a contact grenade eliminated a bot with correct kill-feed credit, self-damage did not award an opponent a kill, medkits still healed, and a second room had independent grenade and pickup state.
 - `verify:online:stinking`: 25/25 checks pass. The cloud activated at 160 px for 6 seconds, applied 6 HP toxic ticks, eliminated the player without granting a kill, restored the one-of-each loadout on respawn, damaged and eliminated an idle opponent with owner credit, appeared to a late joiner, and left a second room's pickups independent.
+- `verify:online:loot`: 43/43 checks pass against the production build. Two clients agreed on 25 static caches, the starter rifle/scatter/empty loadout, three-item hostile elimination bundles, one weapon/medkit/grenade Phaser view per item in both sessions, authoritative ammo on pickup, the full-loadout `E` swap, duplicate-free replacement, a late joiner with remaining loot, a one-winner medkit contest, 12-second server-clock expiry, a human death dropping the Vibe Lance, starter loadout restoration, match-end cleanup and replay reset. Screenshots are in `artifacts/p3c-a/`.
 - `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors.
-- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server. An accumulated-server run measured 56 fps, 0.23 ms average and 0.50 ms p95.
-- `HEADED=1 npm run verify:online:grenade-perf`: 11/11 checks pass with 8 humans, 8 peak in-flight grenades, 8 active toxic clouds, 2 overlapping clouds, 60 fps, 0.21 ms average tick, 0.27 ms p95, 5.04 ms max, 23 pickups and a 14,471-byte snapshot. A second concurrent room stayed live.
+- P3B-C baseline `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server. An accumulated-server run measured 56 fps, 0.23 ms average and 0.50 ms p95.
+- P3C-A standard `HEADED=1 npm run verify:online:perf`: 57 fps, 0.28 ms average server tick, 0.67 ms p95, 6/6 checks.
+- `HEADED=1 npm run verify:online:grenade-perf`: 14/14 checks pass with 8 humans, 8 peak in-flight grenades, 7 active toxic clouds, 2 overlapping clouds, 51 fps, 1.04 ms average tick, 0.65 ms p95, 9 peak dynamic loot entities, 25 pickups and a 15,460-byte snapshot. A second concurrent room stayed live. The P3B-C stress snapshot baseline was 14,471 bytes without dynamic loot.
 - Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
@@ -336,7 +370,11 @@ Last verification against the production build:
 - Overlapping toxic clouds use a deterministic one-cloud-per-tick policy. Damage does not stack from multiple clouds.
 - If a toxic cloud owner disconnects, the kill feed preserves their name, but there is no live standing entry left to update.
 - Toxic clouds use lightweight layered circles and bubbles, not volumetric smoke or full-screen particles.
-- Pickup positions are fixed authored caches. There is no dynamic or random supply spawning.
+- Pickup cache positions are fixed authored spawns. Dynamic loot comes only from hostile eliminations and is not a random world spawn system.
+- Bots collect static medkit and grenade caches but do not collect dynamic elimination loot. Weapon loot is reserved for human inventory decisions.
+- The replaced weapon in a full-loadout `E` swap is scrapped. It is not dropped back into the world, which is the anti-duplication rule.
+- Dynamic loot settles on the first platform top below the death point. The outward scatter is a client animation over the final server position.
+- Dynamic loot expires permanently after 12 seconds and is capped at 48 active entities per room. There is no persistence across matches.
 - Blast cover uses a consistent 55 percent damage reduction when a platform blocks the blast line. It does not model partial occlusion or destructible cover.
 - Grenade damage is not included in the weapon accuracy percentage. Each grenade and cloud has a stable ID and owner for kill attribution.
 - Under extreme simultaneous contention, Quick Match can fall back to creating a fresh room after repeated seat races.
@@ -350,13 +388,12 @@ Last verification against the production build:
 - The arena uses runtime-baked primitive art, not a final authored tileset.
 - Guest names and room membership are temporary. There are no accounts, wallets, XP or persistent stats.
 
-## Out of scope for P3B-C
+## Out of scope for P3C-A
 
-- Weapon drops from eliminated players, elimination loot and akimbo rifles.
-- New primary weapons or a weapon inventory redesign.
+- Akimbo rifles, rocket launchers, SMGs or heavy cannons.
+- New maps, modes or non-official characters.
 - Accounts, wallets and blockchain integration.
 - XP, progression, unlocks or ranked matchmaking.
-- New non-official characters, maps or modes.
 - Reconnect tokens or lag-compensation redesigns.
 - Audio implementation.
 - Spectator tools, voice chat or tournaments.

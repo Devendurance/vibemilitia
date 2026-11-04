@@ -201,7 +201,7 @@ try {
       contactCaches.every((pickup) => pickup.active) &&
       fragCaches.every((pickup) => pickup.active) &&
       stinkingCaches.every((pickup) => pickup.active) &&
-      initialA.pickups.length === 23,
+      initialA.pickups.length === 25,
     `contact=${contactCaches.length} frag=${fragCaches.length} stink=${stinkingCaches.length} total=${initialA.pickups.length}`,
   );
   check(

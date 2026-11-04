@@ -29,6 +29,25 @@ declare global {
           botLabelVisible: boolean;
           healthBarVisible: boolean;
         }>;
+        loot: Array<{
+          id: string;
+          kind: string;
+          weaponId: string | null;
+          x: number;
+          y: number;
+          visible: boolean;
+          texture: string;
+        }>;
+        testHooks: {
+          eliminate: (
+            victimId: string,
+            source?: "bullet" | "grenade" | "toxic",
+          ) => void;
+          teleport: (x: number, y: number) => void;
+          teleportBot: (id: string, x: number, y: number) => void;
+          endMatch: () => void;
+          guard: () => void;
+        };
       };
       sendCommand: (command: GameCommand) => void;
     };

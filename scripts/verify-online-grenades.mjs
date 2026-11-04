@@ -404,8 +404,11 @@ try {
     (pickup) => pickup.type === "stinking-grenade",
   );
   check(
-    "twenty-three supply caches spawn with fourteen medkits",
-    initialA.pickups.length === 23 && medkits.length === 14,
+    "twenty-five supply caches spawn with fourteen medkits",
+    initialA.pickups.length === 25 &&
+      initialA.pickups.filter((pickup) => pickup.type === "vibe-lance")
+        .length === 2 &&
+      medkits.length === 14,
     `total=${initialA.pickups.length} medkits=${medkits.length}`,
   );
   check(
@@ -458,7 +461,7 @@ try {
   check(
     "all pickup views render with matching types",
     initialA.pickupViews.length === initialA.pickups.length &&
-      initialA.pickupViews.length === 23,
+      initialA.pickupViews.length === 25,
     `views=${initialA.pickupViews.length}`,
   );
 

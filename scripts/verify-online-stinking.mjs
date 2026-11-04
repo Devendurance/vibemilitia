@@ -257,8 +257,9 @@ const moveFillerToward = async (page, sessionId, target, maxMs = 12000) => {
     lastX = self.x;
     const moveX = dx > 24 ? 1 : dx < -24 ? -1 : 0;
     const rise = dy < -70;
-    const jumpHeld = rise || stuckMs > 450;
-    const jump = rise && seq % 5 === 0;
+    const needsHop = rise || stuckMs > 450;
+    const jumpHeld = needsHop;
+    const jump = needsHop && seq % 5 === 0;
     sendMoveInput(filler.room, seq, moveX, jump, jumpHeld);
     seq += 1;
     await new Promise((resolve) => setTimeout(resolve, 90));
@@ -291,11 +292,13 @@ try {
     (pickup) => pickup.type === "frag-grenade",
   );
   check(
-    "twenty-three caches preserve all three grenade types",
-    initialA.pickups.length === 23 &&
+    "twenty-five caches preserve all three grenade types and two lances",
+    initialA.pickups.length === 25 &&
       stinkingCaches.length === 3 &&
       contactCaches.length === 3 &&
-      fragCaches.length === 3,
+      fragCaches.length === 3 &&
+      initialA.pickups.filter((pickup) => pickup.type === "vibe-lance")
+        .length === 2,
     `total=${initialA.pickups.length} stink=${stinkingCaches.length}`,
   );
   const stinkingViews = initialA.pickupViews.filter(

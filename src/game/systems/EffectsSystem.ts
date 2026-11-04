@@ -11,6 +11,11 @@ export class EffectsSystem {
   private smoke: Phaser.GameObjects.Particles.ParticleEmitter;
   private mint: Phaser.GameObjects.Particles.ParticleEmitter;
   private cream: Phaser.GameObjects.Particles.ParticleEmitter;
+  private voxelLime: Phaser.GameObjects.Particles.ParticleEmitter;
+  private voxelCopper: Phaser.GameObjects.Particles.ParticleEmitter;
+  private voxelSky: Phaser.GameObjects.Particles.ParticleEmitter;
+  private voxelCream: Phaser.GameObjects.Particles.ParticleEmitter;
+  private voxelRed: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -43,6 +48,25 @@ export class EffectsSystem {
     this.smoke = burst("spark-smoke", 380, 720, 20, 90, 1.1);
     this.mint = burst("spark-mint", 160, 380, 40, 200, 0.6, true);
     this.cream = burst("spark-cream", 140, 300, 30, 170, 0.55, true);
+    const cube = (texture: string) =>
+      scene.add
+        .particles(0, 0, texture, {
+          speed: { min: 90, max: 330 },
+          lifespan: { min: 420, max: 820 },
+          scale: { start: 1, end: 0.35 },
+          alpha: { start: 1, end: 0 },
+          gravityY: 980,
+          rotate: { min: -180, max: 180 },
+          frequency: -1,
+          quantity: 1,
+          emitting: false,
+        })
+        .setDepth(46);
+    this.voxelLime = cube("voxel-lime");
+    this.voxelCopper = cube("voxel-copper");
+    this.voxelSky = cube("voxel-sky");
+    this.voxelCream = cube("voxel-cream");
+    this.voxelRed = cube("voxel-red");
   }
 
   bulletImpact(x: number, y: number, kind: ImpactKind): void {
@@ -84,6 +108,44 @@ export class EffectsSystem {
     this.smoke.explode(12, x, y - 40);
     this.ring(x, y - 40, 0x9bd8f2);
     this.ring(x, y - 40, 0xd7ff2e);
+  }
+
+  /**
+   * P3C elimination burst. A handful of one-shot voxel cubes, no continuous
+   * emitter, so peak cost is bounded by a single elimination event.
+   */
+  eliminationBurst(
+    x: number,
+    y: number,
+    kind: "impact" | "toxic" = "impact",
+  ): void {
+    this.voxelLime.explode(11, x, y);
+    this.voxelCopper.explode(9, x, y);
+    this.voxelSky.explode(8, x, y);
+    this.voxelCream.explode(6, x, y);
+    if (kind === "toxic") {
+      this.voxelRed.explode(8, x, y);
+      this.mint.explode(9, x, y);
+    } else {
+      this.voxelRed.explode(6, x, y);
+      this.lime.explode(8, x, y);
+    }
+    this.smoke.explode(7, x, y);
+    this.ring(x, y, kind === "toxic" ? 0x9bff5a : 0xd7ff2e);
+    this.ring(x, y, 0x9bd8f2);
+  }
+
+  lootExpired(x: number, y: number): void {
+    this.smoke.explode(3, x, y);
+    this.cream.explode(2, x, y);
+    this.ring(x, y, 0x6f767e);
+  }
+
+  weaponSwap(x: number, y: number): void {
+    this.voxelSky.explode(7, x, y);
+    this.voxelCream.explode(5, x, y);
+    this.mint.explode(5, x, y);
+    this.ring(x, y, 0x9bd8f2);
   }
 
   spawn(x: number, y: number): void {

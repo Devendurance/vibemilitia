@@ -13,6 +13,9 @@ export interface HudWeaponSlot {
   ammo: number;
   magazineSize: number;
   active: boolean;
+  owned: boolean;
+  reloading: boolean;
+  reloadProgress: number;
 }
 
 export interface HudStanding {
@@ -95,6 +98,9 @@ export interface HudSnapshot {
   grenadeThrowCooldownMs: number;
   supplyFeedbackSeq: number;
   supplyFeedbackText: string;
+  supplyFeedbackDetail: string;
+  nearbyLootText: string;
+  nearbyLootCanSwap: boolean;
 }
 
 export const INITIAL_HUD: HudSnapshot = {
@@ -152,6 +158,9 @@ export const INITIAL_HUD: HudSnapshot = {
   grenadeThrowCooldownMs: 700,
   supplyFeedbackSeq: 0,
   supplyFeedbackText: "",
+  supplyFeedbackDetail: "+1",
+  nearbyLootText: "",
+  nearbyLootCanSwap: false,
 };
 
 export type GameCommand =
@@ -162,6 +171,7 @@ export type GameCommand =
   | { type: "use-medkit" }
   | { type: "select-grenade"; slot: number }
   | { type: "throw-grenade" }
+  | { type: "swap-weapon" }
   | { type: "restart-match" }
   | { type: "force-match-end" };
 

@@ -34,14 +34,37 @@ import {
 } from "@/game/core/grenades";
 import {
   MEDKIT_CONFIG,
+  PICKUP_LABELS,
   createPickups,
   findCollectiblePickup,
   grenadeTypeFromPickup,
+  isWeaponPickup,
+  pickupRespawnMs,
   resetPickups,
   stepPickupRespawns,
   applyMedkit,
   type PickupRuntime,
+  type PickupType,
 } from "@/game/core/pickups";
+import {
+  LOOT_CONFIG,
+  chooseGrenadeReward,
+  clampWeaponAmmo,
+  createEliminationLoot,
+  expireLoot,
+  findNearestActiveLoot,
+  grenadeLabel,
+  trimLootToCap,
+  type LootRuntime,
+} from "@/game/core/loot";
+import {
+  canEquipWeaponSlot,
+  createStarterWeaponLoadout,
+  findEmptyWeaponSlot,
+  hasEmptyWeaponSlot,
+  ownsWeapon,
+  weaponPickupOutcome,
+} from "@/game/core/weaponInventory";
 import { createWeaponState, reloadProgress, stepWeapon, type WeaponState } from "@/game/core/weapon";
 import {
   createMatchTimer,
@@ -99,6 +122,31 @@ const BOT_WEAPON: PlayerWeapon = {
 
 const CHARACTER_AIM_HEIGHT = 58;
 const CHARACTER_PIVOT_X = 28;
+
+function findPlayerWeapon(weaponId: string | null): PlayerWeapon | null {
+  if (!weaponId) return null;
+  return PLAYER_WEAPONS.find((weapon) => weapon.id === weaponId) ?? null;
+}
+
+function emptyWeaponState(): WeaponState {
+  return {
+    ammo: 0,
+    cooldownMs: 0,
+    reloadRemainingMs: 0,
+    reloading: false,
+  };
+}
+
+function createWeaponStateFor(weaponId: string | null): WeaponState {
+  const definition = findPlayerWeapon(weaponId);
+  return definition ? createWeaponState(definition) : emptyWeaponState();
+}
+
+function createLoadoutStates(
+  weaponIds: readonly (string | null)[],
+): WeaponState[] {
+  return weaponIds.map((weaponId) => createWeaponStateFor(weaponId));
+}
 
 const BOT_NAMES = [
   "NULL-7",
@@ -187,6 +235,7 @@ interface HumanRuntime {
   lastDamageMs: number;
   aimAngle: number;
   weapons: WeaponState[];
+  weaponIds: (string | null)[];
   equippedIndex: number;
   input: OnlineInputPayload | null;
   lastInputSeq: number;
@@ -198,6 +247,7 @@ interface HumanRuntime {
   shotsFired: number;
   shotsHit: number;
   lastKillerName: string | null;
+  deathRecorded: boolean;
   medkits: number;
   medkitCooldownRemainingMs: number;
   queuedMedkit: boolean;
@@ -207,6 +257,8 @@ interface HumanRuntime {
   queuedGrenadeThrow: boolean;
   queuedGrenadeSlot: number | null;
   throwRequestHeld: boolean;
+  queuedSwapWeapon: boolean;
+  swapRequestHeld: boolean;
 }
 
 interface BotRuntime {
@@ -228,6 +280,7 @@ interface BotRuntime {
   eliminations: number;
   deaths: number;
   lastKillerName: string | null;
+  deathRecorded: boolean;
   targetId: string | null;
   path: NavPoint[];
   pathIndex: number;
@@ -254,6 +307,25 @@ interface BotRuntime {
 }
 
 type AnyCombatant = HumanRuntime | BotRuntime;
+
+interface PickupGrantResult {
+  ok: boolean;
+  text: string;
+  detail: string;
+}
+
+interface WeaponAcquireResult {
+  ok: boolean;
+  slot: number;
+  mode: "empty" | "duplicate" | null;
+  ammo: number;
+}
+
+const PICKUP_REJECTED: PickupGrantResult = {
+  ok: false,
+  text: "",
+  detail: "",
+};
 
 interface SimulationOptions {
   roomId: string;
@@ -338,6 +410,7 @@ export class GameSimulation {
   private toxicClouds = new Map<number, ToxicCloudRuntime>();
   private nextToxicDamageAtMs: number | null = null;
   private pickups: PickupRuntime[] = createPickups(ARENA.pickupSpawns);
+  private loot: LootRuntime[] = [];
   private timer: MatchTimerState = createMatchTimer(MATCH_CONFIG.durationMs);
   private countdown = false;
   private started = false;
@@ -353,6 +426,8 @@ export class GameSimulation {
   private projectileCounter = 0;
   private grenadeCounter = 0;
   private toxicCloudCounter = 0;
+  private lootCounter = 0;
+  private eliminationCounter = 0;
   private botCounter = 0;
   private events: OnlineEvent[] = [];
   private platforms: Rect[] = ARENA.platforms.map((platform) => ({
@@ -442,6 +517,7 @@ export class GameSimulation {
       this.activeGrenades.clear();
       this.toxicClouds.clear();
       this.nextToxicDamageAtMs = null;
+      this.loot = [];
       resetPickups(this.pickups);
       if (this.countdownDurationMs > 0) {
         this.countdown = true;
@@ -478,6 +554,7 @@ export class GameSimulation {
       this.countdown = false;
       this.started = false;
       this.countdownRemainingMs = 0;
+      this.loot = [];
       return;
     }
     if (
@@ -534,6 +611,11 @@ export class GameSimulation {
       human.queuedGrenadeThrow = true;
     }
     human.throwRequestHeld = throwRequested;
+    const swapRequested = Boolean(payload.swapWeapon);
+    if (swapRequested && !human.swapRequestHeld) {
+      human.queuedSwapWeapon = true;
+    }
+    human.swapRequestHeld = swapRequested;
   }
 
   rematch(): { ok: boolean; error?: string } {
@@ -551,6 +633,7 @@ export class GameSimulation {
     this.activeGrenades.clear();
     this.toxicClouds.clear();
     this.nextToxicDamageAtMs = null;
+    this.loot = [];
     this.feed = [];
     this.feedCounter = 0;
     this.events = [];
@@ -623,6 +706,7 @@ export class GameSimulation {
         y: pickup.y,
       });
     }
+    this.stepLoot();
 
     if (this.timer.phase === "live") {
       const scores = [...this.humans.values(), ...this.bots.values()].map(
@@ -647,6 +731,7 @@ export class GameSimulation {
     this.activeGrenades.clear();
     this.toxicClouds.clear();
     this.nextToxicDamageAtMs = null;
+    this.loot = [];
     this.feed = [];
     this.feedCounter = 0;
     resetPickups(this.pickups);
@@ -739,6 +824,22 @@ export class GameSimulation {
         active: pickup.active,
         respawnIn: pickup.active ? 0 : pickup.respawnRemainingMs / 1000,
       })),
+      loot: this.loot
+        .filter((item) => item.active)
+        .map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          weaponId: item.weaponId,
+          weaponName:
+            findPlayerWeapon(item.weaponId)?.name ?? null,
+          ammo: item.ammo,
+          grenadeType: item.grenadeType,
+          x: item.x,
+          y: item.y,
+          eliminationId: item.eliminationId,
+          remainingMs: Math.max(0, item.expiresAtMs - this.elapsedMs),
+          createdAtMs: item.createdAtMs,
+        })),
       standings,
       feed: this.feed.slice(-6),
       roomId: this.roomId,
@@ -758,6 +859,7 @@ export class GameSimulation {
   }
 
   private createHuman(id: string, name: string, skinId: string): HumanRuntime {
+    const weaponIds = createStarterWeaponLoadout();
     return {
       kind: "human",
       id,
@@ -771,7 +873,8 @@ export class GameSimulation {
       respawnRemainingMs: 0,
       lastDamageMs: PLAYER_CONFIG.damageRegenDelayMs,
       aimAngle: 0,
-      weapons: PLAYER_WEAPONS.map((weapon) => createWeaponState(weapon)),
+      weapons: createLoadoutStates(weaponIds),
+      weaponIds,
       equippedIndex: 0,
       input: null,
       lastInputSeq: 0,
@@ -783,6 +886,7 @@ export class GameSimulation {
       shotsFired: 0,
       shotsHit: 0,
       lastKillerName: null,
+      deathRecorded: false,
       medkits: 0,
       medkitCooldownRemainingMs: 0,
       queuedMedkit: false,
@@ -792,6 +896,8 @@ export class GameSimulation {
       queuedGrenadeThrow: false,
       queuedGrenadeSlot: null,
       throwRequestHeld: false,
+      queuedSwapWeapon: false,
+      swapRequestHeld: false,
     };
   }
 
@@ -843,6 +949,7 @@ export class GameSimulation {
       eliminations: 0,
       deaths: 0,
       lastKillerName: null,
+      deathRecorded: false,
       targetId: null,
       path: [],
       pathIndex: 0,
@@ -900,9 +1007,11 @@ export class GameSimulation {
     human.queuedGrenadeThrow = false;
     human.queuedGrenadeSlot = null;
     human.throwRequestHeld = false;
-    for (let index = 0; index < human.weapons.length; index += 1) {
-      human.weapons[index] = createWeaponState(PLAYER_WEAPONS[index]);
-    }
+    human.queuedSwapWeapon = false;
+    human.swapRequestHeld = false;
+    human.deathRecorded = false;
+    human.weaponIds = createStarterWeaponLoadout();
+    human.weapons = createLoadoutStates(human.weaponIds);
     human.equippedIndex = 0;
     this.events.push({
       type: "respawn",
@@ -929,6 +1038,7 @@ export class GameSimulation {
     bot.invulnerableRemainingMs = DRONE_CONFIG.invulnerabilityMs;
     bot.respawnRemainingMs = 0;
     bot.lastDamageMs = 0;
+    bot.deathRecorded = false;
     bot.path = [];
     bot.pathIndex = 0;
     bot.pathLength = 0;
@@ -1020,30 +1130,38 @@ export class GameSimulation {
     }
 
     if (human.queuedWeapon !== null) {
-      human.equippedIndex = Math.max(0, Math.min(2, human.queuedWeapon));
+      const requested = Math.max(0, Math.min(2, human.queuedWeapon));
+      if (canEquipWeaponSlot(human.weaponIds, requested)) {
+        human.equippedIndex = requested;
+      }
       human.queuedWeapon = null;
     }
-    const definition = PLAYER_WEAPONS[human.equippedIndex];
-    const weaponState = human.weapons[human.equippedIndex];
+    const equippedId = human.weaponIds[human.equippedIndex] ?? null;
+    const definition = findPlayerWeapon(equippedId);
+    const weaponState = human.weapons[human.equippedIndex] ?? emptyWeaponState();
     const fire = Boolean(input?.fire);
     const reload = human.queuedReload;
     human.queuedReload = false;
-    const weapon = stepWeapon(weaponState, definition, {
-      fire,
-      reload,
-      dtMs,
-    });
-    human.weapons[human.equippedIndex] = weapon.state;
-    if (weapon.fired) {
-      human.shotsFired += definition.pellets;
-      this.fireWeapon(
-        human.id,
-        "human",
-        definition,
-        human.kin.x + 28,
-        human.kin.y - 58,
-        human.aimAngle,
-      );
+    if (definition) {
+      const weapon = stepWeapon(weaponState, definition, {
+        fire,
+        reload,
+        dtMs,
+      });
+      human.weapons[human.equippedIndex] = weapon.state;
+      if (weapon.fired) {
+        human.shotsFired += definition.pellets;
+        this.fireWeapon(
+          human.id,
+          "human",
+          definition,
+          human.kin.x + 28,
+          human.kin.y - 58,
+          human.aimAngle,
+        );
+      }
+    } else {
+      human.weapons[human.equippedIndex] = emptyWeaponState();
     }
 
     if (human.queuedGrenadeSlot !== null) {
@@ -1061,6 +1179,11 @@ export class GameSimulation {
       this.tryUseMedkitFor(human);
     }
     this.collectNearbyPickups(human);
+    this.collectNearbyLoot(human);
+    if (human.queuedSwapWeapon) {
+      human.queuedSwapWeapon = false;
+      this.trySwapWeapon(human);
+    }
   }
 
   private tryUseMedkitFor(combatant: AnyCombatant): void {
@@ -1096,7 +1219,8 @@ export class GameSimulation {
         (candidate) => this.canCollectPickup(combatant, candidate.type),
       );
       if (!pickup) return;
-      if (!this.grantPickup(combatant, pickup.type)) {
+      const granted = this.grantPickup(combatant, pickup.type);
+      if (!granted.ok) {
         pickup.active = true;
         pickup.respawnRemainingMs = 0;
         return;
@@ -1109,14 +1233,23 @@ export class GameSimulation {
         playerName: combatant.name,
         x: pickup.x,
         y: pickup.y,
+        text: granted.text,
+        detail: granted.detail,
       });
     }
   }
 
   private canCollectPickup(
     combatant: AnyCombatant,
-    type: PickupRuntime["type"],
+    type: PickupType,
   ): boolean {
+    if (isWeaponPickup(type)) {
+      if (combatant.kind !== "human") return false;
+      return (
+        weaponPickupOutcome(combatant.weaponIds, "vibe-lance") !==
+        "needs-swap"
+      );
+    }
     if (type === "medkit") {
       return combatant.medkits < MEDKIT_CONFIG.maxCarried;
     }
@@ -1128,20 +1261,328 @@ export class GameSimulation {
 
   private grantPickup(
     combatant: AnyCombatant,
-    type: PickupRuntime["type"],
-  ): boolean {
+    type: PickupType,
+  ): PickupGrantResult {
+    if (isWeaponPickup(type)) {
+      if (combatant.kind !== "human") return PICKUP_REJECTED;
+      const definition = findPlayerWeapon("vibe-lance");
+      if (!definition) return PICKUP_REJECTED;
+      const acquired = this.acquireWeapon(
+        combatant,
+        definition.id,
+        definition.magazineSize,
+      );
+      if (!acquired.ok) return PICKUP_REJECTED;
+      return acquired.mode === "duplicate"
+        ? { ok: true, text: "AMMO RESTORED", detail: definition.name }
+        : { ok: true, text: "WEAPON ACQUIRED", detail: definition.name };
+    }
     if (type === "medkit") {
-      if (combatant.medkits >= MEDKIT_CONFIG.maxCarried) return false;
+      if (combatant.medkits >= MEDKIT_CONFIG.maxCarried) {
+        return PICKUP_REJECTED;
+      }
       combatant.medkits = Math.min(
         MEDKIT_CONFIG.maxCarried,
         combatant.medkits + 1,
       );
-      return true;
+      return { ok: true, text: "MEDKIT +1", detail: PICKUP_LABELS.medkit };
     }
     const grenadeType = grenadeTypeFromPickup(type);
-    if (!grenadeType || !canAddGrenade(combatant.grenades)) return false;
+    if (!grenadeType || !canAddGrenade(combatant.grenades)) {
+      return PICKUP_REJECTED;
+    }
     combatant.grenades = addGrenade(combatant.grenades, grenadeType);
-    return true;
+    return {
+      ok: true,
+      text: `${grenadeLabel(grenadeType)} +1`,
+      detail: PICKUP_LABELS[type],
+    };
+  }
+
+  private acquireWeapon(
+    human: HumanRuntime,
+    weaponId: string,
+    ammo: number,
+  ): WeaponAcquireResult {
+    const definition = findPlayerWeapon(weaponId);
+    if (!definition) return { ok: false, slot: -1, mode: null, ammo: 0 };
+    const emptySlot = findEmptyWeaponSlot(human.weaponIds);
+    if (emptySlot !== -1) {
+      human.weaponIds[emptySlot] = weaponId;
+      const state = createWeaponState(definition);
+      state.ammo = clampWeaponAmmo(ammo, definition.magazineSize);
+      human.weapons[emptySlot] = state;
+      human.equippedIndex = emptySlot;
+      return {
+        ok: true,
+        slot: emptySlot,
+        mode: "empty",
+        ammo: state.ammo,
+      };
+    }
+    const ownedSlots = human.weaponIds
+      .map((id, index) => (id === weaponId ? index : -1))
+      .filter((index) => index !== -1);
+    if (ownedSlots.length > 0) {
+      const targetSlot = ownedSlots.includes(human.equippedIndex)
+        ? human.equippedIndex
+        : ownedSlots.sort(
+            (left, right) =>
+              (human.weapons[left]?.ammo ?? 0) -
+                (human.weapons[right]?.ammo ?? 0) || left - right,
+          )[0];
+      const state = human.weapons[targetSlot] ?? emptyWeaponState();
+      state.ammo = definition.magazineSize;
+      state.reloading = false;
+      state.reloadRemainingMs = 0;
+      human.weapons[targetSlot] = state;
+      return {
+        ok: true,
+        slot: targetSlot,
+        mode: "duplicate",
+        ammo: definition.magazineSize,
+      };
+    }
+    return { ok: false, slot: -1, mode: null, ammo: 0 };
+  }
+
+  private canCollectLoot(human: HumanRuntime, item: LootRuntime): boolean {
+    if (!item.active) return false;
+    if (item.kind === "medkit") {
+      return human.medkits < MEDKIT_CONFIG.maxCarried;
+    }
+    if (item.kind === "grenade") {
+      return item.grenadeType !== null && canAddGrenade(human.grenades);
+    }
+    if (!item.weaponId) return false;
+    return weaponPickupOutcome(human.weaponIds, item.weaponId) !== "needs-swap";
+  }
+
+  private collectNearbyLoot(human: HumanRuntime): void {
+    while (true) {
+      const position = center(human);
+      const item = findNearestActiveLoot(
+        this.loot,
+        position.x,
+        position.aimY,
+        LOOT_CONFIG.collectionRadius,
+        (candidate) => this.canCollectLoot(human, candidate),
+      );
+      if (!item) return;
+      const granted = this.grantLoot(human, item);
+      if (!granted.ok) return;
+      item.active = false;
+      this.events.push({
+        type: "loot-collected",
+        lootId: item.id,
+        kind: item.kind,
+        playerId: human.id,
+        playerName: human.name,
+        x: item.x,
+        y: item.y,
+        weaponId: item.weaponId,
+        grenadeType: item.grenadeType,
+        text: granted.text,
+        detail: granted.detail,
+      });
+    }
+  }
+
+  private grantLoot(
+    human: HumanRuntime,
+    item: LootRuntime,
+  ): PickupGrantResult {
+    if (item.kind === "medkit") {
+      if (human.medkits >= MEDKIT_CONFIG.maxCarried) return PICKUP_REJECTED;
+      human.medkits = Math.min(MEDKIT_CONFIG.maxCarried, human.medkits + 1);
+      return { ok: true, text: "MEDKIT +1", detail: "FIELD REPAIR" };
+    }
+    if (item.kind === "grenade") {
+      if (!item.grenadeType || !canAddGrenade(human.grenades)) {
+        return PICKUP_REJECTED;
+      }
+      human.grenades = addGrenade(human.grenades, item.grenadeType);
+      return {
+        ok: true,
+        text: `${grenadeLabel(item.grenadeType)} +1`,
+        detail: "THROWABLE",
+      };
+    }
+    if (!item.weaponId) return PICKUP_REJECTED;
+    const definition = findPlayerWeapon(item.weaponId);
+    if (!definition) return PICKUP_REJECTED;
+    const acquired = this.acquireWeapon(
+      human,
+      item.weaponId,
+      item.ammo,
+    );
+    if (!acquired.ok) return PICKUP_REJECTED;
+    return acquired.mode === "duplicate"
+      ? { ok: true, text: "AMMO RESTORED", detail: definition.name }
+      : { ok: true, text: "WEAPON ACQUIRED", detail: definition.name };
+  }
+
+  /**
+   * Explicit E interaction. It only runs with a full loadout, so no weapon can
+   * be lost without intent. The replaced weapon is scrapped instead of being
+   * re-dropped, which makes duplication impossible.
+   */
+  private trySwapWeapon(human: HumanRuntime): void {
+    if (!human.alive || this.phase !== "live") return;
+    if (hasEmptyWeaponSlot(human.weaponIds)) return;
+    const position = center(human);
+    let best: {
+      loot: LootRuntime | null;
+      pickup: PickupRuntime | null;
+      weaponId: string;
+      ammo: number;
+      distance: number;
+    } | null = null;
+
+    for (const item of this.loot) {
+      if (!item.active || item.kind !== "weapon" || !item.weaponId) continue;
+      if (ownsWeapon(human.weaponIds, item.weaponId)) continue;
+      const distance = Math.hypot(item.x - position.x, item.y - position.aimY);
+      if (distance > LOOT_CONFIG.collectionRadius) continue;
+      if (best && distance >= best.distance) continue;
+      best = {
+        loot: item,
+        pickup: null,
+        weaponId: item.weaponId,
+        ammo: item.ammo,
+        distance,
+      };
+    }
+    for (const pickup of this.pickups) {
+      if (!pickup.active || !isWeaponPickup(pickup.type)) continue;
+      if (ownsWeapon(human.weaponIds, "vibe-lance")) continue;
+      const distance = Math.hypot(pickup.x - position.x, pickup.y - position.aimY);
+      if (distance > LOOT_CONFIG.collectionRadius) continue;
+      if (best && distance >= best.distance) continue;
+      const definition = findPlayerWeapon("vibe-lance");
+      if (!definition) continue;
+      best = {
+        loot: null,
+        pickup,
+        weaponId: definition.id,
+        ammo: definition.magazineSize,
+        distance,
+      };
+    }
+
+    if (!best) return;
+    const definition = findPlayerWeapon(best.weaponId);
+    if (!definition) return;
+    const slot = human.equippedIndex;
+    const fromWeaponId = human.weaponIds[slot];
+    if (!fromWeaponId) return;
+    human.weaponIds[slot] = best.weaponId;
+    const state = createWeaponState(definition);
+    state.ammo = clampWeaponAmmo(best.ammo, definition.magazineSize);
+    human.weapons[slot] = state;
+    human.equippedIndex = slot;
+
+    if (best.loot) {
+      best.loot.active = false;
+      this.events.push({
+        type: "loot-collected",
+        lootId: best.loot.id,
+        kind: "weapon",
+        playerId: human.id,
+        playerName: human.name,
+        x: best.loot.x,
+        y: best.loot.y,
+        weaponId: best.weaponId,
+        grenadeType: null,
+        text: "WEAPON SWAPPED",
+        detail: definition.name,
+      });
+    }
+    if (best.pickup) {
+      best.pickup.active = false;
+      best.pickup.respawnRemainingMs = pickupRespawnMs("vibe-lance");
+      this.events.push({
+        type: "pickup-collected",
+        pickupId: best.pickup.id,
+        itemType: "vibe-lance",
+        playerId: human.id,
+        playerName: human.name,
+        x: best.pickup.x,
+        y: best.pickup.y,
+        text: "WEAPON SWAPPED",
+        detail: definition.name,
+      });
+    }
+    this.events.push({
+      type: "weapon-swapped",
+      playerId: human.id,
+      playerName: human.name,
+      slot,
+      fromWeaponId,
+      toWeaponId: best.weaponId,
+      x: position.x,
+      y: position.aimY,
+    });
+  }
+
+  private stepLoot(): void {
+    const expired = expireLoot(this.loot, this.elapsedMs);
+    for (const item of expired) {
+      this.events.push({
+        type: "loot-expired",
+        lootId: item.id,
+        x: item.x,
+        y: item.y,
+      });
+    }
+    if (this.loot.some((item) => !item.active)) {
+      this.loot = this.loot.filter((item) => item.active);
+    }
+  }
+
+  private spawnEliminationLoot(
+    eliminationId: number,
+    victim: AnyCombatant,
+  ): LootRuntime[] {
+    const position = center(victim);
+    const weaponId =
+      victim.kind === "human"
+        ? victim.weaponIds[victim.equippedIndex] ?? BOT_WEAPON.id
+        : BOT_WEAPON.id;
+    const definition = findPlayerWeapon(weaponId) ?? findPlayerWeapon(BOT_WEAPON.id);
+    if (!definition) return [];
+    const weaponAmmo =
+      victim.kind === "human"
+        ? victim.weapons[victim.equippedIndex]?.ammo ?? 0
+        : definition.magazineSize;
+    const created = createEliminationLoot({
+      eliminationId,
+      roomId: this.roomId,
+      x: position.x,
+      y: victim.kind === "human" ? victim.kin.y : victim.y + BOT_FEET_OFFSET,
+      weaponId: definition.id,
+      weaponAmmo: clampWeaponAmmo(weaponAmmo, definition.magazineSize),
+      grenadeType: chooseGrenadeReward(victim.grenades),
+      nowMs: this.elapsedMs,
+      platforms: this.platforms,
+      arenaWidth: ARENA.width,
+      arenaHeight: ARENA.height,
+      createId: () => `loot-${this.roomId}-${++this.lootCounter}`,
+    });
+    this.loot.push(...created);
+    const trimmed = trimLootToCap(this.loot);
+    for (const item of trimmed) {
+      this.events.push({
+        type: "loot-expired",
+        lootId: item.id,
+        x: item.x,
+        y: item.y,
+      });
+    }
+    if (this.loot.some((item) => !item.active)) {
+      this.loot = this.loot.filter((item) => item.active);
+    }
+    return created.filter((item) => item.active);
   }
 
   private tryThrowGrenade(human: HumanRuntime): void {
@@ -1765,6 +2206,11 @@ export class GameSimulation {
     killerNameOverride?: string,
   ): void {
     if (this.timer.phase !== "live") return;
+    if (victim.deathRecorded) return;
+    victim.deathRecorded = true;
+    const victimPosition = center(victim);
+    const feetY =
+      victim.kind === "human" ? victim.kin.y : victim.y + BOT_FEET_OFFSET;
     if (killerId === victim.id) {
       victim.deaths += 1;
       victim.lastKillerName = null;
@@ -1783,12 +2229,16 @@ export class GameSimulation {
       this.feed = this.feed.slice(-6);
       this.events.push({
         type: "elimination",
+        eliminationId: ++this.eliminationCounter,
         killerId,
         victimId: victim.id,
         killerName: victim.name,
         victimName: victim.name,
         weaponName,
         atMs,
+        x: victimPosition.x,
+        y: feetY,
+        lootIds: [],
       });
       return;
     }
@@ -1809,14 +2259,20 @@ export class GameSimulation {
     });
     this.feed = this.feed.slice(-6);
 
+    const eliminationId = ++this.eliminationCounter;
+    const loot = this.spawnEliminationLoot(eliminationId, victim);
     this.events.push({
       type: "elimination",
+      eliminationId,
       killerId,
       victimId: victim.id,
       killerName,
       victimName: victim.name,
       weaponName,
       atMs,
+      x: victimPosition.x,
+      y: feetY,
+      lootIds: loot.map((item) => item.id),
     });
 
     const scores = [...this.humans.values(), ...this.bots.values()].map(
@@ -1836,6 +2292,7 @@ export class GameSimulation {
     this.activeGrenades.clear();
     this.toxicClouds.clear();
     this.nextToxicDamageAtMs = null;
+    this.loot = [];
     resetPickups(this.pickups);
     this.events.push({
       type: "match-end",
@@ -2229,14 +2686,93 @@ export class GameSimulation {
     return this.humans.get(id) ?? this.bots.get(id);
   }
 
+  /**
+   * Verification-only helpers. They are reachable from the room only when
+   * VIBE_MILITIA_TEST_HOOKS=1. Normal gameplay never calls them.
+   */
+  debugEliminate(
+    victimId: string,
+    killerId: string,
+    source: "bullet" | "grenade" | "toxic" = "bullet",
+  ): boolean {
+    if (this.phase !== "live") return false;
+    const victim = this.findCombatant(victimId);
+    if (!victim || !victim.alive) return false;
+    const killer = this.findCombatant(killerId);
+    const weaponName =
+      source === "grenade"
+        ? "FRAG GRENADE"
+        : source === "toxic"
+          ? "STINKING GRENADE"
+          : "VIBE RIFLE";
+    victim.invulnerableRemainingMs = 0;
+    this.damageCombatant(
+      victim,
+      victim.health + 1,
+      killerId,
+      weaponName,
+      false,
+      killer?.name,
+      source,
+    );
+    return true;
+  }
+
+  debugTeleport(id: string, x: number, y: number): boolean {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const combatant = this.findCombatant(id);
+    if (!combatant || !combatant.alive) return false;
+    const clampedX = Math.max(40, Math.min(ARENA.width - 40, x));
+    const clampedY = Math.max(80, Math.min(ARENA.groundY, y));
+    if (combatant.kind === "human") {
+      combatant.kin.x = clampedX;
+      combatant.kin.y = clampedY;
+      combatant.kin.vx = 0;
+      combatant.kin.vy = 0;
+      combatant.kin.grounded = true;
+    } else {
+      combatant.x = clampedX;
+      combatant.y = clampedY - BOT_FEET_OFFSET;
+      combatant.vx = 0;
+      combatant.vy = 0;
+      combatant.path = [];
+      combatant.pathIndex = 0;
+    }
+    return true;
+  }
+
+  debugEndMatch(): boolean {
+    if (this.phase !== "live") return false;
+    this.timer = endMatchForScore(this.timer);
+    this.finishMatch("time");
+    return true;
+  }
+
+  debugSetInvulnerable(id: string, durationMs: number): boolean {
+    if (!Number.isFinite(durationMs)) return false;
+    const combatant = this.findCombatant(id);
+    if (!combatant) return false;
+    combatant.invulnerableRemainingMs = Math.max(
+      combatant.invulnerableRemainingMs,
+      Math.max(0, durationMs),
+    );
+    return true;
+  }
+
   private combatantSnapshot(combatant: AnyCombatant): OnlineCombatantSnapshot {
     const position = center(combatant);
     const human = combatant.kind === "human" ? combatant : null;
     const bot = combatant.kind === "bot" ? combatant : null;
     const equippedIndex = human?.equippedIndex ?? 0;
-    const weaponDef = human ? PLAYER_WEAPONS[equippedIndex] : PLAYER_WEAPONS[0];
+    const equippedId = human?.weaponIds[equippedIndex] ?? null;
     const weapons: OnlineWeaponSnapshot[] = human
-      ? human.weapons.map((state, index) => this.weaponSnapshot(state, PLAYER_WEAPONS[index]))
+      ? human.weaponIds.map((weaponId, index) =>
+          this.weaponSnapshot(
+            weaponId,
+            human.weapons[index] ?? emptyWeaponState(),
+            index,
+          ),
+        )
       : [];
     const shots = human ? human.shotsFired : 0;
     const hits = human ? human.shotsHit : 0;
@@ -2261,8 +2797,9 @@ export class GameSimulation {
       lastProcessedInputSeq: human?.lastInputSeq ?? 0,
       fuel: human?.kin.jetpack.fuel ?? 0,
       maxFuel: JETPACK_CONFIG.maxFuel,
-      weaponId: human ? weaponDef.id : BOT_WEAPON.id,
+      weaponId: human ? equippedId ?? "" : BOT_WEAPON.id,
       weapons,
+      equippedSlot: equippedIndex,
       eliminations: combatant.eliminations,
       deaths: combatant.deaths,
       accuracy: shots > 0 ? hits / shots : 0,
@@ -2279,19 +2816,36 @@ export class GameSimulation {
   }
 
   private weaponSnapshot(
+    weaponId: string | null,
     state: WeaponState,
-    definition: PlayerWeapon,
+    slotIndex: number,
   ): OnlineWeaponSnapshot {
+    const definition = findPlayerWeapon(weaponId);
+    if (!definition) {
+      return {
+        id: "",
+        name: "EMPTY",
+        shortName: "EMPTY",
+        role: "NO WEAPON",
+        slot: slotIndex + 1,
+        ammo: 0,
+        magazineSize: 0,
+        reloading: false,
+        reloadProgress: 1,
+        owned: false,
+      };
+    }
     return {
       id: definition.id,
       name: definition.name,
       shortName: definition.shortName,
       role: definition.role,
-      slot: definition.slot,
+      slot: slotIndex + 1,
       ammo: state.ammo,
       magazineSize: definition.magazineSize,
       reloading: state.reloading,
       reloadProgress: reloadProgress(state, definition),
+      owned: true,
     };
   }
 }

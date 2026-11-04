@@ -9,6 +9,24 @@ function makeSpark(scene: Phaser.Scene, key: string, color: number, size: number
   graphics.destroy();
 }
 
+function makeVoxel(
+  scene: Phaser.Scene,
+  key: string,
+  color: number,
+  size: number,
+): void {
+  if (scene.textures.exists(key)) return;
+  const graphics = scene.make.graphics({ x: 0, y: 0 }, false);
+  graphics.fillStyle(color, 1);
+  graphics.fillRect(0, 0, size, size);
+  graphics.fillStyle(0xf5f3ec, 0.28);
+  graphics.fillRect(1, 1, size - 2, 2);
+  graphics.fillStyle(0x0c0d0f, 0.24);
+  graphics.fillRect(1, size - 3, size - 2, 2);
+  graphics.generateTexture(key, size, size);
+  graphics.destroy();
+}
+
 function makeBullet(
   scene: Phaser.Scene,
   key: string,
@@ -233,6 +251,11 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makeSpark(scene, "spark-red", 0xe5484d, 6);
   makeSpark(scene, "spark-smoke", 0x9aa0a7, 9);
   makeSpark(scene, "spark-cream", 0xf5f3ec, 5);
+  makeVoxel(scene, "voxel-lime", 0xd7ff2e, 11);
+  makeVoxel(scene, "voxel-copper", 0xc7692f, 10);
+  makeVoxel(scene, "voxel-sky", 0x9bd8f2, 9);
+  makeVoxel(scene, "voxel-cream", 0xf5f3ec, 8);
+  makeVoxel(scene, "voxel-red", 0xe5484d, 10);
   makeBullet(scene, "bullet-player", 0xd7ff2e, 0xf5f3ec);
   makeBullet(scene, "bullet-scatter", 0xc7692f, 0xf4e21c, 13, 8);
   makeBullet(scene, "bullet-precision", 0x9bd8f2, 0xf5f3ec, 34, 6);

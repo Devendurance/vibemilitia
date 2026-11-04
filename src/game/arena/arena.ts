@@ -105,5 +105,7 @@ export const ARENA: ArenaDefinition = {
     { id: "stinking-mid-step", type: "stinking-grenade", x: 1140, y: 1144 },
     { id: "stinking-right-low", type: "stinking-grenade", x: 2200, y: 1144 },
     { id: "stinking-crate-b", type: "stinking-grenade", x: 2326, y: 1232 },
+    { id: "lance-mid-step", type: "vibe-lance", x: 1000, y: 1144 },
+    { id: "lance-right-high", type: "vibe-lance", x: 3250, y: 724 },
   ],
 };

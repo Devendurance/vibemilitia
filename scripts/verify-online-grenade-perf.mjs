@@ -70,6 +70,7 @@ const probe = (page) =>
       grenades: snapshot?.grenades ?? [],
       clouds: snapshot?.toxicClouds ?? [],
       pickups: snapshot?.pickups ?? [],
+      loot: snapshot?.loot ?? [],
       serverTickMs: snapshot?.serverTickMs ?? 0,
       snapshotBytes: snapshot ? JSON.stringify(snapshot).length : 0,
     };
@@ -170,10 +171,35 @@ const throwStinkingAt = (room, snapshot, targetId) => {
   return true;
 };
 
+const browserEliminate = async (page, count) => {
+  return page.evaluate((targetCount) => {
+    const value = window.__VIBE_MILITIA_ONLINE__;
+    const probe = value?.getProbe();
+    const snapshot = probe?.snapshot;
+    if (!value || !probe || !snapshot) return 0;
+    const victims = snapshot.participants
+      .filter(
+        (participant) =>
+          participant.alive && participant.id !== value.sessionId,
+      )
+      .slice(0, targetCount);
+    for (const victim of victims) {
+      probe.testHooks.eliminate(victim.id, "grenade");
+    }
+    return victims.length;
+  }, count);
+};
+
 const browser = await chromium.launch({
   ...(executablePath ? { executablePath } : { channel: "chrome" }),
   headless: !headed,
-  args: ["--enable-webgl", "--ignore-gpu-blocklist"],
+  args: [
+    "--enable-webgl",
+    "--ignore-gpu-blocklist",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+  ],
 });
 const context = await browser.newContext({
   viewport: { width: 1440, height: 900 },
@@ -199,10 +225,17 @@ try {
     `humans=${roomA.humans} bots=${roomA.bots}`,
   );
 
+  const baselineVictims = await browserEliminate(page, 2);
+  await page.waitForTimeout(650);
   await page.waitForTimeout(1200);
   const baselineTicks = await collectTicks(page, 20);
   const baselineFps = await measureFps(page, 2500);
   const baselineState = await probe(page);
+  check(
+    "dynamic loot is active during the baseline measurement",
+    baselineState.loot.length >= 3,
+    `victims=${baselineVictims} loot=${baselineState.loot.length}`,
+  );
 
   await secondPage.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await secondPage.waitForTimeout(800);
@@ -229,6 +262,15 @@ try {
     "phase two has eight humans and no bots",
     filled.humans === 8 && filled.bots === 0,
     `humans=${filled.humans} bots=${filled.bots}`,
+  );
+
+  const stressVictims = await browserEliminate(page, 2);
+  await page.waitForTimeout(500);
+  const lootState = await probe(page);
+  check(
+    "the stress room carries dynamic elimination loot",
+    lootState.loot.length >= 3,
+    `victims=${stressVictims} loot=${lootState.loot.length}`,
   );
 
   // Browser player: one of each grenade, with contact and frag near the feet.
@@ -266,6 +308,12 @@ try {
   const activeGrenades = stressState.grenades.length;
   const activeClouds = stressState.clouds.length;
   const overlap = maxOverlap(stressState.clouds);
+  const peakLoot = Math.max(
+    baselineState.loot.length,
+    lootState.loot.length,
+    flightState.loot.length,
+    stressState.loot.length,
+  );
   console.log("STRESS ENTITIES", {
     participants: stressState.humans + stressState.bots,
     peakGrenades,
@@ -273,6 +321,8 @@ try {
     clouds: activeClouds,
     maxOverlap: overlap,
     pickups: stressState.pickups.length,
+    loot: stressState.loot.length,
+    peakLoot,
     snapshotBytes: stressState.snapshotBytes,
   });
 
@@ -282,6 +332,7 @@ try {
     });
   }
 
+  await page.bringToFront();
   const stressFps = await measureFps(page, 4000);
   const stressTicks = await collectTicks(page, 40);
   const finalState = await probe(page);
@@ -300,6 +351,11 @@ try {
     "the stress scene has overlapping toxic clouds",
     overlap >= 2,
     `maxOverlap=${overlap} clouds=${activeClouds}`,
+  );
+  check(
+    "dynamic loot remains bounded during the stress scene",
+    peakLoot >= 3 && stressState.loot.length <= 48,
+    `peakLoot=${peakLoot} active=${stressState.loot.length}`,
   );
   check(
     "client keeps a playable frame rate",
@@ -336,6 +392,7 @@ try {
     bots: baselineState.bots,
     grenades: baselineState.grenades.length,
     clouds: baselineState.clouds.length,
+    loot: baselineState.loot.length,
     snapshotBytes: baselineState.snapshotBytes,
   });
   console.log("PERF STRESS", {
@@ -349,6 +406,8 @@ try {
     grenades: activeGrenades,
     clouds: activeClouds,
     maxOverlap: overlap,
+    peakLoot,
+    loot: stressState.loot.length,
     snapshotBytes: stressState.snapshotBytes,
     samples: stressTicks.samples,
   });

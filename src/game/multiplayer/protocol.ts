@@ -22,6 +22,7 @@ export interface OnlineWeaponSnapshot {
   magazineSize: number;
   reloading: boolean;
   reloadProgress: number;
+  owned: boolean;
 }
 
 export interface OnlineStanding {
@@ -66,6 +67,7 @@ export interface OnlineCombatantSnapshot {
   maxFuel: number;
   weaponId: string;
   weapons: OnlineWeaponSnapshot[];
+  equippedSlot: number;
   eliminations: number;
   deaths: number;
   accuracy: number;
@@ -115,6 +117,20 @@ export interface OnlinePickupSnapshot {
   respawnIn: number;
 }
 
+export interface OnlineLootSnapshot {
+  id: string;
+  kind: "weapon" | "medkit" | "grenade";
+  weaponId: string | null;
+  weaponName: string | null;
+  ammo: number;
+  grenadeType: GrenadeType | null;
+  x: number;
+  y: number;
+  eliminationId: number;
+  remainingMs: number;
+  createdAtMs: number;
+}
+
 export interface OnlineProjectileSnapshot {
   id: number;
   x: number;
@@ -143,6 +159,7 @@ export interface OnlineSnapshot {
   grenades: OnlineGrenadeSnapshot[];
   toxicClouds: OnlineToxicCloudSnapshot[];
   pickups: OnlinePickupSnapshot[];
+  loot: OnlineLootSnapshot[];
   standings: OnlineStanding[];
   feed: OnlineFeedEntry[];
   roomId: string;
@@ -175,12 +192,16 @@ export type OnlineEvent =
     }
   | {
       type: "elimination";
+      eliminationId: number;
       killerId: string;
       victimId: string;
       killerName: string;
       victimName: string;
       weaponName: string;
       atMs: number;
+      x: number;
+      y: number;
+      lootIds: string[];
     }
   | {
       type: "respawn";
@@ -214,6 +235,8 @@ export type OnlineEvent =
       playerName: string;
       x: number;
       y: number;
+      text?: string;
+      detail?: string;
     }
   | {
       type: "pickup-respawn";
@@ -271,6 +294,35 @@ export type OnlineEvent =
       cloudId: number;
       x: number;
       y: number;
+    }
+  | {
+      type: "loot-collected";
+      lootId: string;
+      kind: "weapon" | "medkit" | "grenade";
+      playerId: string;
+      playerName: string;
+      x: number;
+      y: number;
+      weaponId: string | null;
+      grenadeType: GrenadeType | null;
+      text: string;
+      detail: string;
+    }
+  | {
+      type: "loot-expired";
+      lootId: string;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "weapon-swapped";
+      playerId: string;
+      playerName: string;
+      slot: number;
+      fromWeaponId: string;
+      toWeaponId: string;
+      x: number;
+      y: number;
     };
 
 export interface OnlineInputPayload {
@@ -285,6 +337,7 @@ export interface OnlineInputPayload {
   useMedkit?: boolean;
   grenadeSlot?: number | null;
   throwGrenade?: boolean;
+  swapWeapon?: boolean;
 }
 
 export interface JoinOptions {

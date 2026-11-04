@@ -497,26 +497,63 @@ export function GameHud({
             </div>
           </div>
           <div className="hud-weapon-slots" role="group" aria-label="Weapon selection">
-            {snapshot.weaponSlots.map((slot) => (
-              <button
-                key={slot.id}
-                type="button"
-                className={`hud-weapon-slot${slot.active ? " is-active" : ""}`}
-                onClick={() =>
-                  bridge.send({ type: "equip-weapon", slot: slot.slot - 1 })
-                }
-                aria-pressed={slot.active}
-                disabled={dead || matchEnded}
-                data-testid={`weapon-slot-${slot.slot}`}
-              >
-                <Keycap>{slot.slot}</Keycap>
-                <span className="hud-weapon-slot__name">{slot.shortName}</span>
-                <span className="hud-weapon-slot__ammo">
-                  {slot.ammo}/{slot.magazineSize}
-                </span>
-              </button>
-            ))}
+            {snapshot.weaponSlots.map((slot) => {
+              const empty = !slot.owned;
+              return (
+                <button
+                  key={slot.slot}
+                  type="button"
+                  className={`hud-weapon-slot${slot.active ? " is-active" : ""}${empty ? " is-empty" : ""}`}
+                  onClick={() =>
+                    bridge.send({ type: "equip-weapon", slot: slot.slot - 1 })
+                  }
+                  aria-pressed={slot.active}
+                  aria-label={
+                    empty
+                      ? `Weapon slot ${slot.slot}, empty`
+                      : `Weapon slot ${slot.slot}, ${slot.name}, ${slot.ammo} of ${slot.magazineSize} rounds`
+                  }
+                  disabled={dead || matchEnded || empty}
+                  data-testid={`weapon-slot-${slot.slot}`}
+                  data-owned={slot.owned}
+                >
+                  <Keycap>{slot.slot}</Keycap>
+                  <span className="hud-weapon-slot__name">
+                    {empty ? "EMPTY" : slot.shortName}
+                  </span>
+                  <span className="hud-weapon-slot__ammo">
+                    {empty
+                      ? "--"
+                      : slot.reloading
+                        ? "RELOAD"
+                        : `${slot.ammo}/${slot.magazineSize}`}
+                  </span>
+                </button>
+              );
+            })}
           </div>
+
+          {snapshot.nearbyLootText ? (
+            <div
+              className={`hud-loot-prompt${snapshot.nearbyLootCanSwap ? " is-ready" : ""}`}
+              data-testid="loot-prompt"
+              data-can-swap={snapshot.nearbyLootCanSwap}
+            >
+              <Keycap>E</Keycap>
+              <span className="mono-label">{snapshot.nearbyLootText}</span>
+              {snapshot.nearbyLootCanSwap ? (
+                <button
+                  type="button"
+                  className="hud-loot-prompt__button"
+                  onClick={() => bridge.send({ type: "swap-weapon" })}
+                  disabled={dead || matchEnded}
+                  data-testid="loot-swap"
+                >
+                  SWAP
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           {mode === "online" ? (
             <div
@@ -633,6 +670,7 @@ export function GameHud({
           <span className="hud-control"><Keycap>MOUSE</Keycap><span className="mono-label">AIM</span></span>
           <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
           <span className="hud-control"><Keycap>1</Keycap><Keycap>2</Keycap><Keycap>3</Keycap><span className="mono-label">SWAP</span></span>
+          <span className="hud-control"><Keycap>E</Keycap><span className="mono-label">LOOT SWAP</span></span>
           <span className="hud-control"><Keycap>H</Keycap><span className="mono-label">MEDKIT</span></span>
           <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
           <span className="hud-control"><Keycap>F1</Keycap><span className="mono-label">PHYSICS</span></span>
@@ -656,9 +694,11 @@ export function GameHud({
 
         {supplyToast ? (
           <div className="supply-toast" aria-live="polite" data-testid="supply-toast">
-            <span className="mono-label">SUPPLY ACQUIRED</span>
+            <span className="mono-label">FIELD PICKUP</span>
             <strong className="display">{supplyToast}</strong>
-            <span className="mono-label">+1</span>
+            <span className="mono-label">
+              {snapshot.supplyFeedbackDetail}
+            </span>
           </div>
         ) : null}
       </div>

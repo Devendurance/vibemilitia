@@ -46,6 +46,47 @@ export class FFARoom extends Room {
     this.setSimulationInterval((delta) => this.gameLoop(delta), 1000 / 60);
     this.onMessage("input", (client, payload) => this.onInput(client, payload));
     this.onMessage("rematch", () => this.onRematch());
+    if (process.env.VIBE_MILITIA_TEST_HOOKS === "1") {
+      this.onMessage("debug-eliminate", (client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { victimId?: unknown; source?: unknown };
+        const victimId =
+          typeof value.victimId === "string" ? value.victimId : client.sessionId;
+        const source =
+          value.source === "grenade" || value.source === "toxic"
+            ? value.source
+            : "bullet";
+        this.simulation.debugEliminate(victimId, client.sessionId, source);
+      });
+      this.onMessage("debug-teleport", (client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { x?: unknown; y?: unknown };
+        if (typeof value.x !== "number" || typeof value.y !== "number") return;
+        this.simulation.debugTeleport(client.sessionId, value.x, value.y);
+      });
+      this.onMessage("debug-teleport-bot", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as {
+          id?: unknown;
+          x?: unknown;
+          y?: unknown;
+        };
+        if (
+          typeof value.id !== "string" ||
+          typeof value.x !== "number" ||
+          typeof value.y !== "number"
+        ) {
+          return;
+        }
+        this.simulation.debugTeleport(value.id, value.x, value.y);
+      });
+      this.onMessage("debug-end-match", () => {
+        this.simulation?.debugEndMatch();
+      });
+      this.onMessage("debug-guard", (client) => {
+        this.simulation?.debugSetInvulnerable(client.sessionId, 600_000);
+      });
+    }
   }
 
   onAuth(_client: Client, options: JoinOptions): AuthenticatedJoinOptions {
@@ -168,6 +209,7 @@ export class FFARoom extends Room {
           ? null
           : Number(value.grenadeSlot),
       throwGrenade: Boolean(value.throwGrenade),
+      swapWeapon: Boolean(value.swapWeapon),
     });
   }
 
