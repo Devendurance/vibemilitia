@@ -46,4 +46,4 @@ P3B-A world pickups and medkits are implemented and verified. P3B-B and P3B-C ha
 
 ## Checkpoint
 
-P3B-A code, tests and docs are committed at `PENDING` on `main`. P3B-B has not started.
+P3B-A code, tests and docs are committed at `73bc987` on `main`. P3B-B has not started.
