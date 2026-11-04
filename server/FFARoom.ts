@@ -1,6 +1,7 @@
 import { Client, Room } from "colyseus";
 import { GameSimulation } from "../src/game/multiplayer/GameSimulation";
 import {
+  DEFAULT_MATCH_COUNTDOWN_MS,
   MAX_COMBATANTS,
   SNAPSHOT_INTERVAL_MS,
   sanitizeGuestName,
@@ -21,11 +22,17 @@ export class FFARoom extends Room {
   private lastMetadataAt = 0;
   private rateBuckets = new Map<string, RateBucket>();
   private matchName = "SECTOR 07";
-  private metadataWritePending = false;
+  private countdownMs = DEFAULT_MATCH_COUNTDOWN_MS;
+  private lastPhase: string | null = null;
+  private metadataChain: Promise<void> = Promise.resolve();
 
   async onCreate(options: JoinOptions & { roomName?: string }): Promise<void> {
     this.maxClients = MAX_COMBATANTS;
     this.autoDispose = true;
+    const configured = Number(process.env.MATCH_COUNTDOWN_MS);
+    this.countdownMs = Number.isFinite(configured)
+      ? Math.max(0, Math.min(60_000, configured))
+      : DEFAULT_MATCH_COUNTDOWN_MS;
     this.matchName = `${sanitizeGuestName(options.roomName ?? "SECTOR 07")
       .toUpperCase()} // ${this.roomId.slice(0, 4).toUpperCase()}`;
     await this.setMetadata(this.buildMetadata());
@@ -52,6 +59,7 @@ export class FFARoom extends Room {
       this.simulation = new GameSimulation({
         roomId: this.roomId,
         roomName: this.matchName,
+        countdownMs: this.countdownMs,
       });
     }
     const result = this.simulation.addHuman(
@@ -61,6 +69,7 @@ export class FFARoom extends Room {
     if (!result.ok) {
       throw new Error(result.error ?? "JOIN_REJECTED");
     }
+    this.lastPhase = this.simulation.phase;
     client.send("snapshot", this.simulation.snapshot());
     client.send("events", this.simulation.drainEvents());
     this.queueMetadataUpdate();
@@ -90,6 +99,12 @@ export class FFARoom extends Room {
     const events = this.simulation.drainEvents();
     if (events.length > 0) {
       this.broadcast("events", events);
+    }
+
+    const phase = this.simulation.phase;
+    if (phase !== this.lastPhase) {
+      this.lastPhase = phase;
+      this.queueMetadataUpdate();
     }
 
     const now = Date.now();
@@ -156,6 +171,7 @@ export class FFARoom extends Room {
 
   private buildMetadata(): OnlineRoomMetadata {
     const snapshot = this.simulation?.snapshot();
+    const joinable = snapshot?.joinable ?? true;
     return {
       name: this.matchName,
       mode: "ffa",
@@ -163,19 +179,18 @@ export class FFARoom extends Room {
       humans: snapshot?.humans ?? 0,
       bots: snapshot?.bots ?? 0,
       maxCombatants: MAX_COMBATANTS,
-      joinable: snapshot?.joinable ?? false,
+      joinable,
+      open: joinable,
       remainingMs: snapshot?.remainingMs ?? 90_000,
+      countdownMs: snapshot?.countdownRemainingMs ?? 0,
     };
   }
 
   private queueMetadataUpdate(): void {
-    if (this.metadataWritePending) return;
-    this.metadataWritePending = true;
     this.lastMetadataAt = Date.now();
-    this.setMetadata(this.buildMetadata())
-      .catch(() => undefined)
-      .finally(() => {
-        this.metadataWritePending = false;
-      });
+    const metadata = this.buildMetadata();
+    this.metadataChain = this.metadataChain
+      .then(() => this.setMetadata(metadata))
+      .catch(() => undefined);
   }
 }

@@ -14,7 +14,11 @@ app.get("/health", (_request: Request, response: Response) => {
 
 const server = new Server({ transport });
 server.define(LOBBY_ROOM, LobbyRoom);
-server.define(FFA_ROOM, FFARoom);
+server
+  .define(FFA_ROOM, FFARoom)
+  .filterBy(["open"])
+  .sortBy({ clients: -1 })
+  .enableRealtimeListing();
 
 async function main(): Promise<void> {
   await server.listen(port);

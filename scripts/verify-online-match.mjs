@@ -71,6 +71,7 @@ const probe = (page) =>
       phase: value.snapshot?.phase ?? null,
       endReason: value.snapshot?.endReason ?? null,
       remainingMs: Math.round(value.snapshot?.remainingMs ?? 0),
+      countdownMs: Math.round(value.snapshot?.countdownRemainingMs ?? 0),
       winnerName: value.snapshot?.winnerName ?? null,
       humans: value.snapshot?.humans ?? 0,
       bots: value.snapshot?.bots ?? 0,
@@ -99,8 +100,15 @@ try {
   const roomUrl = pageA.url();
   const initialA = await probe(pageA);
   const roomId = initialA.roomId;
-  console.log("ROOM", roomId, roomUrl);
-  check("host creates a live room", initialA.phase === "live");
+  console.log("ROOM", roomId, roomUrl, {
+    phase: initialA.phase,
+    countdownMs: initialA.countdownMs,
+  });
+  check(
+    "host creates a countdown room",
+    initialA.phase === "countdown" && initialA.countdownMs > 0,
+    `phase=${initialA.phase} countdown=${initialA.countdownMs}`,
+  );
 
   await pageB.goto(roomUrl, { waitUntil: "networkidle" });
   await pageB.waitForTimeout(500);
@@ -108,7 +116,11 @@ try {
   await waitOnlineReady(pageB);
   const joinedB = await probe(pageB);
   check("second browser joins the same room", joinedB.roomId === roomId);
-  check("two humans replace two bots", joinedB.humans >= 2 && joinedB.bots <= 6);
+  check(
+    "second browser joins during the countdown without bots",
+    joinedB.phase === "countdown" && joinedB.humans >= 2 && joinedB.bots === 0,
+    `phase=${joinedB.phase} humans=${joinedB.humans} bots=${joinedB.bots}`,
+  );
 
   // Fill remaining seats with headless SDK clients so bots cannot reach the
   // score limit before the clock. Six clients + two browsers = eight seats.
@@ -131,6 +143,7 @@ try {
     phase: filled.phase,
   });
   check("eight human seats are enforced", filled.humans === 8, `humans=${filled.humans}`);
+  check("full human room starts immediately", filled.phase === "live", `phase=${filled.phase}`);
   check("all bot seats are replaced", filled.bots === 0, `bots=${filled.bots}`);
 
   let lastA = null;

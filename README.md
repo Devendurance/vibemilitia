@@ -29,10 +29,15 @@ npm start
 
 The Colyseus server listens on port `2567` by default. Set `PORT` for the server and `NEXT_PUBLIC_COLYSEUS_URL` at build time when the client and server do not share the default local URL.
 
+New rooms use a 10-second pre-match countdown. Override it with `MATCH_COUNTDOWN_MS` on the game server. The value is clamped from 0 to 60000 milliseconds.
+
 ## Match rules
 
 - Local mode starts with four combatants: VIBER-010 and three bot drones.
-- Online rooms hold eight combatant slots. The first human starts a room with seven bots. Each new human replaces one bot without resetting the match, and a disconnect returns a bot to the empty seat.
+- Online rooms hold eight combatant slots. A new room starts a short countdown. Humans can join during the countdown, and bots fill every empty seat when it expires. If all eight human seats fill, the match starts immediately.
+- Before the countdown ends, combat input is held and the 90-second clock has not started.
+- Humans joining a live room replace a bot without resetting the match. A disconnect returns a bot to the empty seat.
+- Quick Match prefers the most populated open room with a free human seat, then creates another room when the open rooms fill.
 - 90-second match.
 - First to 10 eliminations wins immediately.
 - If the clock expires, the highest score wins. Ties break on fewer deaths.
@@ -89,6 +94,9 @@ Each weapon has its own magazine state, weapon texture, projectile texture, muzz
 The `/online` route adds a Colyseus lobby and independent free-for-all rooms. The local route at `/` remains available and does not depend on the game server.
 
 - Create a room, quick match into an open room, browse live rooms, or open an invite link.
+- New rooms count down before combat. The HUD, lobby card and room metadata share the same countdown and phase state.
+- Quick Match uses server-side matchmaking. It filters to open rooms, sorts by the most connected humans, and creates a new room when existing rooms fill.
+- Full-room and ended-room races retry before falling back to a fresh room, so simultaneous joins are not stranded.
 - Rooms run concurrently with their own simulation, clock, leaderboard, bots, projectiles and results.
 - The Node server owns movement, health, ammunition, projectile flight, damage, eliminations, respawns, bots, the match clock and the outcome.
 - Browsers send input frames only. They never send positions, hit confirmations or scores.
@@ -170,8 +178,8 @@ src/
     bridge.ts              typed HUD snapshot and command bridge
     GameApp.ts             local Phaser 4 configuration
 server/
-  index.ts                 Colyseus bootstrap, lobby and health route
-  FFARoom.ts               room lifecycle, input limits, bot seats, metadata
+  index.ts                 Colyseus bootstrap, lobby, matchmaking order, health route
+  FFARoom.ts               countdown, input limits, bot seats, live metadata
 scripts/                   asset preparation and browser verification
 ```
 
@@ -192,6 +200,8 @@ Run the browser suites while Next and the game server are running. Set `BASE_URL
 
 ```bash
 npm run verify:browser
+npm run verify:online:countdown
+npm run verify:online:matchmaking
 npm run verify:online:match
 npm run verify:online:rooms
 npm run verify:online:perf
@@ -199,6 +209,10 @@ HEADED=1 npm run verify:online:perf
 ```
 
 `verify:browser` covers P1 local mode. It verifies cutout transparency, four-combatant boot, all three weapons, movement and jetpack, scoring, bot navigation, player death and respawn, results and replay.
+
+`verify:online:countdown` creates one room, checks the countdown HUD and clock, opens a second lobby tab and checks the room card, then waits for bots to fill the seats and verifies the live HUD and lobby card.
+
+`verify:online:matchmaking` checks the most-populated-room preference, launches 15 concurrent Quick Match joins, verifies the 8 + 7 split, waits for the second room to count down and fill its bot, then checks the next joins and an independent Create Room.
 
 `verify:online:match` opens two independent Chromium contexts in one room, fills the other six seats with SDK clients, waits for the 90-second clock, checks identical results on both browsers, then clicks replay and checks both clients return to a live match with reset scores.
 
@@ -209,15 +223,19 @@ HEADED=1 npm run verify:online:perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 44 tests pass
+- `npm test`: 46 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass
-- `npm run verify:online:match`: 21/21 checks pass, 8 humans, time-limit result, identical standings, replay reset, 0.06 ms average server tick
-- `npm run verify:online:rooms`: 15/15 checks pass, including full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 52 to 60 fps while moving and firing, 0.57 ms average server tick, 0.80 ms p95, 8.82 ms max
-- Two-browser sync: both clients observed identical human positions at x 640 to x 1606, bots remained server-controlled, and each client saw the other human's projectiles
-- Disconnect backfill: closing one browser left the other in a live match with one human and seven bots
+- `npm run verify:online:countdown`: 16/16 checks pass, including HUD and lobby card synchronization
+- `npm run verify:online:matchmaking`: 11/11 checks pass
+- 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
+- The eight-human room started immediately. The seven-human room counted down, then filled one bot and started.
+- `verify:online:match`: 22/22 checks pass, 8 humans, time-limit result, identical standings, replay reset, 0.07 ms average server tick
+- `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors
+- `HEADED=1 npm run verify:online:perf`: 58 fps while moving and firing, 0.74 ms average server tick, 1.52 ms p95, 10.13 ms max
+- `MATCH_COUNTDOWN_MS=2500` on a separate server produced a 2.5-second countdown and a live match with seven bots
+- Two-browser sync: both clients observed identical human positions and projectiles, and disconnect backfill left a live match with one human and seven bots
 
 ## Known limitations
 
@@ -225,26 +243,29 @@ Last verification against the production build:
 - The client predicts local movement and renders remote interpolation, but there is no historical lag compensation for hit registration. High-latency shots can feel inconsistent.
 - Ended rooms stay ended until a current occupant starts a replay. New players need to join or create another room.
 - Room discovery uses the Colyseus lobby and in-memory room metadata. It is not a persistent matchmaking service and does not survive a server restart.
+- Combat input is frozen during the pre-match countdown. Players can aim but cannot move, fire or use the jetpack until the clock starts.
+- Under extreme simultaneous contention, Quick Match can fall back to creating a fresh room after repeated seat races.
 - All bots share the same drone chassis and burst weapon. Their callsigns and scores differ, but their loadouts do not.
 - The character body is static because the NFT is a 3/4 portrait. Weapon and effects are separate layers.
 - There is no audio yet.
 - The arena uses runtime-baked primitive art, not a final authored tileset.
 - Guest names and room membership are temporary. There are no accounts, wallets, XP or persistent stats.
 
-## Out of scope for P2
+## Out of scope for P2.5
 
 - Accounts, wallets and blockchain integration.
 - XP, progression, unlocks or ranked matchmaking.
 - New maps, characters or loadouts.
+- Grenades, pickups or new game modes.
 - Spectator tools, voice chat or tournaments.
 - Final character animation. The source NFT perspective does not support it without new authored art.
 
 ## Next steps
 
-1. Add reconnection tokens and mid-match resume.
-2. Add server-side lag compensation and a configurable latency test harness.
-3. Add audio and richer hit confirmation through the existing effects layer.
-4. Give bots distinct loadouts and personalities using the existing weapon definitions.
+1. Slice B: render online bots with the Viber character presentation and player-style weapons. This waits for approval after Slice A verification.
+2. Add reconnection tokens and mid-match resume.
+3. Add server-side lag compensation and a configurable latency test harness.
+4. Add audio and richer hit confirmation through the existing effects layer.
 5. Add deployment configuration for separate client and game-server hosts.
 6. Replace runtime-baked arena primitives with authored tilesets once the level design is locked.
 

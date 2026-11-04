@@ -42,6 +42,11 @@ try {
     null,
     { timeout: 30000 },
   );
+  await page.waitForFunction(
+    () => window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.phase === "live",
+    null,
+    { timeout: 30000 },
+  );
   await page.waitForTimeout(1800);
 
   const canvas = await page.locator("canvas").boundingBox();

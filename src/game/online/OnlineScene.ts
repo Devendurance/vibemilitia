@@ -163,6 +163,7 @@ export class OnlineScene extends Phaser.Scene {
       this.publishHud(true);
     }
 
+    const live = this.latestSnapshot?.phase === "live";
     const local = this.localSnapshot();
     if (local?.alive) {
       if (!this.predictor) {
@@ -172,36 +173,41 @@ export class OnlineScene extends Phaser.Scene {
         this.predictor.grounded = local.grounded;
         this.predictor.jetpack.fuel = local.fuel;
       }
-      stepHumanKinematics(
-        this.predictor,
-        {
-          moveX: frame.moveX,
-          jumpPressed: frame.jumpPressed,
-          jumpHeld: frame.jumpHeld,
-        },
-        dtMs,
-        {
-          width: ARENA.width,
-          height: ARENA.height,
-          platforms: this.arenaBuild.platformRects,
-        },
-      );
+      if (live) {
+        stepHumanKinematics(
+          this.predictor,
+          {
+            moveX: frame.moveX,
+            jumpPressed: frame.jumpPressed,
+            jumpHeld: frame.jumpHeld,
+          },
+          dtMs,
+          {
+            width: ARENA.width,
+            height: ARENA.height,
+            platforms: this.arenaBuild.platformRects,
+          },
+        );
+      }
+      const aimX = this.predictor.x + 28;
+      const aimY = this.predictor.y - 58;
       this.localAim = Math.atan2(
-        frame.aimWorld.y - (this.predictor.y - 58),
-        frame.aimWorld.x - (this.predictor.x + 28),
+        frame.aimWorld.y - aimY,
+        frame.aimWorld.x - aimX,
       );
     } else {
       this.predictor = null;
     }
 
     if (
+      live &&
       local?.alive &&
       frame.fire &&
       !this.wasFiring &&
-      this.latestSnapshot?.phase === "live"
+      this.predictor
     ) {
       const active = local.weapons.find((weapon) => weapon.id === local.weaponId);
-      if (active && active.ammo > 0 && !active.reloading && this.predictor) {
+      if (active && active.ammo > 0 && !active.reloading) {
         const localView = this.views.get(this.room.sessionId);
         localView?.onShot();
         const muzzleX = this.predictor.x + 28 + Math.cos(this.localAim) * 66;
@@ -212,15 +218,21 @@ export class OnlineScene extends Phaser.Scene {
     }
     this.wasFiring = frame.fire;
 
-    this.pendingJump ||= frame.jumpPressed;
-    this.pendingReload ||= frame.reloadPressed;
-    if (frame.weaponSlotPressed !== null) {
-      this.pendingWeapon = frame.weaponSlotPressed;
+    if (live) {
+      this.pendingJump ||= frame.jumpPressed;
+      this.pendingReload ||= frame.reloadPressed;
+      if (frame.weaponSlotPressed !== null) {
+        this.pendingWeapon = frame.weaponSlotPressed;
+      }
+    } else {
+      this.pendingJump = false;
+      this.pendingReload = false;
+      this.pendingWeapon = null;
     }
 
     if (
       this.latestSnapshot &&
-      this.latestSnapshot.phase === "live" &&
+      live &&
       this.sendAccumulator >= 33 &&
       local
     ) {
@@ -334,6 +346,12 @@ export class OnlineScene extends Phaser.Scene {
     if (this.previousPhase === "ended" && snapshot.phase === "live") {
       this.lastPlayerKill = null;
       this.localDamageSeq = 0;
+    }
+    if (this.previousPhase === "countdown" && snapshot.phase === "live") {
+      this.pendingJump = false;
+      this.pendingReload = false;
+      this.pendingWeapon = null;
+      this.wasFiring = false;
     }
     this.previousPhase = snapshot.phase;
     this.publishHud(true);
@@ -483,6 +501,8 @@ export class OnlineScene extends Phaser.Scene {
       aimAngle: local?.aimAngle ?? this.localAim,
       matchPhase: snapshot.phase,
       matchTimeRemainingMs: snapshot.remainingMs,
+      matchCountdownMs: snapshot.countdownRemainingMs,
+      matchCountdownDurationMs: snapshot.countdownDurationMs,
       matchDurationMs: snapshot.durationMs,
       matchScoreLimit: snapshot.scoreLimit,
       matchEndReason: snapshot.endReason,

@@ -258,6 +258,22 @@ export function OnlineShell() {
     });
   }, []);
 
+  const adoptRoom = useCallback(
+    async (room: OnlineRoom) => {
+      if (!mountedRef.current) {
+        await room.leave();
+        return;
+      }
+      leavingRef.current = false;
+      joinedRef.current = room;
+      attachRoomHandlers(room);
+      setJoinedRoom(room);
+      window.history.replaceState(null, "", `/online?room=${room.roomId}`);
+      setInviteRoomId(room.roomId);
+    },
+    [attachRoomHandlers],
+  );
+
   const joinRoom = useCallback(
     async (roomId?: string) => {
       const client = clientRef.current;
@@ -274,20 +290,7 @@ export function OnlineShell() {
               name: guest,
               roomName: "SECTOR 07",
             });
-        if (!mountedRef.current) {
-          await room.leave();
-          return;
-        }
-        leavingRef.current = false;
-        joinedRef.current = room;
-        attachRoomHandlers(room);
-        setJoinedRoom(room);
-        window.history.replaceState(
-          null,
-          "",
-          `/online?room=${room.roomId}`,
-        );
-        setInviteRoomId(room.roomId);
+        await adoptRoom(room);
       } catch (joinError) {
         if (mountedRef.current) {
           setError(
@@ -302,22 +305,59 @@ export function OnlineShell() {
         if (mountedRef.current) setJoining(false);
       }
     },
-    [attachRoomHandlers, joining, name],
+    [adoptRoom, joining, name],
   );
 
   const quickMatch = useCallback(async () => {
-    const open = rooms
-      .filter((room) => {
-        const metadata = room.metadata;
-        return (
-          (metadata?.joinable ?? true) &&
-          room.clients < room.maxClients &&
-          metadata?.phase !== "ended"
+    const client = clientRef.current;
+    if (!client || joining) return;
+    const guest = name.trim() || randomGuestName();
+    window.localStorage.setItem("vibe-militia-guest", guest);
+    setName(guest);
+    setError(null);
+    setJoining(true);
+    try {
+      let room: OnlineRoom | null = null;
+      for (let attempt = 0; attempt < 4 && !room; attempt += 1) {
+        try {
+          room = await client.joinOrCreate("ffa", {
+            name: guest,
+            roomName: "SECTOR 07",
+            open: true,
+          });
+        } catch (attemptError) {
+          const message =
+            attemptError instanceof Error ? attemptError.message : "";
+          if (
+            attempt >= 3 ||
+            !/full|locked|ended|seat|matchmake/i.test(message)
+          ) {
+            throw attemptError;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 180));
+        }
+      }
+      if (!room) {
+        room = await client.create("ffa", {
+          name: guest,
+          roomName: "SECTOR 07",
+        });
+      }
+      await adoptRoom(room);
+    } catch (joinError) {
+      if (mountedRef.current) {
+        setError(
+          explainRoomError(
+            joinError instanceof Error
+              ? joinError.message
+              : "Could not find a room",
+          ),
         );
-      })
-      .sort((a, b) => b.clients - a.clients)[0];
-    await joinRoom(open?.roomId);
-  }, [joinRoom, rooms]);
+      }
+    } finally {
+      if (mountedRef.current) setJoining(false);
+    }
+  }, [adoptRoom, joining, name]);
 
   const leaveRoom = useCallback(async () => {
     const room = joinedRef.current;
@@ -361,8 +401,8 @@ export function OnlineShell() {
             <span className="hud-brand">VIBE MILITIA // ONLINE</span>
             <h1 className="display online-title">FREE FOR ALL</h1>
             <p className="online-lead">
-              Server-authoritative matches. Eight combatant slots, bot backfill,
-              and a ninety second clock.
+              Server-authoritative matches. Eight combatant slots, a short
+              pre-match countdown, bot backfill, and a ninety second clock.
             </p>
           </div>
           <Link className="online-back" href="/">
@@ -453,8 +493,24 @@ export function OnlineShell() {
                     Boolean(metadata?.joinable) &&
                     metadata?.phase !== "ended" &&
                     room.clients < room.maxClients;
+                  const countdown = metadata?.phase === "countdown";
+                  const countdownSeconds = Math.max(
+                    0,
+                    Math.ceil((metadata?.countdownMs ?? 0) / 1000),
+                  );
+                  const roomClock = countdown
+                    ? `STARTING ${countdownSeconds}S`
+                    : metadata?.phase === "waiting"
+                      ? "WAITING"
+                      : `${(metadata?.remainingMs ?? 90_000) / 1000 | 0}s LEFT`;
                   return (
-                    <article className="online-room-card" key={room.roomId}>
+                    <article
+                      className="online-room-card"
+                      key={room.roomId}
+                      data-room-id={room.roomId}
+                      data-room-phase={metadata?.phase ?? "waiting"}
+                      data-room-countdown={Math.round(metadata?.countdownMs ?? 0)}
+                    >
                       <div className="online-room-card__copy">
                         <div className="online-room-card__head">
                           <strong className="display">
@@ -463,13 +519,12 @@ export function OnlineShell() {
                           <span
                             className={`hud-pill${joinable ? " hud-pill--live" : ""}`}
                           >
-                            {joinable ? "OPEN" : "CLOSED"}
+                            {countdown ? "STARTING" : joinable ? "OPEN" : "CLOSED"}
                           </span>
                         </div>
                         <span className="mono-label">
                           {metadata?.humans ?? room.clients} HUMAN //{" "}
-                          {metadata?.bots ?? 0} BOT //{" "}
-                          {(metadata?.remainingMs ?? 90_000) / 1000 | 0}s LEFT
+                          {metadata?.bots ?? 0} BOT // {roomClock}
                         </span>
                         <span className="mono-label online-room-card__id">
                           ROOM {room.roomId}
@@ -507,6 +562,7 @@ export function OnlineShell() {
                 <li>90 second free-for-all</li>
                 <li>First to 10 eliminations</li>
                 <li>8 combatant slots per room</li>
+                <li>Countdown fills empty seats with bots</li>
                 <li>Humans replace bots on join</li>
                 <li>Bots backfill disconnected seats</li>
               </ul>
@@ -529,7 +585,7 @@ export function OnlineShell() {
           </aside>
         </div>
         <footer className="online-footer mono-label">
-          P2 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . NO WALLET REQUIRED
+          P2.5 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . NO WALLET REQUIRED
         </footer>
       </div>
     </main>

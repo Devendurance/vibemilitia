@@ -8,15 +8,49 @@ function runTicks(sim: GameSimulation, count: number): void {
 }
 
 describe("authoritative match simulation", () => {
-  it("starts with bots filling the remaining slots", () => {
-    const sim = new GameSimulation({ roomId: "room-a", roomName: "Arena A" });
+  it("holds a countdown, then fills bots and starts the match", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 5_000,
+    });
     expect(sim.addHuman("one", "ONE").ok).toBe(true);
-    expect(sim.snapshot().humans).toBe(1);
-    expect(sim.snapshot().bots).toBe(7);
-    expect(sim.snapshot().maxCombatants).toBe(8);
+    const waiting = sim.snapshot();
+    expect(waiting.phase).toBe("countdown");
+    expect(waiting.humans).toBe(1);
+    expect(waiting.bots).toBe(0);
+    expect(waiting.countdownRemainingMs).toBe(5_000);
+    expect(waiting.remainingMs).toBe(90_000);
+
     expect(sim.addHuman("two", "TWO").ok).toBe(true);
     expect(sim.snapshot().humans).toBe(2);
-    expect(sim.snapshot().bots).toBe(6);
+    expect(sim.snapshot().bots).toBe(0);
+
+    runTicks(sim, 60 * 4);
+    expect(sim.snapshot().phase).toBe("countdown");
+    runTicks(sim, 70);
+    const live = sim.snapshot();
+    expect(live.phase).toBe("live");
+    expect(live.humans).toBe(2);
+    expect(live.bots).toBe(6);
+    expect(live.maxCombatants).toBe(8);
+    expect(live.remainingMs).toBeGreaterThan(89_000);
+  });
+
+  it("starts immediately when all eight human seats fill", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 10_000,
+    });
+    for (let index = 0; index < 8; index += 1) {
+      expect(sim.addHuman(`human-${index}`, `HUMAN-${index}`).ok).toBe(true);
+    }
+    const live = sim.snapshot();
+    expect(live.phase).toBe("live");
+    expect(live.humans).toBe(8);
+    expect(live.bots).toBe(0);
+    expect(live.countdownRemainingMs).toBe(0);
   });
 
   it("accepts movement inputs and advances the server position", () => {
@@ -24,6 +58,7 @@ describe("authoritative match simulation", () => {
       roomId: "room-a",
       roomName: "Arena A",
       botsEnabled: false,
+      countdownMs: 0,
     });
     sim.addHuman("one", "ONE");
     const start = sim.snapshot().participants[0];
@@ -43,11 +78,38 @@ describe("authoritative match simulation", () => {
     expect(after!.lastProcessedInputSeq).toBe(1);
   });
 
+  it("ignores input before the countdown ends", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 5_000,
+    });
+    sim.addHuman("one", "ONE");
+    const start = sim.snapshot().participants[0];
+    sim.applyInput("one", {
+      seq: 1,
+      moveX: 1,
+      jump: false,
+      jumpHeld: false,
+      fire: false,
+      reload: false,
+      weapon: null,
+      aim: 0,
+    });
+    runTicks(sim, 30);
+    const during = sim.snapshot();
+    expect(during.phase).toBe("countdown");
+    expect(during.participants[0].x).toBe(start.x);
+    expect(during.participants[0].lastProcessedInputSeq).toBe(0);
+  });
+
   it("ignores malformed or stale input", () => {
     const sim = new GameSimulation({
       roomId: "room-a",
       roomName: "Arena A",
       botsEnabled: false,
+      countdownMs: 0,
     });
     sim.addHuman("one", "ONE");
     sim.applyInput("one", {
@@ -89,6 +151,7 @@ describe("authoritative match simulation", () => {
       roomId: "room-a",
       roomName: "Arena A",
       botsEnabled: false,
+      countdownMs: 0,
     });
     sim.addHuman("one", "ONE");
     runTicks(sim, 60 * 91);
@@ -103,7 +166,11 @@ describe("authoritative match simulation", () => {
   });
 
   it("backs a disconnected human seat with a bot", () => {
-    const sim = new GameSimulation({ roomId: "room-a", roomName: "Arena A" });
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 0,
+    });
     sim.addHuman("one", "ONE");
     sim.addHuman("two", "TWO");
     expect(sim.snapshot().bots).toBe(6);

@@ -3,8 +3,9 @@ export const LOBBY_ROOM = "lobby";
 export const MAX_COMBATANTS = 8;
 export const SNAPSHOT_INTERVAL_MS = 50;
 export const SERVER_TICK_MS = 1000 / 60;
+export const DEFAULT_MATCH_COUNTDOWN_MS = 10_000;
 
-export type MatchPhase = "live" | "ended";
+export type MatchPhase = "countdown" | "live" | "ended";
 export type EndReason = "time" | "score" | null;
 export type PlayerKind = "human" | "bot";
 
@@ -86,6 +87,8 @@ export interface OnlineSnapshot {
   endReason: EndReason;
   remainingMs: number;
   durationMs: number;
+  countdownRemainingMs: number;
+  countdownDurationMs: number;
   scoreLimit: number;
   winnerName: string | null;
   participants: OnlineCombatantSnapshot[];
@@ -167,6 +170,7 @@ export interface OnlineInputPayload {
 export interface JoinOptions {
   name?: string;
   roomName?: string;
+  open?: boolean;
 }
 
 export interface OnlineRoomMetadata {
@@ -177,7 +181,9 @@ export interface OnlineRoomMetadata {
   bots: number;
   maxCombatants: number;
   joinable: boolean;
+  open: boolean;
   remainingMs: number;
+  countdownMs: number;
 }
 
 export function sanitizeGuestName(value: unknown): string {

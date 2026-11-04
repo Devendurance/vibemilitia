@@ -58,10 +58,11 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
   const previousHealth = useRef(snapshot.health);
   const low = isLowHealth(snapshot.health, snapshot.maxHealth);
   const matchEnded = snapshot.matchPhase === "ended";
-  const dead = snapshot.isDead && !matchEnded;
+  const matchStarting = snapshot.matchPhase === "countdown";
+  const dead = snapshot.isDead && !matchEnded && !matchStarting;
   const bootVisible = !snapshot.ready || !booted;
-  const timeCritical = snapshot.matchTimeRemainingMs <= 15_000;
-  const timeWarning = snapshot.matchTimeRemainingMs <= 30_000;
+  const timeCritical = !matchStarting && snapshot.matchTimeRemainingMs <= 15_000;
+  const timeWarning = !matchStarting && snapshot.matchTimeRemainingMs <= 30_000;
   const visibleFeed = snapshot.feed
     .filter((entry) => snapshot.uptimeMs - entry.atMs < 5000)
     .slice(-3);
@@ -116,6 +117,8 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
         data-hud-uptime={Math.round(snapshot.uptimeMs)}
         data-hud-health={snapshot.health}
         data-hud-standings={snapshot.standings.length}
+        data-hud-phase={snapshot.matchPhase}
+        data-hud-countdown={Math.round(snapshot.matchCountdownMs)}
       >
         <div
           className="hud-damage"
@@ -140,7 +143,7 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
             <div className="hud-identity__meta">
               <span className="hud-pill hud-pill--live">
                 <i className="live-dot" />
-                {matchEnded ? "FINAL" : "LIVE"}
+                {matchEnded ? "FINAL" : matchStarting ? "STARTING" : "LIVE"}
               </span>
               <span className="mono-label">
                 {mode === "online"
@@ -161,10 +164,16 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
             <span className="hud-matchbar__strong">FREE FOR ALL</span>
             <span className="hud-matchbar__muted">SECTOR 07</span>
           </div>
-          <div className="hud-matchbar__clock">
-            <span className="mono-label">TIME</span>
+          <div className="hud-matchbar__clock" data-testid="match-clock-value">
+            <span className="mono-label">
+              {matchStarting ? "START IN" : "TIME"}
+            </span>
             <strong className="display">
-              {formatMatchClock(snapshot.matchTimeRemainingMs)}
+              {formatMatchClock(
+                matchStarting
+                  ? snapshot.matchCountdownMs
+                  : snapshot.matchTimeRemainingMs,
+              )}
             </strong>
           </div>
           <div className="hud-matchbar__limit">
@@ -172,9 +181,11 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
             <span className={`hud-pill${timeCritical ? " hud-pill--danger" : ""}`}>
               {matchEnded
                 ? "MATCH OVER"
-                : timeCritical
-                  ? `FINAL ${Math.ceil(snapshot.matchTimeRemainingMs / 1000)}`
-                  : `${placementLabel(snapshot.playerPlacement)} OF ${snapshot.standings.length || 4}`}
+                : matchStarting
+                  ? "MATCH STARTING"
+                  : timeCritical
+                    ? `FINAL ${Math.ceil(snapshot.matchTimeRemainingMs / 1000)}`
+                    : `${placementLabel(snapshot.playerPlacement)} OF ${snapshot.standings.length || 4}`}
             </span>
           </div>
         </div>
@@ -519,7 +530,7 @@ export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
         </div>
         <span className="boot-legal mono-label">
           {mode === "online"
-            ? "P2 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . SERVER AUTHORITATIVE"
+            ? "P2.5 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . SERVER AUTHORITATIVE"
             : "P1 BUILD . ORIGINAL VIBE VIBERS ARTWORK . LOCAL FREE FOR ALL"}
         </span>
       </div>

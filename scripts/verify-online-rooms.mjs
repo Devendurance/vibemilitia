@@ -80,6 +80,7 @@ const probe = (page) =>
       endReason: value.snapshot?.endReason ?? null,
       humans: value.snapshot?.humans ?? 0,
       bots: value.snapshot?.bots ?? 0,
+      countdownMs: Math.round(value.snapshot?.countdownRemainingMs ?? 0),
       tick: value.snapshot?.tick ?? 0,
       humansList: (value.snapshot?.participants ?? [])
         .filter((entry) => entry.kind === "human")
@@ -124,11 +125,15 @@ try {
   });
   check("each browser owns a distinct room", roomA.roomId !== roomB.roomId);
   check(
-    "each room starts with one human and seven bots",
-    roomA.humans === 1 &&
-      roomA.bots === 7 &&
+    "each room starts a countdown with one human and no bots",
+    roomA.phase === "countdown" &&
+      roomA.countdownMs > 0 &&
+      roomA.humans === 1 &&
+      roomA.bots === 0 &&
+      roomB.phase === "countdown" &&
+      roomB.countdownMs > 0 &&
       roomB.humans === 1 &&
-      roomB.bots === 7,
+      roomB.bots === 0,
   );
   const overlap = roomA.humansList.filter((entry) =>
     roomB.humansList.some((other) => other.id === entry.id),
@@ -156,8 +161,30 @@ try {
   }
   await pageA.waitForTimeout(800);
   const full = await probe(pageA);
-  console.log("FULL", { humans: full.humans, bots: full.bots });
-  check("room reaches eight human seats", full.humans === 8 && full.bots === 0);
+  console.log("FULL", { humans: full.humans, bots: full.bots, phase: full.phase });
+  check(
+    "room reaches eight human seats and starts immediately",
+    full.humans === 8 && full.bots === 0 && full.phase === "live",
+  );
+
+  const countdownDeadline = Date.now() + 20000;
+  let startedB = null;
+  while (Date.now() < countdownDeadline) {
+    startedB = await probe(pageB);
+    if (startedB.phase === "live") break;
+    await pageB.waitForTimeout(500);
+  }
+  console.log("COUNTDOWN START", {
+    phase: startedB?.phase,
+    humans: startedB?.humans,
+    bots: startedB?.bots,
+  });
+  check(
+    "countdown expiry fills bots and starts room B",
+    startedB?.phase === "live" &&
+      startedB.humans === 1 &&
+      startedB.bots === 7,
+  );
 
   const pageC = await newPage();
   await attemptInviteJoin(pageC, roomA.roomId);
@@ -182,7 +209,7 @@ try {
 
   // Let the independent room B run to its score-limit or time end.
   let endedB = null;
-  const deadline = Date.now() + 115000;
+  const deadline = Date.now() + 145000;
   while (Date.now() < deadline) {
     endedB = await probe(pageB);
     if (endedB.phase === "ended") break;

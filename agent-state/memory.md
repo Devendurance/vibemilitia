@@ -24,7 +24,13 @@
 - Prediction seeds from the first snapshot, steps every rendered frame, lightly corrects toward the authoritative position, and snaps on large errors.
 - Remote humans and bots interpolate. Bullets extrapolate from their last snapshot velocity.
 - `FFARoom.onAuth` rejects ended rooms with `MATCH_ENDED`. Colyseus returns a 522 on a full matchmake join and the client maps it to the full-room message.
-- Bots fill the room on the first human join. A later human removes one bot. A human disconnect creates one bot if below eight combatants.
+- New rooms enter a countdown. Default is 10 seconds. Override with `MATCH_COUNTDOWN_MS`, clamped 0 to 60000.
+- Countdown starts on the first human join. Humans can join during it. Bots fill empty seats only when the countdown expires. Eight humans start immediately.
+- Combat input is ignored until the match phase is live.
+- Quick Match uses `joinOrCreate("ffa", { open: true })`. The FFA handler uses `.filterBy(["open"]).sortBy({ clients: -1 }).enableRealtimeListing()`.
+- Room metadata includes `open`, `joinable`, `phase`, `countdownMs` and `remainingMs`. `open` is false when the room is full or ended.
+- `enableRealtimeListing()` is required for room cards to update after the lobby already exists.
+- Bots fill rooms at countdown expiry. A later human removes one bot. A human disconnect creates one bot if below eight combatants.
 - Replay restarts the same room and keeps its humans. Everyone can click replay.
 - `tsx` must stay in `dependencies` because `server:start` runs TypeScript directly.
 
@@ -52,8 +58,8 @@
 
 - Always measure production, not the dev server.
 - Headless Chrome can pace WebGL at 30 fps regardless of scene cost. Use `HEADED=1` for real gameplay frame rate.
-- Production headed Chrome measured 52 to 60 fps at 1440 x 810 with eight combatants while moving and firing.
-- Server tick averaged 0.06 to 0.57 ms in verification. Occasional 8 to 10 ms spikes are GC or scheduler noise, not sustained load.
+- Production headed Chrome measured 57 to 58 fps at 1440 x 810 with eight combatants while moving and firing after the countdown change.
+- Server tick averaged 0.07 to 0.74 ms in verification. Occasional 8 to 10 ms spikes are GC or scheduler noise, not sustained load.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
 ## Next.js gotchas
@@ -73,9 +79,12 @@
 - `npm run lint`
 - `npm run build`
 - `npm run verify:browser` after a client server is running
+- `npm run verify:online:countdown`
+- `npm run verify:online:matchmaking`
 - `npm run verify:online:match`
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)
+- `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test
 - `npm run prepare:character`
 
 ## Repo conventions

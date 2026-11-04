@@ -1,4 +1,5 @@
 import type { MatchEndReason, MatchPhase } from "@/game/core/match";
+import type { MatchPhase as OnlineMatchPhase } from "@/game/multiplayer/protocol";
 import type { ProjectileOwnerKind } from "@/game/systems/ProjectileSystem";
 
 export interface HudWeaponSlot {
@@ -61,8 +62,10 @@ export interface HudSnapshot {
   grounded: boolean;
   thrusting: boolean;
   aimAngle: number;
-  matchPhase: MatchPhase;
+  matchPhase: OnlineMatchPhase;
   matchTimeRemainingMs: number;
+  matchCountdownMs: number;
+  matchCountdownDurationMs: number;
   matchDurationMs: number;
   matchScoreLimit: number;
   matchEndReason: MatchEndReason;
@@ -105,6 +108,8 @@ export const INITIAL_HUD: HudSnapshot = {
   aimAngle: 0,
   matchPhase: "live",
   matchTimeRemainingMs: 90_000,
+  matchCountdownMs: 0,
+  matchCountdownDurationMs: 0,
   matchDurationMs: 90_000,
   matchScoreLimit: 10,
   matchEndReason: null,

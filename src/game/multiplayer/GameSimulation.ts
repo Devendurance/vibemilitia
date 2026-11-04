@@ -19,7 +19,6 @@ import {
   reachedScoreLimit,
   stepMatchTimer,
   type MatchEndReason,
-  type MatchPhase,
   type MatchTimerState,
   type ParticipantSummary,
 } from "@/game/core/match";
@@ -32,6 +31,7 @@ import {
 } from "@/game/multiplayer/humanMovement";
 import type {
   EndReason,
+  MatchPhase,
   OnlineCombatantSnapshot,
   OnlineEvent,
   OnlineFeedEntry,
@@ -40,7 +40,10 @@ import type {
   OnlineStanding,
   OnlineWeaponSnapshot,
 } from "@/game/multiplayer/protocol";
-import { MAX_COMBATANTS } from "@/game/multiplayer/protocol";
+import {
+  DEFAULT_MATCH_COUNTDOWN_MS,
+  MAX_COMBATANTS,
+} from "@/game/multiplayer/protocol";
 
 const BOT_WEAPON: PlayerWeapon = {
   id: "drone-burst",
@@ -160,6 +163,7 @@ interface SimulationOptions {
   roomId: string;
   roomName: string;
   botsEnabled?: boolean;
+  countdownMs?: number;
 }
 
 function createRng(seed: number): () => number {
@@ -213,7 +217,10 @@ export class GameSimulation {
   private bots = new Map<string, BotRuntime>();
   private projectiles = new Map<number, ProjectileRuntime>();
   private timer: MatchTimerState = createMatchTimer(MATCH_CONFIG.durationMs);
-  private matchStarted = false;
+  private countdown = false;
+  private started = false;
+  private countdownDurationMs: number;
+  private countdownRemainingMs = 0;
   private elapsedMs = 0;
   private endReason: MatchEndReason = null;
   private winnerName: string | null = null;
@@ -238,6 +245,10 @@ export class GameSimulation {
     this.roomId = options.roomId;
     this.roomName = options.roomName;
     this.botsEnabled = options.botsEnabled ?? true;
+    this.countdownDurationMs = Math.max(
+      0,
+      options.countdownMs ?? DEFAULT_MATCH_COUNTDOWN_MS,
+    );
     this.navGrid = buildNavigationGrid(
       ARENA.width,
       ARENA.height,
@@ -248,7 +259,9 @@ export class GameSimulation {
   }
 
   get phase(): MatchPhase {
-    return this.timer.phase;
+    if (this.timer.phase === "ended") return "ended";
+    if (this.started) return "live";
+    return "countdown";
   }
 
   get humansCount(): number {
@@ -260,7 +273,11 @@ export class GameSimulation {
   }
 
   get joinable(): boolean {
-    return this.matchStarted && this.timer.phase === "live" && this.humans.size < MAX_COMBATANTS;
+    return (
+      this.phase !== "ended" &&
+      (this.countdown || this.started) &&
+      this.humans.size < MAX_COMBATANTS
+    );
   }
 
   get allHumansGone(): boolean {
@@ -278,18 +295,25 @@ export class GameSimulation {
       return { ok: false, error: "ALREADY_JOINED" };
     }
 
-    const firstHuman = !this.matchStarted;
+    const firstHuman = this.humans.size === 0;
     const name = requestedName.slice(0, 18) || `VIBER-${id.slice(0, 4)}`;
     const human = this.createHuman(id, name);
     this.humans.set(id, human);
 
     if (firstHuman) {
-      this.matchStarted = true;
       this.timer = createMatchTimer(MATCH_CONFIG.durationMs);
       this.elapsedMs = 0;
       this.feed = [];
       this.feedCounter = 0;
-      this.fillBots();
+      this.projectiles.clear();
+      if (this.countdownDurationMs > 0) {
+        this.countdown = true;
+        this.countdownRemainingMs = this.countdownDurationMs;
+        this.started = false;
+      } else {
+        this.countdown = false;
+        this.countdownRemainingMs = 0;
+      }
     } else if (this.botsEnabled && this.bots.size > 0) {
       const bot = [...this.bots.values()][0];
       this.bots.delete(bot.id);
@@ -297,6 +321,14 @@ export class GameSimulation {
 
     this.spawnHuman(human);
     this.events.push({ type: "player-joined", id, name, human: true });
+
+    if (
+      !this.started &&
+      (this.humans.size >= MAX_COMBATANTS ||
+        (!this.countdown && this.countdownDurationMs <= 0))
+    ) {
+      this.startMatch();
+    }
     return { ok: true };
   }
 
@@ -305,11 +337,16 @@ export class GameSimulation {
     if (!human) return;
     this.humans.delete(id);
     this.events.push({ type: "player-left", id, name: human.name });
+    if (this.humans.size === 0) {
+      this.countdown = false;
+      this.started = false;
+      this.countdownRemainingMs = 0;
+      return;
+    }
     if (
       this.botsEnabled &&
-      this.matchStarted &&
+      this.started &&
       this.timer.phase === "live" &&
-      this.humans.size > 0 &&
       this.humans.size + this.bots.size < MAX_COMBATANTS
     ) {
       this.createBot();
@@ -318,7 +355,7 @@ export class GameSimulation {
 
   applyInput(id: string, payload: OnlineInputPayload): void {
     const human = this.humans.get(id);
-    if (!human || !human.alive) return;
+    if (!human || !human.alive || this.phase !== "live") return;
     if (
       !Number.isFinite(payload.seq) ||
       !Number.isFinite(payload.moveX) ||
@@ -355,6 +392,9 @@ export class GameSimulation {
     if (this.humans.size === 0) return { ok: false, error: "NO_HUMANS" };
 
     this.timer = createMatchTimer(MATCH_CONFIG.durationMs);
+    this.countdown = false;
+    this.started = true;
+    this.countdownRemainingMs = 0;
     this.endReason = null;
     this.winnerName = null;
     this.elapsedMs = 0;
@@ -378,9 +418,29 @@ export class GameSimulation {
   }
 
   tick(dtMs: number): void {
-    if (!this.matchStarted || this.timer.phase !== "live") return;
+    if (!this.countdown && !this.started) return;
     const startedAt = performance.now();
     this.tickCount += 1;
+
+    if (this.countdown) {
+      if (this.humans.size === 0) {
+        this.countdown = false;
+        this.countdownRemainingMs = 0;
+        this.lastTickMs = performance.now() - startedAt;
+        return;
+      }
+      this.countdownRemainingMs = Math.max(
+        0,
+        this.countdownRemainingMs - Math.max(0, dtMs),
+      );
+      if (this.countdownRemainingMs <= 0) {
+        this.startMatch();
+      }
+      this.lastTickMs = performance.now() - startedAt;
+      return;
+    }
+
+    if (!this.started || this.timer.phase !== "live") return;
     this.elapsedMs += dtMs;
 
     const timerBefore = this.timer;
@@ -411,6 +471,19 @@ export class GameSimulation {
     this.lastTickMs = performance.now() - startedAt;
   }
 
+  private startMatch(): void {
+    if (this.started) return;
+    this.started = true;
+    this.countdown = false;
+    this.countdownRemainingMs = 0;
+    this.timer = createMatchTimer(MATCH_CONFIG.durationMs);
+    this.elapsedMs = 0;
+    this.projectiles.clear();
+    this.feed = [];
+    this.feedCounter = 0;
+    this.fillBots();
+  }
+
   snapshot(): OnlineSnapshot {
     const participants = [...this.humans.values(), ...this.bots.values()];
     const summaries: ParticipantSummary[] = participants.map((combatant) => ({
@@ -438,10 +511,12 @@ export class GameSimulation {
       tick: this.tickCount,
       serverTime: Date.now(),
       elapsedMs: this.elapsedMs,
-      phase: this.timer.phase,
+      phase: this.phase,
       endReason: this.endReason,
       remainingMs: this.timer.remainingMs,
       durationMs: MATCH_CONFIG.durationMs,
+      countdownRemainingMs: this.countdownRemainingMs,
+      countdownDurationMs: this.countdownDurationMs,
       scoreLimit: MATCH_CONFIG.scoreLimit,
       winnerName: this.winnerName,
       participants: snapshots,
