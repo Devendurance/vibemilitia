@@ -43,4 +43,4 @@ P2.5 Slice A is implemented and verified. Slice B has not started and waits for 
 
 ## Checkpoint
 
-P2.5 Slice A code and verification are committed on `main`. This file receives the checkpoint hash in the follow-up state commit.
+P2.5 Slice A code and verification are committed at `04f9c95` on `main`. Slice B has not started and requires explicit approval.
