@@ -1,17 +1,15 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  INITIAL_HUD,
-  type GameBridge,
-  type HudSnapshot,
-} from "@/game/bridge";
+import { useEffect, useRef, useState } from "react";
+import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
 
 interface GameHudProps {
   bridge: GameBridge;
+  mode?: "local" | "online";
+  playerName?: string;
 }
 
 function Keycap({ children }: { children: React.ReactNode }) {
@@ -51,11 +49,9 @@ function FuelBar({ snapshot }: { snapshot: HudSnapshot }) {
   );
 }
 
-export function GameHud({ bridge }: GameHudProps) {
-  const snapshot = useSyncExternalStore(
-    (listener) => bridge.subscribe(listener),
-    () => bridge.getSnapshot(),
-    () => INITIAL_HUD,
+export function GameHud({ bridge, mode = "local", playerName }: GameHudProps) {
+  const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
+    bridge.getSnapshot(),
   );
   const [damageFlash, setDamageFlash] = useState(0);
   const [booted, setBooted] = useState(false);
@@ -69,6 +65,8 @@ export function GameHud({ bridge }: GameHudProps) {
   const visibleFeed = snapshot.feed
     .filter((entry) => snapshot.uptimeMs - entry.atMs < 5000)
     .slice(-3);
+  useEffect(() => bridge.subscribe(setSnapshot), [bridge]);
+
   const recentKill =
     snapshot.lastPlayerKill &&
     snapshot.uptimeMs - snapshot.lastPlayerKill.atMs < 2400 &&
@@ -112,7 +110,13 @@ export function GameHud({ bridge }: GameHudProps) {
 
   return (
     <>
-      <div className="hud-root" aria-hidden={!snapshot.ready}>
+      <div
+        className="hud-root"
+        aria-hidden={!snapshot.ready}
+        data-hud-uptime={Math.round(snapshot.uptimeMs)}
+        data-hud-health={snapshot.health}
+        data-hud-standings={snapshot.standings.length}
+      >
         <div
           className="hud-damage"
           style={{ opacity: damageFlash * 0.9 }}
@@ -138,7 +142,11 @@ export function GameHud({ bridge }: GameHudProps) {
                 <i className="live-dot" />
                 {matchEnded ? "FINAL" : "LIVE"}
               </span>
-              <span className="mono-label">FFA OPERATOR</span>
+              <span className="mono-label">
+                {mode === "online"
+                  ? `${(playerName ?? "GUEST").toUpperCase()} // ONLINE`
+                  : "FFA OPERATOR"}
+              </span>
             </div>
           </div>
         </section>
@@ -465,7 +473,9 @@ export function GameHud({ bridge }: GameHudProps) {
             <span className="mono-label">
               {formatMatchClock(snapshot.matchDurationMs)} MATCH
             </span>
-            <span className="mono-label">LOCAL BOT LOBBY</span>
+            <span className="mono-label">
+              {mode === "online" ? "ONLINE ROOM" : "LOCAL BOT LOBBY"}
+            </span>
           </div>
         </div>
       </div>
@@ -489,8 +499,9 @@ export function GameHud({ bridge }: GameHudProps) {
             ALL
           </h2>
           <p className="boot-copy">
-            Four operators. One arena. First to 10 eliminations, or the highest
-            score when the 90 second clock runs out.
+            {mode === "online"
+              ? "Server-authoritative free-for-all. Eight combatant slots, live match clock and bot backfill."
+              : "Four operators. One arena. First to 10 eliminations, or the highest score when the 90 second clock runs out."}
           </p>
           <div className="boot-load" aria-hidden="true">
             <span />
@@ -507,7 +518,9 @@ export function GameHud({ bridge }: GameHudProps) {
           </span>
         </div>
         <span className="boot-legal mono-label">
-          P1 BUILD . ORIGINAL VIBE VIBERS ARTWORK . LOCAL FREE FOR ALL
+          {mode === "online"
+            ? "P2 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . SERVER AUTHORITATIVE"
+            : "P1 BUILD . ORIGINAL VIBE VIBERS ARTWORK . LOCAL FREE FOR ALL"}
         </span>
       </div>
     </>

@@ -216,6 +216,10 @@ export class GameBridge {
     return this.latest;
   }
 
+  get listenerCount(): number {
+    return this.snapshotListeners.size;
+  }
+
   publish(snapshot: HudSnapshot): void {
     this.latest = snapshot;
     for (const listener of this.snapshotListeners) {

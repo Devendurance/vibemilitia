@@ -221,7 +221,7 @@ try {
   let respawnSpawn = null;
   let respawnMinDistance = null;
 
-  for (let round = 0; round < 24 && !killedDroneId; round += 1) {
+  for (let round = 0; round < 30 && !killedDroneId; round += 1) {
     const snapshot = await probe();
     if (snapshot.hud.playerEliminations > 0) {
       killedDroneId =
@@ -257,6 +257,11 @@ try {
       );
       continue;
     }
+    if (snapshot.player.ammo === 0 || snapshot.player.reloading) {
+      await page.keyboard.press("KeyR");
+      await page.waitForTimeout(1200);
+      continue;
+    }
 
     const target = findVisibleTarget(snapshot);
     if (!target) {
@@ -265,21 +270,38 @@ try {
     }
     lastTargetId = target.id;
 
-    await page.mouse.move(
-      canvas.x + target.screenX,
-      canvas.y + target.screenY,
-    );
+    let previous = {
+      x: target.x,
+      y: target.y,
+      at: performance.now(),
+    };
+    let aimX = target.screenX;
+    let aimY = target.screenY;
+    await page.mouse.move(canvas.x + aimX, canvas.y + aimY);
     await page.mouse.down();
-    for (let step = 0; step < 6; step += 1) {
-      await page.waitForTimeout(90);
+    for (let step = 0; step < 14; step += 1) {
+      await page.waitForTimeout(80);
       const live = await probe();
       const tracked = live.drones.find((drone) => drone.id === target.id);
       if (!tracked?.alive) break;
-      const screenX = (tracked.x - live.camera.scrollX) * live.camera.zoom;
-      const screenY = (tracked.y - live.camera.scrollY) * live.camera.zoom;
-      if (screenX > 20 && screenX < 1420 && screenY > 20 && screenY < 790) {
-        await page.mouse.move(canvas.x + screenX, canvas.y + screenY);
+      const now = performance.now();
+      const elapsed = Math.max(1, now - previous.at) / 1000;
+      const velocityX = (tracked.x - previous.x) / elapsed;
+      const velocityY = (tracked.y - previous.y) / elapsed;
+      const distance = Math.hypot(
+        tracked.x - live.player.x,
+        tracked.y - live.player.y,
+      );
+      const flightSeconds = distance / 1750;
+      const predictedX = tracked.x + velocityX * flightSeconds;
+      const predictedY = tracked.y + velocityY * flightSeconds;
+      aimX = (predictedX - live.camera.scrollX) * live.camera.zoom;
+      aimY = (predictedY - live.camera.scrollY) * live.camera.zoom;
+      if (aimX > 20 && aimX < 1420 && aimY > 20 && aimY < 790) {
+        await page.mouse.move(canvas.x + aimX, canvas.y + aimY);
       }
+      previous = { x: tracked.x, y: tracked.y, at: now };
+      if (live.player.ammo === 0) break;
     }
     await page.mouse.up();
     await page.waitForTimeout(150);
@@ -377,8 +399,10 @@ try {
   check("bots use vertical thrusters", thrustObserved);
 
   if (!observedDeath) {
-    for (let step = 0; step < 40; step += 1) {
-      await page.waitForTimeout(300);
+    // A stationary player can sit behind cover with no bot line of sight.
+    // Close distance with the nearest live bot so the death path is exercised
+    // under normal combat instead of relying on the previous kill position.
+    for (let step = 0; step < 70; step += 1) {
       const snapshot = await probe();
       if (snapshot.player.dead) {
         observedDeath = true;
@@ -389,6 +413,25 @@ try {
           ) ?? false;
         break;
       }
+      const nearest = snapshot.drones
+        .filter((drone) => drone.alive)
+        .sort(
+          (a, b) =>
+            Math.hypot(a.x - snapshot.player.x, a.y - snapshot.player.y) -
+            Math.hypot(b.x - snapshot.player.x, b.y - snapshot.player.y),
+        )[0];
+      if (!nearest) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+      const horizontal = nearest.x > snapshot.player.x ? "KeyD" : "KeyA";
+      await page.keyboard.down(horizontal);
+      const climb = nearest.y < snapshot.player.y - 120;
+      if (climb) await page.keyboard.down("Space");
+      await page.waitForTimeout(300);
+      await page.keyboard.up(horizontal);
+      if (climb) await page.keyboard.up("Space");
+      await page.waitForTimeout(80);
     }
   }
   check("player death is reachable", observedDeath, `killer=${deathKiller ?? "none"}`);
@@ -451,11 +494,12 @@ try {
 
   check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
 } finally {
-  await browser.close();
+  await Promise.race([
+    browser.close(),
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ]);
 }
 
 const failures = checks.filter((entry) => !entry.ok);
 console.log(`\n${checks.length - failures.length}/${checks.length} checks passed`);
-if (failures.length > 0) {
-  process.exitCode = 1;
-}
+process.exit(failures.length > 0 ? 1 : 0);

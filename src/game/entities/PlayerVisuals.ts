@@ -27,7 +27,7 @@ const MUZZLE_LOCAL_X = 67;
  */
 export class PlayerVisuals {
   private scene: Phaser.Scene;
-  private sprite: Phaser.Physics.Arcade.Sprite;
+  private sprite: Phaser.GameObjects.Sprite;
   private shadow: Phaser.GameObjects.Ellipse;
   private weapon: Phaser.GameObjects.Container;
   private weaponImage: Phaser.GameObjects.Image;
@@ -40,7 +40,7 @@ export class PlayerVisuals {
   private shieldVisible = false;
   private dead = false;
 
-  constructor(scene: Phaser.Scene, sprite: Phaser.Physics.Arcade.Sprite) {
+  constructor(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite) {
     this.scene = scene;
     this.sprite = sprite;
 
@@ -205,5 +205,15 @@ export class PlayerVisuals {
     this.shadow.setVisible(false);
     this.jetLeft.emitting = false;
     this.jetRight.emitting = false;
+  }
+
+  destroy(): void {
+    this.shadow.destroy();
+    this.weapon.destroy();
+    this.shield.destroy();
+    this.jetLeft.destroy();
+    this.jetRight.destroy();
+    this.dust.destroy();
+    this.hitDust.destroy();
   }
 }
