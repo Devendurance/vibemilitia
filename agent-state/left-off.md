@@ -40,4 +40,4 @@ P2 multiplayer is implemented and verified. P1 remains committed at `1a4d7da` an
 
 ## Checkpoint
 
-P2 code and verification are committed on `main`. This file is updated with the checkpoint hash in the follow-up state commit.
+P2 code and verification are committed at `134983f` on `main`. The checkpoint state commit follows this file update.
