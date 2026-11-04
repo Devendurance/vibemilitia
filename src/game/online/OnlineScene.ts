@@ -140,6 +140,7 @@ export class OnlineScene extends Phaser.Scene {
           x: view.sprite.x,
           y: view.sprite.y,
           alive: this.latestSnapshot?.participants.find((p) => p.id === view.id)?.alive ?? false,
+          ...view.presentation,
         })),
       }),
       sendCommand: (command) => this.bridge.send(command),
@@ -363,23 +364,18 @@ export class OnlineScene extends Phaser.Scene {
         case "shot": {
           const view = this.views.get(event.ownerId);
           view?.onShot();
-          const owner = this.latestSnapshot?.participants.find((p) => p.id === event.ownerId);
-          this.effects.muzzle(event.x, event.y, owner?.kind === "bot");
+          this.effects.muzzle(event.x, event.y);
           break;
         }
         case "hit": {
           const view = this.views.get(event.victimId);
           view?.onHit();
-          this.effects.bulletImpact(
-            event.x,
-            event.y,
-            event.kind === "human" ? "player" : "drone",
-          );
+          this.effects.bulletImpact(event.x, event.y, "player");
           this.effects.damageNumber(
             event.x,
             event.y - 12,
             event.damage,
-            event.kind === "human" ? "#ffb4b6" : "#d7ff2e",
+            event.kind === "human" ? "#ffb4b6" : "#f5f3ec",
           );
           if (event.victimId === this.room.sessionId) {
             this.localDamageSeq += 1;
@@ -393,11 +389,7 @@ export class OnlineScene extends Phaser.Scene {
         case "elimination": {
           const victim = this.views.get(event.victimId);
           if (victim) {
-            if (victim.kind === "human") {
-              this.effects.playerDestroyed(victim.sprite.x, victim.sprite.y);
-            } else {
-              this.effects.droneDestroyed(victim.sprite.x, victim.sprite.y);
-            }
+            this.effects.playerDestroyed(victim.sprite.x, victim.sprite.y);
           }
           if (event.killerId === this.room.sessionId) {
             this.lastPlayerKill = {
@@ -415,10 +407,7 @@ export class OnlineScene extends Phaser.Scene {
           break;
         }
         case "respawn": {
-          this.effects.spawn(
-            event.x,
-            event.kind === "human" ? event.y : event.y + 20,
-          );
+          this.effects.spawn(event.x, event.y);
           break;
         }
         case "match-end": {
@@ -539,13 +528,11 @@ export class OnlineScene extends Phaser.Scene {
       const x = projectile.x + projectile.vx * extrapolate;
       const y = projectile.y + projectile.vy * extrapolate;
       const color =
-        projectile.kind === "bot"
-          ? 0xe5484d
-          : projectile.weaponId === "vibe-lance"
-            ? 0x9bd8f2
-            : projectile.weaponId === "scatter-blaster"
-              ? 0xc7692f
-              : 0xd7ff2e;
+        projectile.weaponId === "vibe-lance"
+          ? 0x9bd8f2
+          : projectile.weaponId === "scatter-blaster"
+            ? 0xc7692f
+            : 0xd7ff2e;
       this.bulletGraphics.lineStyle(4, color, 0.22);
       this.bulletGraphics.lineBetween(
         x - projectile.vx * 0.014,
@@ -622,10 +609,10 @@ export class OnlineScene extends Phaser.Scene {
         0.9,
       );
       this.debugGraphics.strokeRect(
-        participant.x - (isHuman ? 26 : 28),
-        isHuman ? participant.y - 118 : participant.y - 18,
-        isHuman ? 52 : 56,
-        isHuman ? 118 : 36,
+        participant.x - 26,
+        participant.y - 118,
+        52,
+        118,
       );
     }
     this.debugGraphics.fillStyle(0x9bd8f2, 1);

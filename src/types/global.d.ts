@@ -22,6 +22,12 @@ declare global {
           x: number;
           y: number;
           alive: boolean;
+          texture: string;
+          weaponTexture: string;
+          weaponVisible: boolean;
+          nameVisible: boolean;
+          botLabelVisible: boolean;
+          healthBarVisible: boolean;
         }>;
       };
       sendCommand: (command: GameCommand) => void;

@@ -14,6 +14,7 @@
     "verify:browser": "node scripts/verify-browser.mjs",
     "verify:online:match": "node scripts/verify-online-match.mjs",
     "verify:online:matchmaking": "node scripts/verify-online-matchmaking.mjs",
+    "verify:online:bots": "node scripts/verify-online-bots.mjs",
     "verify:online:countdown": "node scripts/verify-online-countdown.mjs",
     "verify:online:rooms": "node scripts/verify-online-rooms.mjs",
     "verify:online:perf": "node scripts/verify-online-perf.mjs",

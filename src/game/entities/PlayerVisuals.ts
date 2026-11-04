@@ -21,6 +21,10 @@ const PIVOT_X = 28;
 const PIVOT_Y = 58;
 const MUZZLE_LOCAL_X = 67;
 
+interface PlayerVisualsOptions {
+  dust?: boolean;
+}
+
 /**
  * Rendering only. The NFT cutout is never distorted or regenerated. Weapon,
  * exhaust, shield, shadow, muzzle flash and damage tint are separate layers.
@@ -35,12 +39,16 @@ export class PlayerVisuals {
   private shield: Phaser.GameObjects.Arc;
   private jetLeft: Phaser.GameObjects.Particles.ParticleEmitter;
   private jetRight: Phaser.GameObjects.Particles.ParticleEmitter;
-  private dust: Phaser.GameObjects.Particles.ParticleEmitter;
-  private hitDust: Phaser.GameObjects.Particles.ParticleEmitter;
+  private dust: Phaser.GameObjects.Particles.ParticleEmitter | null;
+  private hitDust: Phaser.GameObjects.Particles.ParticleEmitter | null;
   private shieldVisible = false;
   private dead = false;
 
-  constructor(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprite) {
+  constructor(
+    scene: Phaser.Scene,
+    sprite: Phaser.GameObjects.Sprite,
+    options: PlayerVisualsOptions = {},
+  ) {
     this.scene = scene;
     this.sprite = sprite;
 
@@ -78,33 +86,46 @@ export class PlayerVisuals {
       .setDepth(29)
       .setVisible(false);
 
-    this.dust = scene.add
-      .particles(0, 0, "spark-smoke", {
-        speed: { min: 25, max: 100 },
-        angle: { min: 185, max: 355 },
-        lifespan: { min: 220, max: 480 },
-        scale: { start: 0.8, end: 0 },
-        alpha: { start: 0.55, end: 0 },
-        tint: [0xf5f3ec, 0x9aa0a7, 0xc7692f],
-        frequency: -1,
-        quantity: 7,
-        emitting: false,
-      })
-      .setDepth(19);
+    if (options.dust === false) {
+      this.dust = null;
+      this.hitDust = null;
+    } else {
+      this.dust = scene.add
+        .particles(0, 0, "spark-smoke", {
+          speed: { min: 25, max: 100 },
+          angle: { min: 185, max: 355 },
+          lifespan: { min: 220, max: 480 },
+          scale: { start: 0.8, end: 0 },
+          alpha: { start: 0.55, end: 0 },
+          tint: [0xf5f3ec, 0x9aa0a7, 0xc7692f],
+          frequency: -1,
+          quantity: 7,
+          emitting: false,
+        })
+        .setDepth(19);
 
-    this.hitDust = scene.add
-      .particles(0, 0, "spark-red", {
-        speed: { min: 50, max: 150 },
-        lifespan: { min: 160, max: 360 },
-        scale: { start: 0.7, end: 0 },
-        alpha: { start: 0.9, end: 0 },
-        tint: [0xe5484d, 0xffb4b6],
-        gravityY: 200,
-        frequency: -1,
-        quantity: 4,
-        emitting: false,
-      })
-      .setDepth(46);
+      this.hitDust = scene.add
+        .particles(0, 0, "spark-red", {
+          speed: { min: 50, max: 150 },
+          lifespan: { min: 160, max: 360 },
+          scale: { start: 0.7, end: 0 },
+          alpha: { start: 0.9, end: 0 },
+          tint: [0xe5484d, 0xffb4b6],
+          gravityY: 200,
+          frequency: -1,
+          quantity: 4,
+          emitting: false,
+        })
+        .setDepth(46);
+    }
+  }
+
+  get weaponTextureKey(): string {
+    return this.weaponImage.texture.key;
+  }
+
+  get weaponVisible(): boolean {
+    return this.weapon.visible;
   }
 
   update(state: VisualState): void {
@@ -161,11 +182,13 @@ export class PlayerVisuals {
   }
 
   dustPuff(x: number, y: number): void {
+    if (!this.dust) return;
     this.dust.setPosition(x, y - 3);
     this.dust.explode(7);
   }
 
   hitFlash(): void {
+    if (!this.hitDust) return;
     this.hitDust.setPosition(this.sprite.x, this.sprite.y - 52);
     this.hitDust.explode(4);
   }
@@ -213,7 +236,7 @@ export class PlayerVisuals {
     this.shield.destroy();
     this.jetLeft.destroy();
     this.jetRight.destroy();
-    this.dust.destroy();
-    this.hitDust.destroy();
+    this.dust?.destroy();
+    this.hitDust?.destroy();
   }
 }

@@ -27,6 +27,8 @@ import {
   createHumanKinematics,
   stepHumanKinematics,
   humanBodyRect,
+  HUMAN_HALF_WIDTH,
+  HUMAN_HEIGHT,
   type HumanKinematics,
 } from "@/game/multiplayer/humanMovement";
 import type {
@@ -46,12 +48,11 @@ import {
 } from "@/game/multiplayer/protocol";
 
 const BOT_WEAPON: PlayerWeapon = {
-  id: "drone-burst",
-  slot: 0,
-  name: "GLITCH BURST",
-  shortName: "BURST",
-  role: "BOT / BURST",
-  magazineSize: 3,
+  ...PLAYER_WEAPONS[0],
+  id: "vibe-rifle",
+  name: "VIBE RIFLE",
+  shortName: "RIFLE",
+  role: "BOT / RIFLE",
   damage: DRONE_WEAPON.damage,
   fireIntervalMs: DRONE_WEAPON.fireIntervalMs,
   reloadMs: DRONE_WEAPON.reloadMs,
@@ -59,11 +60,14 @@ const BOT_WEAPON: PlayerWeapon = {
   spreadRadians: DRONE_WEAPON.spreadRadians,
   pellets: 1,
   projectileLifetimeMs: 1800,
-  projectileTexture: "bullet-drone",
-  weaponTexture: "weapon-player",
-  muzzleColor: 0xe5484d,
+  projectileTexture: PLAYER_WEAPONS[0].projectileTexture,
+  weaponTexture: PLAYER_WEAPONS[0].weaponTexture,
+  muzzleColor: PLAYER_WEAPONS[0].muzzleColor,
   recoil: 0,
 };
+
+const CHARACTER_AIM_HEIGHT = 58;
+const CHARACTER_PIVOT_X = 28;
 
 const BOT_NAMES = [
   "NULL-7",
@@ -80,6 +84,7 @@ const BOT_NAMES = [
 
 const BOT_HALF_WIDTH = 28;
 const BOT_HEIGHT = 36;
+const BOT_FEET_OFFSET = BOT_HEIGHT / 2;
 
 interface ProjectileRuntime {
   id: number;
@@ -195,19 +200,31 @@ function bodyRect(combatant: AnyCombatant): Rect {
   if (combatant.kind === "human") {
     return humanBodyRect(combatant.kin.x, combatant.kin.y);
   }
+  const feetY = combatant.y + BOT_FEET_OFFSET;
   return {
-    x: combatant.x - BOT_HALF_WIDTH,
-    y: combatant.y - BOT_HEIGHT / 2,
-    width: BOT_HALF_WIDTH * 2,
-    height: BOT_HEIGHT,
+    x: combatant.x - HUMAN_HALF_WIDTH,
+    y: feetY - HUMAN_HEIGHT,
+    width: HUMAN_HALF_WIDTH * 2,
+    height: HUMAN_HEIGHT,
   };
 }
 
 function center(combatant: AnyCombatant): { x: number; y: number; aimY: number } {
   if (combatant.kind === "human") {
-    return { x: combatant.kin.x, y: combatant.kin.y, aimY: combatant.kin.y - 58 };
+    return { x: combatant.kin.x, y: combatant.kin.y, aimY: combatant.kin.y - CHARACTER_AIM_HEIGHT };
   }
-  return { x: combatant.x, y: combatant.y, aimY: combatant.y };
+  return {
+    x: combatant.x,
+    y: combatant.y + BOT_FEET_OFFSET,
+    aimY: combatant.y + BOT_FEET_OFFSET - CHARACTER_AIM_HEIGHT,
+  };
+}
+
+function botWeaponOrigin(bot: BotRuntime): { x: number; y: number } {
+  return {
+    x: bot.x + CHARACTER_PIVOT_X,
+    y: bot.y + BOT_FEET_OFFSET - CHARACTER_AIM_HEIGHT,
+  };
 }
 
 export class GameSimulation {
@@ -662,7 +679,7 @@ export class GameSimulation {
   private spawnBot(bot: BotRuntime): void {
     const spawn = this.pickSpawn(bot.id);
     bot.x = spawn.x;
-    bot.y = spawn.y - 44;
+    bot.y = spawn.y - BOT_FEET_OFFSET;
     bot.vx = 0;
     bot.vy = 0;
     bot.health = bot.maxHealth;
@@ -683,7 +700,7 @@ export class GameSimulation {
       id: bot.id,
       name: bot.name,
       x: bot.x,
-      y: bot.y,
+      y: bot.y + BOT_FEET_OFFSET,
       kind: "bot",
     });
   }
@@ -871,12 +888,14 @@ export class GameSimulation {
 
     victim.health = applyDamage(victim.health, amount);
     victim.lastDamageMs = 0;
+    const victimFeetY =
+      victim.kind === "human" ? victim.kin.y : victim.y + BOT_FEET_OFFSET;
     this.events.push({
       type: "hit",
       ownerId: attackerId,
       victimId: victim.id,
       x: victim.kind === "human" ? victim.kin.x : victim.x,
-      y: victim.kind === "human" ? victim.kin.y - 58 : victim.y,
+      y: victimFeetY - CHARACTER_AIM_HEIGHT,
       damage: amount,
       kind: victim.kind,
     });
@@ -991,15 +1010,26 @@ export class GameSimulation {
     }
 
     const position = center(target);
-    const flightTime = Math.hypot(position.x - bot.x, position.y - bot.y) / DRONE_WEAPON.projectileSpeed;
+    const origin = botWeaponOrigin(bot);
+    const flightTime =
+      Math.hypot(position.x - origin.x, position.aimY - origin.y) /
+      BOT_WEAPON.projectileSpeed;
+    const targetVX = target.kind === "human" ? target.kin.vx : target.vx;
+    const targetVY = target.kind === "human" ? target.kin.vy : target.vy;
     bot.aimAngle = Math.atan2(
-      position.aimY + (target.kind === "human" ? target.kin.vy : target.vy) * flightTime * 0.35 - bot.y,
-      position.x + (target.kind === "human" ? target.kin.vx : target.vx) * flightTime * 0.35 - bot.x,
+      position.aimY + targetVY * flightTime * 0.35 - origin.y,
+      position.x + targetVX * flightTime * 0.35 - origin.x,
     );
 
     const distance = Math.hypot(position.x - bot.x, position.y - bot.y);
     const hasLoS = !this.platforms.some((platform) =>
-      segmentIntersectsRect(bot.x, bot.y, position.x, position.aimY, platform),
+      segmentIntersectsRect(
+        origin.x,
+        origin.y,
+        position.x,
+        position.aimY,
+        platform,
+      ),
     );
 
     bot.strafeMs -= dtMs;
@@ -1089,7 +1119,15 @@ export class GameSimulation {
       if (bot.burstRemaining > 0) {
         bot.burstTimerMs -= dtMs;
         if (bot.burstTimerMs <= 0) {
-          this.fireWeapon(bot.id, "bot", BOT_WEAPON, bot.x, bot.y, bot.aimAngle);
+          const muzzleOrigin = botWeaponOrigin(bot);
+          this.fireWeapon(
+            bot.id,
+            "bot",
+            BOT_WEAPON,
+            muzzleOrigin.x,
+            muzzleOrigin.y,
+            bot.aimAngle,
+          );
           bot.burstRemaining -= 1;
           bot.burstTimerMs = DRONE_CONFIG.burstSpacingMs;
           if (bot.burstRemaining <= 0) bot.fireCooldownMs = DRONE_CONFIG.fireIntervalMs;
@@ -1167,6 +1205,17 @@ export class GameSimulation {
     bot.y = Math.max(BOT_HEIGHT / 2, Math.min(ARENA.groundY - BOT_HEIGHT / 2, y));
   }
 
+  private isBotGrounded(bot: BotRuntime): boolean {
+    const feetY = bot.y + BOT_FEET_OFFSET;
+    if (Math.abs(feetY - ARENA.groundY) <= 1.5) return true;
+    return this.platforms.some(
+      (platform) =>
+        bot.x + BOT_HALF_WIDTH > platform.x &&
+        bot.x - BOT_HALF_WIDTH < platform.x + platform.width &&
+        Math.abs(feetY - platform.y) <= 1.5,
+    );
+  }
+
   private findCombatant(id: string): AnyCombatant | undefined {
     return this.humans.get(id) ?? this.bots.get(id);
   }
@@ -1187,13 +1236,13 @@ export class GameSimulation {
       name: combatant.name,
       kind: combatant.kind,
       x: position.x,
-      y: combatant.kind === "human" ? human!.kin.y : bot!.y,
+      y: position.y,
       vx: combatant.kind === "human" ? human!.kin.vx : bot!.vx,
       vy: combatant.kind === "human" ? human!.kin.vy : bot!.vy,
       health: combatant.health,
       maxHealth: combatant.maxHealth,
       alive: combatant.alive,
-      grounded: human?.kin.grounded ?? false,
+      grounded: human?.kin.grounded ?? this.isBotGrounded(bot!),
       thrusting: human?.kin.thrusting ?? bot?.thrusting ?? false,
       aimAngle: human?.aimAngle ?? bot?.aimAngle ?? 0,
       invulnerable: combatant.invulnerableRemainingMs,
@@ -1201,7 +1250,7 @@ export class GameSimulation {
       lastProcessedInputSeq: human?.lastInputSeq ?? 0,
       fuel: human?.kin.jetpack.fuel ?? 0,
       maxFuel: JETPACK_CONFIG.maxFuel,
-      weaponId: human ? weaponDef.id : "drone-burst",
+      weaponId: human ? weaponDef.id : BOT_WEAPON.id,
       weapons,
       eliminations: combatant.eliminations,
       deaths: combatant.deaths,

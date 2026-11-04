@@ -31,6 +31,11 @@
 - Room metadata includes `open`, `joinable`, `phase`, `countdownMs` and `remainingMs`. `open` is false when the room is full or ended.
 - `enableRealtimeListing()` is required for room cards to update after the lobby already exists.
 - Bots fill rooms at countdown expiry. A later human removes one bot. A human disconnect creates one bot if below eight combatants.
+- Online bots use the same `CombatantView` and `PlayerVisuals` as humans, with the `player-viber` texture and `weapon-player` rifle layer. BOT labels are separate copper text objects.
+- Bot snapshots use feet coordinates, like humans. Bot damage uses a `52 x 118` human-sized hitbox. Bot navigation and platform collision keep the original compact `56 x 36` movement body.
+- Bot firing uses a Vibe Rifle presentation with the previous balance values: 7 damage, 900 projectile speed, 0.055 spread, 3-shot burst, 150 ms spacing and 1600 ms cycle.
+- Bot aim and projectile origin are the character weapon pivot at `x + 28`, `feetY - 58`.
+- Online `PlayerVisuals` is constructed with `{ dust: false }` because dust and hit-dust emitters are unused online. Local P1 keeps the full effects.
 - Replay restarts the same room and keeps its humans. Everyone can click replay.
 - `tsx` must stay in `dependencies` because `server:start` runs TypeScript directly.
 
@@ -58,8 +63,9 @@
 
 - Always measure production, not the dev server.
 - Headless Chrome can pace WebGL at 30 fps regardless of scene cost. Use `HEADED=1` for real gameplay frame rate.
-- Production headed Chrome measured 57 to 58 fps at 1440 x 810 with eight combatants while moving and firing after the countdown change.
-- Server tick averaged 0.07 to 0.74 ms in verification. Occasional 8 to 10 ms spikes are GC or scheduler noise, not sustained load.
+- Production headed Chrome measured 58 to 60 fps at 1440 x 810 with one human and seven Viber bots while moving and firing.
+- Server tick averaged 0.09 to 0.19 ms in final verification. Occasional 8 to 11 ms spikes are GC or scheduler noise, not sustained load.
+- Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
 ## Next.js gotchas
@@ -81,6 +87,7 @@
 - `npm run verify:browser` after a client server is running
 - `npm run verify:online:countdown`
 - `npm run verify:online:matchmaking`
+- `npm run verify:online:bots`
 - `npm run verify:online:match`
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)

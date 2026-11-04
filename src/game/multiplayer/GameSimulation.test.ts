@@ -53,6 +53,28 @@ describe("authoritative match simulation", () => {
     expect(live.countdownRemainingMs).toBe(0);
   });
 
+  it("reports online bots with the Vibe Rifle presentation", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE");
+    const snapshot = sim.snapshot();
+    const bots = snapshot.participants.filter((entry) => entry.kind === "bot");
+    expect(bots).toHaveLength(7);
+    expect(bots.every((bot) => bot.weaponId === "vibe-rifle")).toBe(true);
+    expect(
+      bots.every(
+        (bot) =>
+          bot.alive &&
+          bot.maxHealth === 100 &&
+          Number.isFinite(bot.x) &&
+          Number.isFinite(bot.y),
+      ),
+    ).toBe(true);
+  });
+
   it("accepts movement inputs and advances the server position", () => {
     const sim = new GameSimulation({
       roomId: "room-a",
