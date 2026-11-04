@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prepare:character": "python scripts/prepare_character.py",
+    "prepare:roster": "python scripts/prepare_character.py --all",
     "verify:browser": "node scripts/verify-browser.mjs",
     "verify:online:match": "node scripts/verify-online-match.mjs",
     "verify:online:matchmaking": "node scripts/verify-online-matchmaking.mjs",

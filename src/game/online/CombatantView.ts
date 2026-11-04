@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { PLAYER_WEAPONS } from "@/game/config/gameplay";
+import { getCharacterSkin } from "@/game/characters/roster";
 import { PlayerVisuals } from "@/game/entities/PlayerVisuals";
 import type { OnlineCombatantSnapshot } from "@/game/multiplayer/protocol";
 
@@ -48,8 +49,9 @@ export class CombatantView {
     this.currentAim = snapshot.aimAngle;
     this.targetAim = snapshot.aimAngle;
 
+    const skin = getCharacterSkin(snapshot.skinId);
     const sprite = scene.add
-      .sprite(snapshot.x, snapshot.y, "player-viber")
+      .sprite(snapshot.x, snapshot.y, skin.textureKey)
       .setOrigin(0.5, 1)
       .setDepth(20);
     const scale = PLAYER_HEIGHT / sprite.height;

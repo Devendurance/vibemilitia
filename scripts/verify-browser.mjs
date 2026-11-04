@@ -213,6 +213,14 @@ try {
     reloaded.player.ammo === 20 && reloaded.player.reloading === false,
   );
 
+  // Use the two-shot Vibe Lance for the scoring check. The rifle needs eight
+  // hits on a moving bot, which made this browser assertion unnecessarily
+  // timing-sensitive. The lance still exercises the normal hit and kill path.
+  await page.keyboard.press("Digit3");
+  await page.waitForTimeout(150);
+  await page.keyboard.press("KeyR");
+  await page.waitForTimeout(1800);
+
   let killedDroneId = null;
   let lastTargetId = null;
   let observedDeath = false;
@@ -259,7 +267,7 @@ try {
     }
     if (snapshot.player.ammo === 0 || snapshot.player.reloading) {
       await page.keyboard.press("KeyR");
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(1800);
       continue;
     }
 
@@ -292,7 +300,9 @@ try {
         tracked.x - live.player.x,
         tracked.y - live.player.y,
       );
-      const flightSeconds = distance / 1750;
+      const projectileSpeed =
+        live.player.weaponId === "vibe-lance" ? 2600 : 1750;
+      const flightSeconds = distance / projectileSpeed;
       const predictedX = tracked.x + velocityX * flightSeconds;
       const predictedY = tracked.y + velocityY * flightSeconds;
       aimX = (predictedX - live.camera.scrollX) * live.camera.zoom;

@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "generatedBy": "scripts/prepare_character.py --all",
+  "humanDefaultSkinId": "viber-010",
+  "characters": [
+    {
+      "skinId": "viber-010",
+      "displayName": "VIBER-010",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-viber-10.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/viber-010-original.png",
+      "cutoutPath": "/sprites/viber-010/viber-010-cutout.png",
+      "textureKey": "character-viber-010",
+      "reportPath": "public/sprites/viber-010/cutout-report.json",
+      "previewPath": "/sprites/viber-010/previews/alpha-contrast.png",
+      "sourceSha256": "49dc4eacb29ffdecc5b88fbc2b307a3945850d36018086d1c0ed612173a70207",
+      "cutoutSha256": "28bb3e99066ba980929bcfd135078b32c3061aeac5b119d5301483023ceac6c3",
+      "cutoutSize": [
+        728,
+        962
+      ],
+      "transparentRatio": 0.26394,
+      "validated": true
+    },
+    {
+      "skinId": "viber-006",
+      "displayName": "VIBER-006",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-viber-6.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/viber-006-original.png",
+      "cutoutPath": "/sprites/viber-006/viber-006-cutout.png",
+      "textureKey": "character-viber-006",
+      "reportPath": "public/sprites/viber-006/cutout-report.json",
+      "previewPath": "/sprites/viber-006/previews/alpha-contrast.png",
+      "sourceSha256": "3017c6e06ec9a1eb840027dbf395c871f542b111efc834798e400b98b5a83b94",
+      "cutoutSha256": "ab1e0105a3db0e8db59ae0f30613467a9dd9ef54655d0167e4886b433dbdf6a9",
+      "cutoutSize": [
+        672,
+        962
+      ],
+      "transparentRatio": 0.245788,
+      "validated": true
+    },
+    {
+      "skinId": "viber-031",
+      "displayName": "VIBER-031",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-viber-31.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/viber-031-original.png",
+      "cutoutPath": "/sprites/viber-031/viber-031-cutout.png",
+      "textureKey": "character-viber-031",
+      "reportPath": "public/sprites/viber-031/cutout-report.json",
+      "previewPath": "/sprites/viber-031/previews/alpha-contrast.png",
+      "sourceSha256": "fab0b4c2c8f47d714be9018aac3136592f48bf85f862991880a9359fbbfc9ae1",
+      "cutoutSha256": "a7c02d4a7865f9f3de08334079cad3d009364063001270155463ee4bf02b1519",
+      "cutoutSize": [
+        676,
+        962
+      ],
+      "transparentRatio": 0.372072,
+      "validated": true
+    },
+    {
+      "skinId": "viber-123",
+      "displayName": "VIBER-123",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-viber-123.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/viber-123-original.png",
+      "cutoutPath": "/sprites/viber-123/viber-123-cutout.png",
+      "textureKey": "character-viber-123",
+      "reportPath": "public/sprites/viber-123/cutout-report.json",
+      "previewPath": "/sprites/viber-123/previews/alpha-contrast.png",
+      "sourceSha256": "bcebc63e884b9bbba5dcfb543c589c31ad6acecf40e4be63a0bfcfb438195573",
+      "cutoutSha256": "105b0b86c49be1c7e095d8aa64007b82aefab3c1e07380d3089928e0c872b9e5",
+      "cutoutSize": [
+        644,
+        962
+      ],
+      "transparentRatio": 0.261108,
+      "validated": true
+    },
+    {
+      "skinId": "viber-141",
+      "displayName": "VIBER-141",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-viber-141.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/viber-141-original.png",
+      "cutoutPath": "/sprites/viber-141/viber-141-cutout.png",
+      "textureKey": "character-viber-141",
+      "reportPath": "public/sprites/viber-141/cutout-report.json",
+      "previewPath": "/sprites/viber-141/previews/alpha-contrast.png",
+      "sourceSha256": "e3901af37cd9a2bb3cea2548033bd7c1c7746f403af2ca6ff37dc944a71094b9",
+      "cutoutSha256": "c26a0f1694bfd6f82703dbbf03555bc7f65e56d94f255c7269587ed34be0a3a4",
+      "cutoutSize": [
+        830,
+        962
+      ],
+      "transparentRatio": 0.305332,
+      "validated": true
+    },
+    {
+      "skinId": "bureau-023",
+      "displayName": "BUREAU-023",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-23.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/bureau-023-original.png",
+      "cutoutPath": "/sprites/bureau-023/bureau-023-cutout.png",
+      "textureKey": "character-bureau-023",
+      "reportPath": "public/sprites/bureau-023/cutout-report.json",
+      "previewPath": "/sprites/bureau-023/previews/alpha-contrast.png",
+      "sourceSha256": "595204261565a4c48a254dc5f55dd93eba42692f21f09f9eca5751245c167488",
+      "cutoutSha256": "f6f098122cc9941cfeb00b67b89bb15d91a4ee233a6b6a93240c9d14b628cef0",
+      "cutoutSize": [
+        842,
+        966
+      ],
+      "transparentRatio": 0.294077,
+      "validated": true
+    },
+    {
+      "skinId": "bureau-roll-01-07",
+      "displayName": "BUREAU 01-07",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-roll-1-7.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/bureau-roll-01-07-original.png",
+      "cutoutPath": "/sprites/bureau-roll-01-07/bureau-roll-01-07-cutout.png",
+      "textureKey": "character-bureau-roll-01-07",
+      "reportPath": "public/sprites/bureau-roll-01-07/cutout-report.json",
+      "previewPath": "/sprites/bureau-roll-01-07/previews/alpha-contrast.png",
+      "sourceSha256": "f1401a6b14455516b8b28d81f2af891b207795eff556117f26231fd01228f878",
+      "cutoutSha256": "115be6182ec688975be35ca2f5f18c37052c4e3d9efaaa45ed60e99c1cd26fb4",
+      "cutoutSize": [
+        826,
+        962
+      ],
+      "transparentRatio": 0.312135,
+      "validated": true
+    },
+    {
+      "skinId": "bureau-roll-09-03",
+      "displayName": "BUREAU 09-03",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-roll-9-3.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/bureau-roll-09-03-original.png",
+      "cutoutPath": "/sprites/bureau-roll-09-03/bureau-roll-09-03-cutout.png",
+      "textureKey": "character-bureau-roll-09-03",
+      "reportPath": "public/sprites/bureau-roll-09-03/cutout-report.json",
+      "previewPath": "/sprites/bureau-roll-09-03/previews/alpha-contrast.png",
+      "sourceSha256": "660d4dc4e9860af68d0d42b965028cb31af15c600894d921abe1711cade601c1",
+      "cutoutSha256": "6db7a3a9f2324631d529698cf54ec012ea48179ad4c736353742d6022e0e59ed",
+      "cutoutSize": [
+        894,
+        962
+      ],
+      "transparentRatio": 0.371669,
+      "validated": true
+    },
+    {
+      "skinId": "bureau-roll-25-07",
+      "displayName": "BUREAU 25-07",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-roll-25-7.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/bureau-roll-25-07-original.png",
+      "cutoutPath": "/sprites/bureau-roll-25-07/bureau-roll-25-07-cutout.png",
+      "textureKey": "character-bureau-roll-25-07",
+      "reportPath": "public/sprites/bureau-roll-25-07/cutout-report.json",
+      "previewPath": "/sprites/bureau-roll-25-07/previews/alpha-contrast.png",
+      "sourceSha256": "7e234f6cf4c3b3b6483a4a3c89222cdc71f382139812dea8a9b121a846bc1a37",
+      "cutoutSha256": "9ff10c49af2c34f71e60a1b7dafd96a9e3c29b2c4cdf0387b634e52d875146a4",
+      "cutoutSize": [
+        946,
+        962
+      ],
+      "transparentRatio": 0.312994,
+      "validated": true
+    },
+    {
+      "skinId": "bureau-roll-28-02",
+      "displayName": "BUREAU 28-02",
+      "sourcePath": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-roll-28-2.png",
+      "archivedSourcePath": "assets/source/vibe-vibers/bureau-roll-28-02-original.png",
+      "cutoutPath": "/sprites/bureau-roll-28-02/bureau-roll-28-02-cutout.png",
+      "textureKey": "character-bureau-roll-28-02",
+      "reportPath": "public/sprites/bureau-roll-28-02/cutout-report.json",
+      "previewPath": "/sprites/bureau-roll-28-02/previews/alpha-contrast.png",
+      "sourceSha256": "e64c3b4aad2d3ae89437e4c340b985ef54bfe1c581ffa1e155b1ead2b28537fe",
+      "cutoutSha256": "d1f89f401b3aac2d0531ec0547171b342076f4e83b715ea8007b3707dc5f8e4e",
+      "cutoutSize": [
+        706,
+        962
+      ],
+      "transparentRatio": 0.285082,
+      "validated": true
+    }
+  ]
+}

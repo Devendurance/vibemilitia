@@ -2,9 +2,9 @@
 
 ## What this is
 
-Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, React 19, Phaser 4.2.1, TypeScript and Colyseus 0.18. The local route stays playable against bots. The online route adds server-authoritative rooms for up to eight human and bot combatants, with a pre-match countdown and server-side Quick Match placement.
+Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, React 19, Phaser 4.2.1, TypeScript and Colyseus 0.18. The local route stays playable against bots. The online route adds server-authoritative rooms for up to eight human and bot combatants, with a pre-match countdown, server-side Quick Match placement and ten validated official Viber skins.
 
-The player operator is VIBER-010, preserved from the original Vibe Vibers NFT artwork.
+The default player operator is VIBER-010, preserved from the original Vibe Vibers NFT artwork. Online bots draw unique non-default skins from the validated roster.
 
 ## Current build
 
@@ -14,7 +14,7 @@ The player operator is VIBER-010, preserved from the original Vibe Vibers NFT ar
 - Matchmaking: Quick Match filters to rooms with open human seats, prefers the most populated room, and creates a new room when current rooms fill. Seat races retry safely.
 - Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, automatic fair-pad respawn and 1.5 s spawn protection.
 - Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision). Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
-- Bots: online bots use the VIBER-010 character presentation, visible Vibe Rifle, muzzle flare, recoil, jetpack exhaust, health bars, damage reaction, spawn shield, death/respawn presentation and BOT callsign labels. They keep A* navigation, platform colliders, path smoothing, line-of-sight burst fire, vertical thrusters, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns. Local P1 bots remain the original drones.
+- Bots: online bots use ten validated official Viber skins with unique server-assigned `skinId` values, visible Vibe Rifle, muzzle flare, recoil, jetpack exhaust, health bars, damage reaction, spawn shield, death/respawn presentation and BOT callsign labels. They keep A* navigation, platform colliders, path smoothing, line-of-sight burst fire, vertical thrusters, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns. Local P1 bots remain the original drones.
 - Online networking: Colyseus rooms, 60 Hz server tick, 20 Hz snapshots, 30 Hz client input, 45 messages/second input cap, local prediction with soft reconciliation, remote interpolation, projected bullets and server-side validation.
 - Room lifecycle: countdown, lobby, server-side quick match, create room, realtime room browser, invite links, full-room and ended-room errors, replay in the same room and auto-dispose when empty.
 - HUD: identity, health, jetpack, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
@@ -28,6 +28,7 @@ The player operator is VIBER-010, preserved from the original Vibe Vibers NFT ar
 - `src/game/arena`: arena data, baked visuals and collision helpers.
 - `src/game/entities`: Player, PlayerVisuals and Drone for local mode.
 - `src/game/scenes/ArenaScene.ts`: local Phaser orchestration, AI, scoring and match flow.
+- `src/game/characters`: generated validated roster manifest and typed skin lookup.
 - `src/game/multiplayer`: shared protocol, deterministic human movement and authoritative `GameSimulation`.
 - `src/game/online`: online Phaser scene, combatant views and game bootstrap.
 - `server`: Colyseus bootstrap, FFA room lifecycle, bot seat replacement, input limits and metadata.
@@ -46,7 +47,9 @@ The player operator is VIBER-010, preserved from the original Vibe Vibers NFT ar
 - Quick Match uses Colyseus `joinOrCreate` with an `open` metadata filter and `clients: -1` ordering. This keeps concurrent joins in the most populated room instead of racing client-side.
 - FFA room handlers enable realtime listing so countdown and phase changes reach the lobby.
 - Countdown state is server-owned. Combat input is frozen until the match is live.
-- Online bots reuse `PlayerVisuals` and the VIBER-010 cutout. Bot snapshots use feet coordinates, and bot damage uses the character-sized hitbox while navigation keeps the compact movement body.
+- Ten official source images were each confirmed as a distinct single-character render. The deterministic matte pipeline prepared and validated all ten.
+- Online bots reuse `PlayerVisuals` with per-skin textures from `src/game/characters/roster.json`. Bot snapshots use feet coordinates, and bot damage uses the character-sized hitbox while navigation keeps the compact movement body.
+- `skinId` is server-authoritative. Bots choose deterministic unique non-default skins, retain them through death/respawn, and receive valid unused skins after human replacement and disconnect backfill. Humans remain VIBER-010.
 - Bot projectiles use the Vibe Rifle presentation while preserving the previous 7 damage, 900 speed, 0.055 spread and 3-shot burst cadence.
 - Replay restarts the same room, resets scores and health, and keeps its human occupants.
 - Static authored NFT pose is intentional. Weapon and effects remain separate layers.
@@ -55,19 +58,21 @@ The player operator is VIBER-010, preserved from the original Vibe Vibers NFT ar
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 47 tests pass
+- `npm test`: 52 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks against the production build
 - `npm run verify:online:countdown`: 16/16 checks against the production build
 - `npm run verify:online:matchmaking`: 11/11 checks against the production build
-- `npm run verify:online:bots`: 23/23 checks against the production build
+- `npm run verify:online:bots`: 32/32 checks against the production build
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms; the second room filled one bot at countdown expiry
-- `npm run verify:online:match`: 22/22 checks, 8 humans, time-limit result, identical standings, replay reset, 0.09 ms average server tick
+- `npm run verify:online:match`: 22/22 checks, 8 humans, time-limit result, identical standings, replay reset, 0.07 ms average server tick
 - `npm run verify:online:rooms`: 16/16 checks, including countdown auto-start, full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.14 ms average server tick, 0.30 ms p95
-- Bot verification observed Vibe Rifle projectiles, human damage, bot-versus-bot eliminations, bot death and respawn, BOT labels, damaged health bars, human replacement, disconnect backfill and no bots in an eight-human match
-- Original cutout and archived NFT source are unchanged
+- `HEADED=1 npm run verify:online:perf`: 58 fps, 0.30 ms average server tick, 0.60 ms p95
+- One human plus seven bots rendered eight distinct official skins with no bot using VIBER-010
+- Bot skins persisted through death and respawn, late-joining clients saw identical assignments, human replacement preserved remaining skins, and disconnect backfill added one valid unused skin
+- All ten roster textures loaded in the production browser
+- Original public sources, archived sources and VIBER-010 cutout hash are unchanged
 - Local P1 remains 37/37 with no regression
 
 ## Known limitations
@@ -78,7 +83,9 @@ The player operator is VIBER-010, preserved from the original Vibe Vibers NFT ar
 - Room discovery is in-memory and disappears on server restart.
 - Combat input is frozen during countdown.
 - Quick Match can fall back to creating a new room under extreme seat-race contention.
-- All online bots reuse VIBER-010 and the Vibe Rifle until the official roster and character selection milestone.
+- Ten official online skins are validated, but players cannot select one yet. Humans remain VIBER-010 until P3A.
+- Bots share the same Vibe Rifle tuning and differ only by official skin, callsign and BOT label.
 - Bot navigation uses the compact movement body while damage uses the character-sized hitbox. Tight cover can overlap the visible character more than the navigation body.
+- If the roster is smaller than the combatant count, skin assignment gracefully reuses entries rather than fabricating assets.
 - Character body is static because the NFT is a 3/4 frontal portrait.
 - No audio, accounts, wallets, XP or persistent stats.

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
+import {
+  CHARACTER_ROSTER,
+  HUMAN_DEFAULT_SKIN_ID,
+} from "@/game/characters/roster";
 import { GameSimulation } from "./GameSimulation";
+
+const rosterSkinIds = new Set(
+  CHARACTER_ROSTER.map((skin) => skin.skinId),
+);
 
 function runTicks(sim: GameSimulation, count: number): void {
   for (let index = 0; index < count; index += 1) {
@@ -53,7 +61,7 @@ describe("authoritative match simulation", () => {
     expect(live.countdownRemainingMs).toBe(0);
   });
 
-  it("reports online bots with the Vibe Rifle presentation", () => {
+  it("reports online bots with the Vibe Rifle presentation and unique skins", () => {
     const sim = new GameSimulation({
       roomId: "room-a",
       roomName: "Arena A",
@@ -61,8 +69,14 @@ describe("authoritative match simulation", () => {
     });
     sim.addHuman("one", "ONE");
     const snapshot = sim.snapshot();
+    const human = snapshot.participants.find((entry) => entry.kind === "human");
     const bots = snapshot.participants.filter((entry) => entry.kind === "bot");
+    const botSkins = bots.map((bot) => bot.skinId);
+    expect(human?.skinId).toBe(HUMAN_DEFAULT_SKIN_ID);
     expect(bots).toHaveLength(7);
+    expect(new Set(botSkins).size).toBe(7);
+    expect(botSkins).not.toContain(HUMAN_DEFAULT_SKIN_ID);
+    expect(botSkins.every((skinId) => rosterSkinIds.has(skinId))).toBe(true);
     expect(bots.every((bot) => bot.weaponId === "vibe-rifle")).toBe(true);
     expect(
       bots.every(
@@ -73,6 +87,47 @@ describe("authoritative match simulation", () => {
           Number.isFinite(bot.y),
       ),
     ).toBe(true);
+  });
+
+  it("assigns deterministic skins and keeps them through human replacement", () => {
+    const first = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      countdownMs: 0,
+      skinSeed: 0x51c0ffee,
+    });
+    const second = new GameSimulation({
+      roomId: "room-b",
+      roomName: "Arena B",
+      countdownMs: 0,
+      skinSeed: 0x51c0ffee,
+    });
+    first.addHuman("one", "ONE");
+    second.addHuman("one", "ONE");
+    const firstSkins = first
+      .snapshot()
+      .participants.filter((entry) => entry.kind === "bot")
+      .map((entry) => entry.skinId);
+    const secondSkins = second
+      .snapshot()
+      .participants.filter((entry) => entry.kind === "bot")
+      .map((entry) => entry.skinId);
+    expect(firstSkins).toEqual(secondSkins);
+
+    first.addHuman("two", "TWO");
+    const afterJoin = first.snapshot();
+    const remainingBots = afterJoin.participants.filter(
+      (entry) => entry.kind === "bot",
+    );
+    expect(remainingBots).toHaveLength(6);
+    expect(
+      remainingBots.every(
+        (entry) =>
+          firstSkins.includes(entry.skinId) &&
+          entry.skinId !== HUMAN_DEFAULT_SKIN_ID,
+      ),
+    ).toBe(true);
+    expect(new Set(remainingBots.map((entry) => entry.skinId)).size).toBe(6);
   });
 
   it("accepts movement inputs and advances the server position", () => {
@@ -195,9 +250,29 @@ describe("authoritative match simulation", () => {
     });
     sim.addHuman("one", "ONE");
     sim.addHuman("two", "TWO");
-    expect(sim.snapshot().bots).toBe(6);
+    const before = sim.snapshot();
+    const beforeBotIds = new Set(
+      before.participants
+        .filter((entry) => entry.kind === "bot")
+        .map((entry) => entry.id),
+    );
+    expect(before.bots).toBe(6);
     sim.removeHuman("two");
-    expect(sim.snapshot().humans).toBe(1);
-    expect(sim.snapshot().bots).toBe(7);
+    const after = sim.snapshot();
+    expect(after.humans).toBe(1);
+    expect(after.bots).toBe(7);
+    const backfill = after.participants.find(
+      (entry) => entry.kind === "bot" && !beforeBotIds.has(entry.id),
+    );
+    expect(backfill).toBeDefined();
+    expect(backfill?.skinId).not.toBe(HUMAN_DEFAULT_SKIN_ID);
+    expect(rosterSkinIds.has(backfill?.skinId ?? "")).toBe(true);
+    expect(
+      new Set(
+        after.participants
+          .filter((entry) => entry.kind === "bot")
+          .map((entry) => entry.skinId),
+      ).size,
+    ).toBe(7);
   });
 });

@@ -10,12 +10,26 @@
 
 import { chromium } from "playwright-core";
 import { Client } from "@colyseus/sdk";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 
 const baseUrl = process.env.BASE_URL ?? "http://localhost:3000";
 const serverUrl = process.env.COLYSEUS_URL ?? "http://localhost:2567";
 const artifactDir = process.env.ARTIFACT_DIR ?? "";
 const executablePath = process.env.CHROME_PATH;
+const roster = JSON.parse(
+  await readFile(
+    new URL("../src/game/characters/roster.json", import.meta.url),
+    "utf8",
+  ),
+);
+const rosterBySkin = new Map(
+  roster.characters.map((skin) => [skin.skinId, skin]),
+);
+const rosterTextureKeys = new Set(
+  roster.characters.map((skin) => skin.textureKey),
+);
+const defaultSkinId = roster.humanDefaultSkinId;
+const defaultTextureKey = rosterBySkin.get(defaultSkinId).textureKey;
 
 const checks = [];
 const check = (name, condition, detail = "") => {
@@ -89,23 +103,53 @@ try {
   await pageA.waitForTimeout(2500);
 
   const initial = await probe(pageA);
-  const initialBotIds = initial.participants
-    .filter((entry) => entry.kind === "bot")
-    .map((entry) => entry.id);
+  const initialBotParticipants = initial.participants.filter(
+    (entry) => entry.kind === "bot",
+  );
+  const initialHumanParticipants = initial.participants.filter(
+    (entry) => entry.kind === "human",
+  );
+  const initialBotIds = initialBotParticipants.map((entry) => entry.id);
   const initialBotSet = new Set(initialBotIds);
+  const initialBotSkins = initialBotParticipants.map((entry) => entry.skinId);
+  const initialSkinIds = initial.participants.map((entry) => entry.skinId);
   const botViews = initial.views.filter((view) => view.kind === "bot");
   const humanViews = initial.views.filter((view) => view.kind === "human");
   console.log("INITIAL", {
     humans: initial.humans,
     bots: initial.bots,
     views: initial.views.length,
-    textures: [...new Set(initial.views.map((view) => view.texture))],
+    skinIds: initialSkinIds,
+    textures: initial.views.map((view) => view.texture),
   });
   check("one human and seven bots are present", initial.humans === 1 && initial.bots === 7);
   check("eight Viber character views render", initial.views.length === 8);
   check(
-    "all combatants use the player Viber texture",
-    initial.views.every((view) => view.texture === "player-viber"),
+    "all combatants use validated roster textures",
+    initial.views.every((view) => rosterTextureKeys.has(view.texture)),
+  );
+  check(
+    "the human keeps the VIBER-010 default skin",
+    initialHumanParticipants.length === 1 &&
+      initialHumanParticipants[0].skinId === defaultSkinId &&
+      humanViews[0]?.texture === defaultTextureKey,
+  );
+  check(
+    "eight distinct official skins render",
+    initialSkinIds.length === 8 &&
+      new Set(initialSkinIds).size === 8 &&
+      new Set(initial.views.map((view) => view.texture)).size === 8,
+    initialSkinIds.join(", "),
+  );
+  check(
+    "bots use unique valid non-default skins",
+    initialBotSkins.length === 7 &&
+      new Set(initialBotSkins).size === 7 &&
+      initialBotSkins.every(
+        (skinId) =>
+          skinId !== defaultSkinId && rosterBySkin.has(skinId),
+      ),
+    initialBotSkins.join(", "),
   );
   check(
     "bots show the player weapon layer",
@@ -128,10 +172,23 @@ try {
       .filter((entry) => entry.kind === "bot")
       .every((entry) => entry.weaponId === "vibe-rifle"),
   );
+  const loadedSprites = await pageA.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((name) => name.includes("/sprites/")),
+  );
+  check(
+    "all ten validated roster textures load",
+    roster.characters.every((skin) =>
+      loadedSprites.some((url) => url.endsWith(skin.cutoutPath)),
+    ),
+    `${loadedSprites.length} sprite requests`,
+  );
 
   if (artifactDir) {
     await pageA.screenshot({
-      path: `${artifactDir}/slice-b-viber-bots.png`,
+      path: `${artifactDir}/slice-c-viber-roster.png`,
       fullPage: true,
     });
   }
@@ -141,7 +198,9 @@ try {
     humanDamaged: false,
     botVsBot: null,
     botDeath: null,
+    botDeathSkinId: null,
     botDeathPresentation: null,
+    botRespawnSkinId: null,
     botRespawnPresentation: null,
     thrusting: false,
     moved: false,
@@ -204,6 +263,7 @@ try {
       if (!bot.alive && !deadBotIds.has(bot.id) && !combat.botDeath) {
         deadBotIds.add(bot.id);
         combat.botDeath = bot.name;
+        combat.botDeathSkinId = bot.skinId;
         await pageA.waitForTimeout(150);
         const deathProbe = await probe(pageA);
         combat.botDeathPresentation =
@@ -216,8 +276,11 @@ try {
         combat.botDeath
       ) {
         respawnedBotId = bot.id;
+        combat.botRespawnSkinId = bot.skinId;
+        await pageA.waitForTimeout(150);
+        const respawnProbe = await probe(pageA);
         combat.botRespawnPresentation =
-          current.views.find((view) => view.id === bot.id) ?? null;
+          respawnProbe.views.find((view) => view.id === bot.id) ?? null;
       }
     }
 
@@ -244,23 +307,27 @@ try {
   check("bots navigate and use their thrusters", combat.moved && combat.thrusting);
   check("bots visibly track targets with their aim", combat.aimed);
   check("damaged bots show health bars", combat.damagedBotHealthBar);
+  const deathSkin = rosterBySkin.get(combat.botDeathSkinId);
+  const respawnSkin = rosterBySkin.get(combat.botRespawnSkinId);
   check(
     "bot death hides the character presentation",
-    combat.botDeathPresentation?.texture === "player-viber" &&
+    combat.botDeathPresentation?.texture === deathSkin?.textureKey &&
       combat.botDeathPresentation.nameVisible === false &&
       combat.botDeathPresentation.weaponVisible === false,
   );
   check(
-    "bot respawn restores the Viber presentation",
-    combat.botRespawnPresentation?.texture === "player-viber" &&
+    "bot respawn restores the same official skin",
+    combat.botDeathSkinId === combat.botRespawnSkinId &&
+      combat.botRespawnPresentation?.texture === respawnSkin?.textureKey &&
       combat.botRespawnPresentation.nameVisible === true &&
       combat.botRespawnPresentation.botLabelVisible === true &&
       combat.botRespawnPresentation.weaponVisible === true,
+    `${combat.botDeathSkinId} -> ${combat.botRespawnSkinId}`,
   );
 
   if (artifactDir) {
     await pageA.screenshot({
-      path: `${artifactDir}/slice-b-viber-combat.png`,
+      path: `${artifactDir}/slice-c-viber-combat.png`,
       fullPage: true,
     });
   }
@@ -275,18 +342,59 @@ try {
   const joined = await probe(pageA);
   const joinedB = await probe(pageB);
   const joinedBots = joined.views.filter((view) => view.kind === "bot");
+  const joinedBotParticipants = joined.participants.filter(
+    (entry) => entry.kind === "bot",
+  );
+  const joinedHumanParticipants = joined.participants.filter(
+    (entry) => entry.kind === "human",
+  );
+  const joinedBotSkins = joinedBotParticipants.map((entry) => entry.skinId);
+  const joinedSkinMapA = new Map(
+    joined.participants.map((entry) => [entry.id, entry.skinId]),
+  );
+  const joinedSkinMapB = new Map(
+    joinedB.participants.map((entry) => [entry.id, entry.skinId]),
+  );
+  const sharedIds = [...joinedSkinMapA.keys()].filter((id) =>
+    joinedSkinMapB.has(id),
+  );
   console.log("HUMAN JOIN", {
     humans: joined.humans,
     bots: joined.bots,
     views: joined.views.length,
+    botSkins: joinedBotSkins,
     secondRoom: joinedB.roomId,
   });
   check("second browser joined the same live room", joinedB.roomId === joined.roomId);
   check("human join replaces one bot", joined.humans === 2 && joined.bots === 6);
   check("replacement leaves eight views with no ghost", joined.views.length === 8);
   check(
-    "remaining bots and both humans keep the Viber presentation",
-    joined.views.every((view) => view.texture === "player-viber") &&
+    "both humans keep the VIBER-010 default skin",
+    joinedHumanParticipants.length === 2 &&
+      joinedHumanParticipants.every(
+        (entry) => entry.skinId === defaultSkinId,
+      ),
+  );
+  check(
+    "human replacement preserves the remaining bot skins",
+    joinedBotSkins.length === 6 &&
+      new Set(joinedBotSkins).size === 6 &&
+      joinedBotSkins.every(
+        (skinId) =>
+          initialBotSkins.includes(skinId) && skinId !== defaultSkinId,
+      ),
+  );
+  check(
+    "late-joining client sees identical skin assignments",
+    sharedIds.length > 0 &&
+      sharedIds.every(
+        (id) => joinedSkinMapA.get(id) === joinedSkinMapB.get(id),
+      ),
+    `${sharedIds.length} shared combatants`,
+  );
+  check(
+    "remaining bots and both humans keep valid Viber presentations",
+    joined.views.every((view) => rosterTextureKeys.has(view.texture)) &&
       joined.views.filter((view) => view.kind === "human").length === 2 &&
       joinedBots.length === 6 &&
       joinedBots.every((view) =>
@@ -297,7 +405,7 @@ try {
   );
   if (artifactDir) {
     await pageA.screenshot({
-      path: `${artifactDir}/slice-b-viber-human-join.png`,
+      path: `${artifactDir}/slice-c-viber-human-join.png`,
       fullPage: true,
     });
   }
@@ -314,18 +422,37 @@ try {
   );
   await pageA.waitForTimeout(500);
   const backfilled = await probe(pageA);
+  const backfilledBotParticipants = backfilled.participants.filter(
+    (entry) => entry.kind === "bot",
+  );
+  const backfilledBotSkins = backfilledBotParticipants.map(
+    (entry) => entry.skinId,
+  );
+  const newBackfillSkins = backfilledBotSkins.filter(
+    (skinId) => !joinedBotSkins.includes(skinId),
+  );
   console.log("BACKFILL", {
     humans: backfilled.humans,
     bots: backfilled.bots,
     views: backfilled.views.length,
-    textures: [...new Set(backfilled.views.map((view) => view.texture))],
+    botSkins: backfilledBotSkins,
   });
   check("disconnect backfills a bot", backfilled.humans === 1 && backfilled.bots === 7);
   const backfilledBots = backfilled.views.filter((view) => view.kind === "bot");
   check(
+    "backfill preserves six bot identities and assigns a valid seventh",
+    backfilledBotSkins.length === 7 &&
+      new Set(backfilledBotSkins).size === 7 &&
+      joinedBotSkins.every((skinId) => backfilledBotSkins.includes(skinId)) &&
+      newBackfillSkins.length === 1 &&
+      rosterBySkin.has(newBackfillSkins[0]) &&
+      newBackfillSkins[0] !== defaultSkinId,
+    `new=${newBackfillSkins[0] ?? "none"}`,
+  );
+  check(
     "backfilled bot renders as a Viber with a BOT label",
     backfilled.views.length === 8 &&
-      backfilled.views.every((view) => view.texture === "player-viber") &&
+      backfilled.views.every((view) => rosterTextureKeys.has(view.texture)) &&
       backfilledBots.length === 7 &&
       backfilledBots.every((view) =>
         view.alive ? view.botLabelVisible : !view.nameVisible,
@@ -356,22 +483,30 @@ try {
     humans: eightHumans.humans,
     bots: eightHumans.bots,
     views: eightHumans.views.length,
+    skinIds: eightHumans.participants.map((entry) => entry.skinId),
     botLabels: eightHumans.views.filter((view) => view.botLabelVisible).length,
   });
   check("eight-human match has no bots", eightHumans.humans === 8 && eightHumans.bots === 0);
   check(
-    "eight-human match shows only Viber humans",
+    "all eight humans keep the VIBER-010 default skin",
+    eightHumans.participants.length === 8 &&
+      eightHumans.participants.every(
+        (entry) => entry.kind === "human" && entry.skinId === defaultSkinId,
+      ),
+  );
+  check(
+    "eight-human match shows only default Viber humans with no bot labels",
     eightHumans.views.length === 8 &&
       eightHumans.views.every(
         (view) =>
           view.kind === "human" &&
-          view.texture === "player-viber" &&
+          view.texture === defaultTextureKey &&
           view.botLabelVisible === false,
       ),
   );
   if (artifactDir) {
     await pageA.screenshot({
-      path: `${artifactDir}/slice-b-viber-eight-humans.png`,
+      path: `${artifactDir}/slice-c-viber-eight-humans.png`,
       fullPage: true,
     });
   }

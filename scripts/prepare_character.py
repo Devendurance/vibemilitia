@@ -29,6 +29,61 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = ROOT / "public/brand/vibe_vibers_characters/vibe-vibers-viber-10.png"
 DEFAULT_ID = "viber-010"
+MANIFEST_PATH = ROOT / "src/game/characters/roster.json"
+
+ROSTER_SOURCES = [
+    {
+        "id": "viber-010",
+        "display_name": "VIBER-010",
+        "file": "vibe-vibers-viber-10.png",
+        "human_default": True,
+    },
+    {
+        "id": "viber-006",
+        "display_name": "VIBER-006",
+        "file": "vibe-vibers-viber-6.png",
+    },
+    {
+        "id": "viber-031",
+        "display_name": "VIBER-031",
+        "file": "vibe-vibers-viber-31.png",
+    },
+    {
+        "id": "viber-123",
+        "display_name": "VIBER-123",
+        "file": "vibe-vibers-viber-123.png",
+    },
+    {
+        "id": "viber-141",
+        "display_name": "VIBER-141",
+        "file": "vibe-vibers-viber-141.png",
+    },
+    {
+        "id": "bureau-023",
+        "display_name": "BUREAU-023",
+        "file": "vibe-vibers-bureau-23.png",
+    },
+    {
+        "id": "bureau-roll-01-07",
+        "display_name": "BUREAU 01-07",
+        "file": "vibe-vibers-bureau-roll-1-7.png",
+    },
+    {
+        "id": "bureau-roll-09-03",
+        "display_name": "BUREAU 09-03",
+        "file": "vibe-vibers-bureau-roll-9-3.png",
+    },
+    {
+        "id": "bureau-roll-25-07",
+        "display_name": "BUREAU 25-07",
+        "file": "vibe-vibers-bureau-roll-25-7.png",
+    },
+    {
+        "id": "bureau-roll-28-02",
+        "display_name": "BUREAU 28-02",
+        "file": "vibe-vibers-bureau-roll-28-2.png",
+    },
+]
 
 BACKGROUND_TOLERANCE = 10.0
 SOLID_DISTANCE = 26.0
@@ -160,7 +215,11 @@ def _build_rgba(rgb: np.ndarray, background: np.ndarray, dist: np.ndarray) -> np
     return out
 
 
-def _contrast_preview(sprite: Image.Image, size: int = 1080) -> Image.Image:
+def _contrast_preview(
+    sprite: Image.Image,
+    label: str,
+    size: int = 1080,
+) -> Image.Image:
     """Six tiles, six backgrounds: a square remnant or pale halo cannot hide."""
     preview = Image.new("RGBA", (size, size), (12, 13, 15, 255))
     draw = ImageDraw.Draw(preview)
@@ -176,7 +235,7 @@ def _contrast_preview(sprite: Image.Image, size: int = 1080) -> Image.Image:
         ("CHECKER", None),
     ]
 
-    for index, (label, color) in enumerate(backgrounds):
+    for index, (background_label, color) in enumerate(backgrounds):
         x0 = (index % columns) * tile_w
         y0 = 84 + (index // columns) * tile_h
         if color is None:
@@ -199,7 +258,7 @@ def _contrast_preview(sprite: Image.Image, size: int = 1080) -> Image.Image:
         draw.rectangle([x0 + 12, y0 + tile_h - 30, x0 + 12 + 138, y0 + tile_h - 6], fill=(12, 13, 15, 230))
         draw.text(
             (x0 + 20, y0 + tile_h - 27),
-            label,
+            background_label,
             fill=(245, 243, 236, 255),
             font=ImageFont.load_default(),
         )
@@ -210,7 +269,7 @@ def _contrast_preview(sprite: Image.Image, size: int = 1080) -> Image.Image:
     except OSError:
         font = ImageFont.load_default()
         small = ImageFont.load_default()
-    draw.text((28, 22), "VIBER-010 / ALPHA VERIFICATION", fill=(215, 255, 46, 255), font=font)
+    draw.text((28, 22), f"{label} / ALPHA VERIFICATION", fill=(215, 255, 46, 255), font=font)
     draw.text((28, 58), "Original artwork, background removed only. Six backgrounds, zero check found.", fill=(201, 205, 210, 255), font=small)
     return preview
 
@@ -229,13 +288,11 @@ def _game_scale_preview(sprite: Image.Image) -> Image.Image:
     return preview
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
-    parser.add_argument("--id", default=DEFAULT_ID)
-    args = parser.parse_args()
-
-    source = args.source.resolve()
+def prepare_character(
+    source: Path,
+    character_id: str,
+    label: str,
+) -> dict:
     if not source.exists():
         raise SystemExit(f"Source not found: {source}")
 
@@ -269,22 +326,29 @@ def main() -> None:
 
     source_dir = ROOT / "assets" / "source" / "vibe-vibers"
     source_dir.mkdir(parents=True, exist_ok=True)
-    archived = source_dir / f"{args.id}-original.png"
+    archived = source_dir / f"{character_id}-original.png"
     if not archived.exists():
         shutil.copy2(source, archived)
 
-    sprite_dir = ROOT / "public" / "sprites" / args.id
+    sprite_dir = ROOT / "public" / "sprites" / character_id
     sprite_dir.mkdir(parents=True, exist_ok=True)
-    cutout_path = sprite_dir / f"{args.id}-cutout.png"
+    cutout_path = sprite_dir / f"{character_id}-cutout.png"
     cropped.save(cutout_path, optimize=True)
 
     preview_dir = sprite_dir / "previews"
     preview_dir.mkdir(parents=True, exist_ok=True)
-    _contrast_preview(cropped).save(preview_dir / "alpha-contrast.png", optimize=True)
-    _game_scale_preview(cropped).save(preview_dir / "game-scale.png", optimize=True)
-    cropped.resize((240, round(240 * cropped.height / cropped.width)), Image.Resampling.LANCZOS).save(
-        sprite_dir / f"{args.id}-avatar.png", optimize=True
+    _contrast_preview(cropped, label).save(
+        preview_dir / "alpha-contrast.png",
+        optimize=True,
     )
+    _game_scale_preview(cropped).save(
+        preview_dir / "game-scale.png",
+        optimize=True,
+    )
+    cropped.resize(
+        (240, round(240 * cropped.height / cropped.width)),
+        Image.Resampling.LANCZOS,
+    ).save(sprite_dir / f"{character_id}-avatar.png", optimize=True)
 
     corners_alpha = [
         int(alpha[0, 0]),
@@ -299,7 +363,8 @@ def main() -> None:
     sha_cutout = hashlib.sha256(cutout_path.read_bytes()).hexdigest()
 
     report = {
-        "id": args.id,
+        "id": character_id,
+        "display_name": label,
         "source": str(source.relative_to(ROOT)).replace("\\", "/"),
         "archived_source": str(archived.relative_to(ROOT)).replace("\\", "/"),
         "cutout": str(cutout_path.relative_to(ROOT)).replace("\\", "/"),
@@ -316,10 +381,101 @@ def main() -> None:
     }
     report_path = sprite_dir / "cutout-report.json"
     report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    report["report_path"] = str(report_path.relative_to(ROOT)).replace("\\", "/")
+    report["preview_path"] = str(
+        (preview_dir / "alpha-contrast.png").relative_to(ROOT)
+    ).replace("\\", "/")
 
     print(json.dumps(report, indent=2))
     print(f"\nSprite:  {cutout_path}")
     print(f"Preview: {preview_dir / 'alpha-contrast.png'}")
+    return report
+
+
+def _validate_report(report: dict) -> bool:
+    return (
+        report["corner_alpha"] == [0, 0, 0, 0]
+        and report["near_background_pixels_inside_cutout"] == 0
+        and report["transparent_ratio"] > 0.05
+        and report["cutout_size"][0] > 0
+        and report["cutout_size"][1] > 0
+    )
+
+
+def _manifest_entry(report: dict) -> dict:
+    skin_id = report["id"]
+    cutout_path = "/" + report["cutout"].removeprefix("public/")
+    return {
+        "skinId": skin_id,
+        "displayName": report["display_name"],
+        "sourcePath": report["source"],
+        "archivedSourcePath": report["archived_source"],
+        "cutoutPath": cutout_path,
+        "textureKey": f"character-{skin_id}",
+        "reportPath": report["report_path"],
+        "previewPath": "/" + report["preview_path"].removeprefix("public/"),
+        "sourceSha256": report["sha256_source"],
+        "cutoutSha256": report["sha256_cutout"],
+        "cutoutSize": report["cutout_size"],
+        "transparentRatio": report["transparent_ratio"],
+        "validated": _validate_report(report),
+    }
+
+
+def prepare_roster() -> None:
+    reports = []
+    for entry in ROSTER_SOURCES:
+        source = ROOT / "public/brand/vibe_vibers_characters" / entry["file"]
+        reports.append(
+            prepare_character(
+                source,
+                entry["id"],
+                entry["display_name"],
+            )
+        )
+
+    invalid = [report for report in reports if not _validate_report(report)]
+    if invalid:
+        for report in invalid:
+            print(f"INVALID CUTOUT: {report['id']}")
+        raise SystemExit(1)
+
+    manifest = {
+        "version": 1,
+        "generatedBy": "scripts/prepare_character.py --all",
+        "humanDefaultSkinId": "viber-010",
+        "characters": [_manifest_entry(report) for report in reports],
+    }
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MANIFEST_PATH.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    print(f"\nManifest: {MANIFEST_PATH}")
+    print(f"Validated skins: {len(reports)}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--id", default=DEFAULT_ID)
+    parser.add_argument("--label", default=None)
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Prepare the full verified roster and write the runtime manifest.",
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        prepare_roster()
+        return
+
+    prepare_character(
+        args.source.resolve(),
+        args.id,
+        args.label or args.id.upper(),
+    )
 
 
 if __name__ == "__main__":

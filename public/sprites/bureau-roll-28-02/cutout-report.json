@@ -1,0 +1,37 @@
+{
+  "id": "bureau-roll-28-02",
+  "display_name": "BUREAU 28-02",
+  "source": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-roll-28-2.png",
+  "archived_source": "assets/source/vibe-vibers/bureau-roll-28-02-original.png",
+  "cutout": "public/sprites/bureau-roll-28-02/bureau-roll-28-02-cutout.png",
+  "source_size": [
+    1080,
+    1080
+  ],
+  "cutout_size": [
+    706,
+    962
+  ],
+  "crop_box": [
+    187,
+    59,
+    893,
+    1021
+  ],
+  "background_rgb": [
+    207,
+    224,
+    234
+  ],
+  "transparent_ratio": 0.285082,
+  "antialiased_edge_ratio": 0.0,
+  "corner_alpha": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "near_background_pixels_inside_cutout": 0,
+  "sha256_source": "e64c3b4aad2d3ae89437e4c340b985ef54bfe1c581ffa1e155b1ead2b28537fe",
+  "sha256_cutout": "d1f89f401b3aac2d0531ec0547171b342076f4e83b715ea8007b3707dc5f8e4e"
+}

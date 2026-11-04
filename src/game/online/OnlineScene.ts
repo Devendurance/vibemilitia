@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import type { Room } from "@colyseus/sdk";
 import { ARENA } from "@/game/arena/arena";
 import { buildArena, type ArenaBuildResult } from "@/game/arena/ArenaBuilder";
+import { CHARACTER_ROSTER } from "@/game/characters/roster";
 import { PLAYER_WEAPONS } from "@/game/config/gameplay";
 import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } from "@/game/bridge";
 import { createGameTextures } from "@/game/systems/TextureFactory";
@@ -78,7 +79,9 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.image("player-viber", "/sprites/viber-010/viber-010-cutout.png");
+    for (const skin of CHARACTER_ROSTER) {
+      this.load.image(skin.textureKey, skin.cutoutPath);
+    }
   }
 
   create(): void {

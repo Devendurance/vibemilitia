@@ -1,0 +1,37 @@
+{
+  "id": "viber-006",
+  "display_name": "VIBER-006",
+  "source": "public/brand/vibe_vibers_characters/vibe-vibers-viber-6.png",
+  "archived_source": "assets/source/vibe-vibers/viber-006-original.png",
+  "cutout": "public/sprites/viber-006/viber-006-cutout.png",
+  "source_size": [
+    1080,
+    1080
+  ],
+  "cutout_size": [
+    672,
+    962
+  ],
+  "crop_box": [
+    204,
+    59,
+    876,
+    1021
+  ],
+  "background_rgb": [
+    207,
+    224,
+    234
+  ],
+  "transparent_ratio": 0.245788,
+  "antialiased_edge_ratio": 0.0,
+  "corner_alpha": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "near_background_pixels_inside_cutout": 0,
+  "sha256_source": "3017c6e06ec9a1eb840027dbf395c871f542b111efc834798e400b98b5a83b94",
+  "sha256_cutout": "ab1e0105a3db0e8db59ae0f30613467a9dd9ef54655d0167e4886b433dbdf6a9"
+}

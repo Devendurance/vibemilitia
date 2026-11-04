@@ -1,0 +1,37 @@
+{
+  "id": "bureau-023",
+  "display_name": "BUREAU-023",
+  "source": "public/brand/vibe_vibers_characters/vibe-vibers-bureau-23.png",
+  "archived_source": "assets/source/vibe-vibers/bureau-023-original.png",
+  "cutout": "public/sprites/bureau-023/bureau-023-cutout.png",
+  "source_size": [
+    1080,
+    1080
+  ],
+  "cutout_size": [
+    842,
+    966
+  ],
+  "crop_box": [
+    119,
+    57,
+    961,
+    1023
+  ],
+  "background_rgb": [
+    224,
+    239,
+    232
+  ],
+  "transparent_ratio": 0.294077,
+  "antialiased_edge_ratio": 6e-06,
+  "corner_alpha": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "near_background_pixels_inside_cutout": 0,
+  "sha256_source": "595204261565a4c48a254dc5f55dd93eba42692f21f09f9eca5751245c167488",
+  "sha256_cutout": "f6f098122cc9941cfeb00b67b89bb15d91a4ee233a6b6a93240c9d14b628cef0"
+}

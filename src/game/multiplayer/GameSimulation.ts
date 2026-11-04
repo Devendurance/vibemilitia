@@ -9,6 +9,10 @@ import {
 } from "@/game/config/gameplay";
 import { ARENA } from "@/game/arena/arena";
 import { pointInRect, segmentIntersectsRect, type Rect } from "@/game/arena/collision";
+import {
+  CHARACTER_ROSTER,
+  HUMAN_DEFAULT_SKIN_ID,
+} from "@/game/characters/roster";
 import { buildNavigationGrid, findPath, lineClear, type NavGrid, type NavPoint } from "@/game/ai/navigation";
 import { applyDamage, stepHealthRegen } from "@/game/core/combat";
 import { createWeaponState, reloadProgress, stepWeapon, type WeaponState } from "@/game/core/weapon";
@@ -104,6 +108,7 @@ interface HumanRuntime {
   kind: "human";
   id: string;
   name: string;
+  skinId: string;
   kin: HumanKinematics;
   health: number;
   maxHealth: number;
@@ -130,6 +135,7 @@ interface BotRuntime {
   kind: "bot";
   id: string;
   name: string;
+  skinId: string;
   x: number;
   y: number;
   vx: number;
@@ -169,6 +175,7 @@ interface SimulationOptions {
   roomName: string;
   botsEnabled?: boolean;
   countdownMs?: number;
+  skinSeed?: number;
 }
 
 function createRng(seed: number): () => number {
@@ -180,6 +187,15 @@ function createRng(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function seedFromString(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }
 
 function approach(current: number, target: number, maxDelta: number): number {
@@ -256,6 +272,7 @@ export class GameSimulation {
   }));
   private navGrid: NavGrid;
   private rng = createRng(0x5eedc0de);
+  private skinRng: () => number;
   private botsEnabled: boolean;
 
   constructor(options: SimulationOptions) {
@@ -265,6 +282,9 @@ export class GameSimulation {
     this.countdownDurationMs = Math.max(
       0,
       options.countdownMs ?? DEFAULT_MATCH_COUNTDOWN_MS,
+    );
+    this.skinRng = createRng(
+      options.skinSeed ?? seedFromString(options.roomId),
     );
     this.navGrid = buildNavigationGrid(
       ARENA.width,
@@ -570,6 +590,7 @@ export class GameSimulation {
       kind: "human",
       id,
       name,
+      skinId: HUMAN_DEFAULT_SKIN_ID,
       kin: createHumanKinematics(ARENA.playerSpawn.x, ARENA.playerSpawn.y),
       health: PLAYER_CONFIG.maxHealth,
       maxHealth: PLAYER_CONFIG.maxHealth,
@@ -593,6 +614,29 @@ export class GameSimulation {
     };
   }
 
+  private chooseBotSkinId(): string {
+    const used = new Set<string>();
+    for (const human of this.humans.values()) used.add(human.skinId);
+    for (const bot of this.bots.values()) used.add(bot.skinId);
+
+    const available = CHARACTER_ROSTER.filter(
+      (skin) => !used.has(skin.skinId),
+    );
+    const preferred = available.filter(
+      (skin) => skin.skinId !== HUMAN_DEFAULT_SKIN_ID,
+    );
+    const pool =
+      preferred.length > 0
+        ? preferred
+        : available.length > 0
+          ? available
+          : CHARACTER_ROSTER.filter(
+              (skin) => skin.skinId !== HUMAN_DEFAULT_SKIN_ID,
+            );
+    const fallback = pool.length > 0 ? pool : CHARACTER_ROSTER;
+    return fallback[Math.floor(this.skinRng() * fallback.length)].skinId;
+  }
+
   private createBot(): void {
     const index = this.botCounter++;
     const used = new Set([...this.bots.values()].map((bot) => bot.name));
@@ -603,6 +647,7 @@ export class GameSimulation {
       kind: "bot",
       id: `bot-${index}-${name.toLowerCase()}`,
       name,
+      skinId: this.chooseBotSkinId(),
       x: ARENA.width / 2,
       y: 900,
       vx: 0,
@@ -1235,6 +1280,7 @@ export class GameSimulation {
       id: combatant.id,
       name: combatant.name,
       kind: combatant.kind,
+      skinId: human ? human.skinId : bot!.skinId,
       x: position.x,
       y: position.y,
       vx: combatant.kind === "human" ? human!.kin.vx : bot!.vx,

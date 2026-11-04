@@ -45,6 +45,7 @@ export interface OnlineCombatantSnapshot {
   id: string;
   name: string;
   kind: PlayerKind;
+  skinId: string;
   x: number;
   y: number;
   vx: number;
