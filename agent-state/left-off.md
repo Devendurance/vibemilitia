@@ -54,4 +54,4 @@ P3C-A elimination loot, real online weapon ownership and authored Vibe Lance pic
 
 ## Checkpoint
 
-P3C-A is ready to commit on `main`. The last verified base checkpoint was `be249c3`.
+P3C-A code, tests, scripts and docs are committed at `4c06103` on `main`. The previous verified P3B-C checkpoint was `be249c3`. Stop before P3C-B.
