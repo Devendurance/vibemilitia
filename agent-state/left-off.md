@@ -51,4 +51,4 @@ P3B-B contact and frag grenades are implemented and verified. P3B-C has not star
 
 ## Checkpoint
 
-P3B-B code, tests and docs are committed at `PENDING` on `main`. P3B-C has not started.
+P3B-B code, tests and docs are committed at `50f442f` on `main`. P3B-C has not started.
