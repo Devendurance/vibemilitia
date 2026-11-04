@@ -115,7 +115,9 @@ const collectNearest = async (page, expectedBefore) => {
       continue;
     }
     const candidates = before.pickups
-      .filter((pickup) => pickup.active)
+      .filter(
+        (pickup) => pickup.active && pickup.type === "medkit",
+      )
       .sort((left, right) => {
         const leftScore =
           Math.abs(left.y - before.y) * 4 + Math.abs(left.x - before.x);
@@ -174,13 +176,27 @@ try {
   });
 
   check("room created", Boolean(roomId));
+  const medkitsA = initialA.pickups.filter(
+    (pickup) => pickup.type === "medkit",
+  );
+  const contactCaches = initialA.pickups.filter(
+    (pickup) => pickup.type === "contact-grenade",
+  );
+  const fragCaches = initialA.pickups.filter(
+    (pickup) => pickup.type === "frag-grenade",
+  );
   check(
     "fourteen medkit pickups spawn in Sector 07",
-    initialA.pickups.length === 14 &&
-      initialA.pickups.every(
-        (pickup) => pickup.type === "medkit" && pickup.active,
-      ),
-    `count=${initialA.pickups.length}`,
+    medkitsA.length === 14 && medkitsA.every((pickup) => pickup.active),
+    `count=${medkitsA.length}`,
+  );
+  check(
+    "contact and frag grenade caches spawn",
+    contactCaches.length === 3 &&
+      fragCaches.length === 3 &&
+      contactCaches.every((pickup) => pickup.active) &&
+      fragCaches.every((pickup) => pickup.active),
+    `contact=${contactCaches.length} frag=${fragCaches.length}`,
   );
   check(
     "all pickups render in the world",
@@ -267,6 +283,23 @@ try {
   );
   await screenshot(pageA, "02-medkit-collected");
 
+  const preFullUse = await probe(pageA);
+  if (
+    preFullUse.alive &&
+    preFullUse.medkits > 0 &&
+    preFullUse.health >= preFullUse.maxHealth
+  ) {
+    await pageA.keyboard.press("KeyH");
+    await pageA.waitForTimeout(450);
+    const afterFullUse = await probe(pageA);
+    check(
+      "server rejects a medkit at full health",
+      afterFullUse.medkits === preFullUse.medkits &&
+        afterFullUse.health === afterFullUse.maxHealth,
+      `health=${afterFullUse.health} medkits=${afterFullUse.medkits}`,
+    );
+  }
+
   const pageD = await contextA.newPage();
   pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
   await pageD.goto(roomUrl, { waitUntil: "networkidle" });
@@ -285,20 +318,6 @@ try {
     `medkits=${lateJoin.medkits}`,
   );
   await pageD.close();
-
-  await pageA.keyboard.press("KeyH");
-  await pageA.waitForTimeout(500);
-  const afterFullUse = await probe(pageA);
-  const fullHealth = afterCollectA.health >= afterCollectA.maxHealth;
-  check(
-    fullHealth
-      ? "server rejects a medkit at full health"
-      : "medkit use only happens when damaged",
-    fullHealth
-      ? afterFullUse.medkits === 1 && afterFullUse.health === afterFullUse.maxHealth
-      : true,
-    `health=${afterFullUse.health} medkits=${afterFullUse.medkits}`,
-  );
 
   // Move away so the collected pickup can respawn without being re-collected.
   const escapeKey = afterCollectA.x > 1800 ? "KeyA" : "KeyD";

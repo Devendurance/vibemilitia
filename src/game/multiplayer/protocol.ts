@@ -1,3 +1,4 @@
+import type { GrenadeType } from "@/game/core/grenades";
 import type { PickupType } from "@/game/core/pickups";
 
 export const FFA_ROOM = "ffa";
@@ -70,6 +71,23 @@ export interface OnlineCombatantSnapshot {
   accuracy: number;
   lastKillerName: string | null;
   medkits: number;
+  grenadeContact: number;
+  grenadeFrag: number;
+  grenadeSelected: GrenadeType;
+  grenadeCooldownMs: number;
+}
+
+export interface OnlineGrenadeSnapshot {
+  id: number;
+  type: GrenadeType;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  ownerId: string;
+  kind: PlayerKind;
+  fuseRemainingMs: number | null;
+  armed: boolean;
 }
 
 export interface OnlinePickupSnapshot {
@@ -106,6 +124,7 @@ export interface OnlineSnapshot {
   winnerName: string | null;
   participants: OnlineCombatantSnapshot[];
   projectiles: OnlineProjectileSnapshot[];
+  grenades: OnlineGrenadeSnapshot[];
   pickups: OnlinePickupSnapshot[];
   standings: OnlineStanding[];
   feed: OnlineFeedEntry[];
@@ -193,6 +212,28 @@ export type OnlineEvent =
       health: number;
       x: number;
       y: number;
+    }
+  | {
+      type: "grenade-thrown";
+      grenadeId: number;
+      grenadeType: GrenadeType;
+      ownerId: string;
+      kind: PlayerKind;
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      fuseMs: number | null;
+    }
+  | {
+      type: "grenade-exploded";
+      grenadeId: number;
+      grenadeType: GrenadeType;
+      ownerId: string;
+      kind: PlayerKind;
+      x: number;
+      y: number;
+      blastRadius: number;
     };
 
 export interface OnlineInputPayload {
@@ -205,6 +246,8 @@ export interface OnlineInputPayload {
   weapon: number | null;
   aim: number;
   useMedkit?: boolean;
+  grenadeSlot?: number | null;
+  throwGrenade?: boolean;
 }
 
 export interface JoinOptions {

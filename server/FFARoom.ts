@@ -163,6 +163,11 @@ export class FFARoom extends Room {
           : Number(value.weapon),
       aim: value.aim,
       useMedkit: Boolean(value.useMedkit),
+      grenadeSlot:
+        value.grenadeSlot === null || value.grenadeSlot === undefined
+          ? null
+          : Number(value.grenadeSlot),
+      throwGrenade: Boolean(value.throwGrenade),
     });
   }
 

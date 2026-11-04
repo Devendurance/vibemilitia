@@ -227,7 +227,8 @@ function makeDrone(scene: Phaser.Scene): void {
 }
 
 export function createGameTextures(scene: Phaser.Scene): void {
-  makeSpark(scene, "spark-lime", 0xd7ff2e, 6);  makeSpark(scene, "spark-mint", 0x9bd8f2, 6);
+  makeSpark(scene, "spark-lime", 0xd7ff2e, 6);
+  makeSpark(scene, "spark-mint", 0x9bd8f2, 6);
   makeSpark(scene, "spark-copper", 0xc7692f, 6);
   makeSpark(scene, "spark-red", 0xe5484d, 6);
   makeSpark(scene, "spark-smoke", 0x9aa0a7, 9);
@@ -242,6 +243,7 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makeMuzzleFlash(scene);
   makeDrone(scene);
   makeMedkitPickup(scene);
+  makeGrenadeAssets(scene);
 }
 
 function makeMedkitPickup(scene: Phaser.Scene): void {
@@ -276,4 +278,88 @@ function makeMedkitPickup(scene: Phaser.Scene): void {
 
   g.generateTexture("pickup-medkit", 52, 42);
   g.destroy();
+}
+
+function makeGrenadeAssets(scene: Phaser.Scene): void {
+  if (!scene.textures.exists("grenade-contact")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillCircle(13, 14, 11);
+    g.fillStyle(0xe5484d, 1);
+    g.fillCircle(13, 14, 9);
+    g.fillStyle(0xff8a3d, 1);
+    g.fillCircle(10, 11, 4);
+    g.fillStyle(0xffd166, 1);
+    g.fillCircle(9, 10, 2);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(9, 3, 8, 4);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRect(11, 1, 4, 3);
+    g.generateTexture("grenade-contact", 26, 26);
+    g.destroy();
+  }
+
+  if (!scene.textures.exists("grenade-frag")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(5, 7, 16, 21, 6);
+    g.fillStyle(0x566b32, 1);
+    g.fillRoundedRect(7, 9, 12, 17, 4);
+    g.fillStyle(0x2f3a1d, 1);
+    g.fillRect(7, 14, 12, 3);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(11, 3, 4, 6);
+    g.fillStyle(0xf4e21c, 1);
+    g.fillRect(9, 10, 2, 2);
+    g.fillStyle(0xf5f3ec, 0.55);
+    g.fillRect(9, 10, 3, 2);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRect(14, 1, 4, 3);
+    g.generateTexture("grenade-frag", 26, 30);
+    g.destroy();
+  }
+
+  if (!scene.textures.exists("pickup-grenade-contact")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0xd7ff2e, 0.14);
+    g.fillEllipse(26, 34, 46, 14);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(4, 9, 44, 29, 5);
+    g.fillStyle(0x1f2227, 1);
+    g.fillRoundedRect(6, 11, 40, 25, 4);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillCircle(26, 23, 11);
+    g.fillStyle(0xe5484d, 1);
+    g.fillCircle(26, 23, 9);
+    g.fillStyle(0xff8a3d, 1);
+    g.fillCircle(23, 20, 4);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(22, 10, 8, 4);
+    g.fillStyle(0xd7ff2e, 1);
+    g.fillRect(8, 31, 36, 3);
+    g.generateTexture("pickup-grenade-contact", 52, 42);
+    g.destroy();
+  }
+
+  if (!scene.textures.exists("pickup-grenade-frag")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0xf4e21c, 0.12);
+    g.fillEllipse(26, 34, 46, 14);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(4, 9, 44, 29, 5);
+    g.fillStyle(0x2a2e34, 1);
+    g.fillRoundedRect(6, 11, 40, 25, 4);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(19, 14, 14, 18, 5);
+    g.fillStyle(0x566b32, 1);
+    g.fillRoundedRect(21, 16, 10, 14, 4);
+    g.fillStyle(0x2f3a1d, 1);
+    g.fillRect(21, 21, 10, 3);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(24, 11, 4, 5);
+    g.fillStyle(0xf4e21c, 1);
+    g.fillRect(8, 31, 36, 3);
+    g.generateTexture("pickup-grenade-frag", 52, 42);
+    g.destroy();
+  }
 }

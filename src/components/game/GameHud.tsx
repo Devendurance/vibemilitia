@@ -19,6 +19,40 @@ function Keycap({ children }: { children: React.ReactNode }) {
   return <kbd className="keycap">{children}</kbd>;
 }
 
+function ContactGrenadeIcon() {
+  return (
+    <svg
+      className="hud-grenade-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="9" y="1.5" width="6" height="4" rx="1" fill="#C7692F" />
+      <circle cx="12" cy="14" r="9" fill="#0C0D0F" />
+      <circle cx="12" cy="14" r="7.5" fill="#E5484D" />
+      <circle cx="9.5" cy="11" r="2.4" fill="#FF8A3D" />
+      <circle cx="9" cy="10.5" r="1.1" fill="#FFD166" />
+      <rect x="10.5" y="22" width="3" height="1.5" fill="#0C0D0F" opacity="0.5" />
+    </svg>
+  );
+}
+
+function FragGrenadeIcon() {
+  return (
+    <svg
+      className="hud-grenade-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
+      <rect x="5" y="4.5" width="14" height="18" rx="5" fill="#0C0D0F" />
+      <rect x="6.5" y="6" width="11" height="15" rx="4" fill="#566B32" />
+      <rect x="6.5" y="10.5" width="11" height="2.5" fill="#2F3A1D" />
+      <rect x="6.5" y="15" width="11" height="2" fill="#2F3A1D" />
+      <circle cx="9" cy="8" r="1.2" fill="#F4E21C" />
+    </svg>
+  );
+}
+
 function placementLabel(placement: number): string {
   if (placement === 1) return "1ST";
   if (placement === 2) return "2ND";
@@ -67,8 +101,10 @@ export function GameHud({
   const [damageFlash, setDamageFlash] = useState(0);
   const [booted, setBooted] = useState(false);
   const [medkitToast, setMedkitToast] = useState(0);
+  const [supplyToast, setSupplyToast] = useState("");
   const previousHealth = useRef(snapshot.health);
   const lastMedkitSeq = useRef(snapshot.medkitFeedbackSeq);
+  const lastSupplySeq = useRef(snapshot.supplyFeedbackSeq);
   const low = isLowHealth(snapshot.health, snapshot.maxHealth);
   const matchEnded = snapshot.matchPhase === "ended";
   const matchStarting = snapshot.matchPhase === "countdown";
@@ -89,6 +125,23 @@ export function GameHud({
       : null;
   const accuracy = Math.round(snapshot.playerAccuracy * 100);
   const victory = snapshot.playerPlacement === 1;
+  const selectedGrenadeCount =
+    snapshot.grenadeSelected === "contact"
+      ? snapshot.grenadeContact
+      : snapshot.grenadeFrag;
+  const grenadeCooldownSeconds = snapshot.grenadeCooldownRemainingMs / 1000;
+  const grenadeReady =
+    !dead &&
+    !matchEnded &&
+    !matchStarting &&
+    selectedGrenadeCount > 0 &&
+    snapshot.grenadeCooldownRemainingMs <= 0;
+  const grenadeStatus =
+    grenadeCooldownSeconds > 0
+      ? `COOLDOWN ${grenadeCooldownSeconds.toFixed(1)}S`
+      : selectedGrenadeCount > 0
+        ? "READY"
+        : "EMPTY";
 
   useEffect(() => {
     if (snapshot.health < previousHealth.current) {
@@ -117,6 +170,17 @@ export function GameHud({
     const timer = window.setTimeout(() => setMedkitToast(0), 1600);
     return () => window.clearTimeout(timer);
   }, [snapshot.medkitFeedbackSeq, snapshot.medkitFeedbackAmount]);
+
+  useEffect(() => {
+    if (snapshot.supplyFeedbackSeq <= lastSupplySeq.current) {
+      lastSupplySeq.current = snapshot.supplyFeedbackSeq;
+      return undefined;
+    }
+    lastSupplySeq.current = snapshot.supplyFeedbackSeq;
+    setSupplyToast(snapshot.supplyFeedbackText);
+    const timer = window.setTimeout(() => setSupplyToast(""), 1600);
+    return () => window.clearTimeout(timer);
+  }, [snapshot.supplyFeedbackSeq, snapshot.supplyFeedbackText]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -432,6 +496,87 @@ export function GameHud({
               </button>
             ))}
           </div>
+
+          {mode === "online" ? (
+            <div
+              className="hud-throwables"
+              data-testid="hud-grenades"
+              data-selected={snapshot.grenadeSelected}
+              data-contact={snapshot.grenadeContact}
+              data-frag={snapshot.grenadeFrag}
+            >
+              <div className="hud-throwables__head">
+                <span className="mono-label">THROWABLES</span>
+                <span
+                  className={`hud-grenade-status${grenadeReady ? " is-ready" : ""}`}
+                  data-testid="grenade-status"
+                >
+                  {grenadeStatus}
+                </span>
+              </div>
+
+              <div className="hud-grenade-slots" role="group" aria-label="Grenade selection">
+                <button
+                  type="button"
+                  className={`hud-grenade-slot${snapshot.grenadeSelected === "contact" ? " is-active" : ""}`}
+                  onClick={() =>
+                    bridge.send({ type: "select-grenade", slot: 0 })
+                  }
+                  aria-pressed={snapshot.grenadeSelected === "contact"}
+                  disabled={dead || matchEnded}
+                  data-testid="grenade-select-contact"
+                >
+                  <Keycap>4</Keycap>
+                  <ContactGrenadeIcon />
+                  <span className="hud-grenade-slot__copy">
+                    <span className="hud-grenade-slot__name">CONTACT</span>
+                    <span className="mono-label">IMPACT</span>
+                  </span>
+                  <strong data-testid="grenade-count-contact">
+                    {snapshot.grenadeContact}
+                  </strong>
+                </button>
+
+                <button
+                  type="button"
+                  className={`hud-grenade-slot${snapshot.grenadeSelected === "frag" ? " is-active" : ""}`}
+                  onClick={() =>
+                    bridge.send({ type: "select-grenade", slot: 1 })
+                  }
+                  aria-pressed={snapshot.grenadeSelected === "frag"}
+                  disabled={dead || matchEnded}
+                  data-testid="grenade-select-frag"
+                >
+                  <Keycap>5</Keycap>
+                  <FragGrenadeIcon />
+                  <span className="hud-grenade-slot__copy">
+                    <span className="hud-grenade-slot__name">FRAG</span>
+                    <span className="mono-label">5.0S FUSE</span>
+                  </span>
+                  <strong data-testid="grenade-count-frag">
+                    {snapshot.grenadeFrag}
+                  </strong>
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className={`hud-grenade-throw${grenadeReady ? " is-ready" : ""}`}
+                onClick={() => bridge.send({ type: "throw-grenade" })}
+                disabled={!grenadeReady}
+                data-testid="grenade-throw"
+                data-can-throw={grenadeReady}
+              >
+                <Keycap>G</Keycap>
+                <span className="hud-grenade-throw__label">
+                  THROW {snapshot.grenadeSelected === "contact" ? "CONTACT" : "FRAG"}
+                </span>
+                <span className="hud-grenade-throw__count">
+                  {selectedGrenadeCount}/{snapshot.grenadeMax}
+                </span>
+              </button>
+            </div>
+          ) : null}
         </section>
 
         <section className="hud-controls" aria-label="Controls">
@@ -458,6 +603,14 @@ export function GameHud({
             <span className="mono-label">MEDKIT</span>
             <strong className="display">+{Math.round(medkitToast)} HP</strong>
             <span className="mono-label">FIELD REPAIR</span>
+          </div>
+        ) : null}
+
+        {supplyToast ? (
+          <div className="supply-toast" aria-live="polite" data-testid="supply-toast">
+            <span className="mono-label">SUPPLY ACQUIRED</span>
+            <strong className="display">{supplyToast}</strong>
+            <span className="mono-label">+1</span>
           </div>
         ) : null}
       </div>

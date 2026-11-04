@@ -1,4 +1,5 @@
 import type { MatchEndReason, MatchPhase } from "@/game/core/match";
+import type { GrenadeType } from "@/game/core/grenades";
 import type { MatchPhase as OnlineMatchPhase } from "@/game/multiplayer/protocol";
 import type { ProjectileOwnerKind } from "@/game/systems/ProjectileSystem";
 
@@ -85,6 +86,14 @@ export interface HudSnapshot {
   maxMedkits: number;
   medkitFeedbackSeq: number;
   medkitFeedbackAmount: number;
+  grenadeContact: number;
+  grenadeFrag: number;
+  grenadeSelected: GrenadeType;
+  grenadeMax: number;
+  grenadeCooldownRemainingMs: number;
+  grenadeThrowCooldownMs: number;
+  supplyFeedbackSeq: number;
+  supplyFeedbackText: string;
 }
 
 export const INITIAL_HUD: HudSnapshot = {
@@ -133,6 +142,14 @@ export const INITIAL_HUD: HudSnapshot = {
   maxMedkits: 2,
   medkitFeedbackSeq: 0,
   medkitFeedbackAmount: 0,
+  grenadeContact: 0,
+  grenadeFrag: 0,
+  grenadeSelected: "contact",
+  grenadeMax: 3,
+  grenadeCooldownRemainingMs: 0,
+  grenadeThrowCooldownMs: 700,
+  supplyFeedbackSeq: 0,
+  supplyFeedbackText: "",
 };
 
 export type GameCommand =
@@ -141,6 +158,8 @@ export type GameCommand =
   | { type: "respawn" }
   | { type: "equip-weapon"; slot: number }
   | { type: "use-medkit" }
+  | { type: "select-grenade"; slot: number }
+  | { type: "throw-grenade" }
   | { type: "restart-match" }
   | { type: "force-match-end" };
 

@@ -1,10 +1,34 @@
-export type PickupType = "medkit";
+import {
+  GRENADE_INVENTORY_CONFIG,
+  type GrenadeType,
+} from "@/game/core/grenades";
+
+export type PickupType = "medkit" | "contact-grenade" | "frag-grenade";
+
+export const PICKUP_RADIUS = 78;
+
+export const PICKUP_LABELS: Record<PickupType, string> = {
+  medkit: "MEDKIT",
+  "contact-grenade": "CONTACT GRENADE",
+  "frag-grenade": "FRAG GRENADE",
+};
+
+export function pickupRespawnMs(type: PickupType): number {
+  return type === "medkit"
+    ? MEDKIT_CONFIG.respawnMs
+    : GRENADE_INVENTORY_CONFIG.pickupRespawnMs;
+}
+
+export function grenadeTypeFromPickup(type: PickupType): GrenadeType | null {
+  if (type === "contact-grenade") return "contact";
+  if (type === "frag-grenade") return "frag";
+  return null;
+}
 
 export const MEDKIT_CONFIG = {
   healAmount: 50,
   maxCarried: 2,
   useCooldownMs: 900,
-  pickupRadius: 78,
   respawnMs: 20_000,
 } as const;
 
@@ -71,7 +95,7 @@ export function findCollectiblePickup(
   x: number,
   y: number,
   accept: (pickup: PickupRuntime) => boolean,
-  radius = MEDKIT_CONFIG.pickupRadius,
+  radius = PICKUP_RADIUS,
 ): PickupRuntime | null {
   const radiusSq = radius * radius;
   for (const pickup of pickups) {
@@ -80,7 +104,7 @@ export function findCollectiblePickup(
     const dy = pickup.y - y;
     if (dx * dx + dy * dy > radiusSq) continue;
     pickup.active = false;
-    pickup.respawnRemainingMs = MEDKIT_CONFIG.respawnMs;
+    pickup.respawnRemainingMs = pickupRespawnMs(pickup.type);
     return pickup;
   }
   return null;

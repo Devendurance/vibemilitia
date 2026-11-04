@@ -13,6 +13,8 @@ export interface ControlFrame {
   reloadPressed: boolean;
   weaponSlotPressed: number | null;
   medkitPressed: boolean;
+  grenadeSlotPressed: number | null;
+  grenadeThrowPressed: boolean;
   aimWorld: Phaser.Math.Vector2;
 }
 
@@ -28,6 +30,9 @@ export class InputController {
     | "weapon2"
     | "weapon3"
     | "medkit"
+    | "grenade4"
+    | "grenade5"
+    | "grenadeThrow"
     | "leftArrow"
     | "rightArrow",
     Phaser.Input.Keyboard.Key
@@ -41,6 +46,8 @@ export class InputController {
   private bufferedDebug = false;
   private bufferedWeaponSlot: number | null = null;
   private bufferedMedkit = false;
+  private bufferedGrenadeSlot: number | null = null;
+  private bufferedGrenadeThrow = false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -60,6 +67,9 @@ export class InputController {
       weapon2: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
       weapon3: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
       medkit: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
+      grenade4: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
+      grenade5: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
+      grenadeThrow: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G),
     };
     keyboard.addCapture([
       Phaser.Input.Keyboard.KeyCodes.SPACE,
@@ -70,6 +80,9 @@ export class InputController {
       Phaser.Input.Keyboard.KeyCodes.TWO,
       Phaser.Input.Keyboard.KeyCodes.THREE,
       Phaser.Input.Keyboard.KeyCodes.H,
+      Phaser.Input.Keyboard.KeyCodes.FOUR,
+      Phaser.Input.Keyboard.KeyCodes.FIVE,
+      Phaser.Input.Keyboard.KeyCodes.G,
       Phaser.Input.Keyboard.KeyCodes.LEFT,
       Phaser.Input.Keyboard.KeyCodes.RIGHT,
       Phaser.Input.Keyboard.KeyCodes.F1,
@@ -97,6 +110,15 @@ export class InputController {
     });
     this.keys.medkit.on("down", () => {
       this.bufferedMedkit = true;
+    });
+    this.keys.grenade4.on("down", () => {
+      this.bufferedGrenadeSlot = 0;
+    });
+    this.keys.grenade5.on("down", () => {
+      this.bufferedGrenadeSlot = 1;
+    });
+    this.keys.grenadeThrow.on("down", () => {
+      this.bufferedGrenadeThrow = true;
     });
 
     scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
@@ -126,10 +148,14 @@ export class InputController {
     const reloadPressed = this.bufferedReload;
     const weaponSlotPressed = this.bufferedWeaponSlot;
     const medkitPressed = this.bufferedMedkit;
+    const grenadeSlotPressed = this.bufferedGrenadeSlot;
+    const grenadeThrowPressed = this.bufferedGrenadeThrow;
     this.bufferedJump = false;
     this.bufferedReload = false;
     this.bufferedWeaponSlot = null;
     this.bufferedMedkit = false;
+    this.bufferedGrenadeSlot = null;
+    this.bufferedGrenadeThrow = false;
 
     return {
       moveX,
@@ -139,6 +165,8 @@ export class InputController {
       reloadPressed,
       weaponSlotPressed,
       medkitPressed,
+      grenadeSlotPressed,
+      grenadeThrowPressed,
       aimWorld: this.aim.clone(),
     };
   }

@@ -17,9 +17,23 @@ import {
 import { buildNavigationGrid, findPath, lineClear, type NavGrid, type NavPoint } from "@/game/ai/navigation";
 import { applyDamage, stepHealthRegen } from "@/game/core/combat";
 import {
+  GRENADE_CONFIG,
+  GRENADE_INVENTORY_CONFIG,
+  addGrenade,
+  canAddGrenade,
+  computeBlastDamage,
+  consumeGrenade,
+  createGrenadeInventory,
+  grenadeTypeFromSlot,
+  resolveCircleRect,
+  type GrenadeInventory,
+  type GrenadeType,
+} from "@/game/core/grenades";
+import {
   MEDKIT_CONFIG,
   createPickups,
   findCollectiblePickup,
+  grenadeTypeFromPickup,
   resetPickups,
   stepPickupRespawns,
   applyMedkit,
@@ -114,6 +128,23 @@ interface ProjectileRuntime {
   expiresAt: number;
 }
 
+interface GrenadeRuntime {
+  id: number;
+  type: GrenadeType;
+  ownerId: string;
+  ownerKind: "human" | "bot";
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  armed: boolean;
+  armingRemainingMs: number;
+  distanceTraveled: number;
+  bounces: number;
+  detonateAtMs: number;
+  exploded: boolean;
+}
+
 interface HumanRuntime {
   kind: "human";
   id: string;
@@ -142,6 +173,12 @@ interface HumanRuntime {
   medkits: number;
   medkitCooldownRemainingMs: number;
   queuedMedkit: boolean;
+  grenades: GrenadeInventory;
+  selectedGrenade: GrenadeType;
+  grenadeCooldownRemainingMs: number;
+  queuedGrenadeThrow: boolean;
+  queuedGrenadeSlot: number | null;
+  throwRequestHeld: boolean;
 }
 
 interface BotRuntime {
@@ -262,6 +299,7 @@ export class GameSimulation {
   private humans = new Map<string, HumanRuntime>();
   private bots = new Map<string, BotRuntime>();
   private projectiles = new Map<number, ProjectileRuntime>();
+  private activeGrenades = new Map<number, GrenadeRuntime>();
   private pickups: PickupRuntime[] = createPickups(ARENA.pickupSpawns);
   private timer: MatchTimerState = createMatchTimer(MATCH_CONFIG.durationMs);
   private countdown = false;
@@ -276,6 +314,7 @@ export class GameSimulation {
   private feed: OnlineFeedEntry[] = [];
   private feedCounter = 0;
   private projectileCounter = 0;
+  private grenadeCounter = 0;
   private botCounter = 0;
   private events: OnlineEvent[] = [];
   private platforms: Rect[] = ARENA.platforms.map((platform) => ({
@@ -362,6 +401,7 @@ export class GameSimulation {
       this.feed = [];
       this.feedCounter = 0;
       this.projectiles.clear();
+      this.activeGrenades.clear();
       resetPickups(this.pickups);
       if (this.countdownDurationMs > 0) {
         this.countdown = true;
@@ -443,6 +483,17 @@ export class GameSimulation {
     if (payload.weapon !== null && payload.weapon !== undefined) {
       human.queuedWeapon = Math.max(0, Math.min(2, Math.floor(payload.weapon)));
     }
+    if (payload.grenadeSlot !== null && payload.grenadeSlot !== undefined) {
+      const slot = Math.floor(payload.grenadeSlot);
+      if (grenadeTypeFromSlot(slot)) {
+        human.queuedGrenadeSlot = slot;
+      }
+    }
+    const throwRequested = Boolean(payload.throwGrenade);
+    if (throwRequested && !human.throwRequestHeld) {
+      human.queuedGrenadeThrow = true;
+    }
+    human.throwRequestHeld = throwRequested;
   }
 
   rematch(): { ok: boolean; error?: string } {
@@ -457,6 +508,7 @@ export class GameSimulation {
     this.winnerName = null;
     this.elapsedMs = 0;
     this.projectiles.clear();
+    this.activeGrenades.clear();
     this.feed = [];
     this.feedCounter = 0;
     this.events = [];
@@ -517,6 +569,7 @@ export class GameSimulation {
       this.stepBot(bot, dtMs);
     }
     this.stepProjectiles(dtMs);
+    this.stepGrenades(dtMs);
     const respawnedPickups = stepPickupRespawns(this.pickups, dtMs);
     for (const pickup of respawnedPickups) {
       this.events.push({
@@ -548,6 +601,7 @@ export class GameSimulation {
     this.timer = createMatchTimer(MATCH_CONFIG.durationMs);
     this.elapsedMs = 0;
     this.projectiles.clear();
+    this.activeGrenades.clear();
     this.feed = [];
     this.feedCounter = 0;
     resetPickups(this.pickups);
@@ -599,6 +653,21 @@ export class GameSimulation {
         ownerId: projectile.ownerId,
         kind: projectile.ownerKind,
         weaponId: projectile.weaponId,
+      })),
+      grenades: [...this.activeGrenades.values()].map((grenade) => ({
+        id: grenade.id,
+        type: grenade.type,
+        x: grenade.x,
+        y: grenade.y,
+        vx: grenade.vx,
+        vy: grenade.vy,
+        ownerId: grenade.ownerId,
+        kind: grenade.ownerKind,
+        fuseRemainingMs:
+          grenade.type === "frag"
+            ? Math.max(0, grenade.detonateAtMs - this.elapsedMs)
+            : null,
+        armed: grenade.armed,
       })),
       pickups: this.pickups.map((pickup) => ({
         id: pickup.id,
@@ -655,6 +724,12 @@ export class GameSimulation {
       medkits: 0,
       medkitCooldownRemainingMs: 0,
       queuedMedkit: false,
+      grenades: createGrenadeInventory(),
+      selectedGrenade: "contact",
+      grenadeCooldownRemainingMs: 0,
+      queuedGrenadeThrow: false,
+      queuedGrenadeSlot: null,
+      throwRequestHeld: false,
     };
   }
 
@@ -750,6 +825,12 @@ export class GameSimulation {
     human.queuedMedkit = false;
     human.medkits = 0;
     human.medkitCooldownRemainingMs = 0;
+    human.grenades = createGrenadeInventory();
+    human.selectedGrenade = "contact";
+    human.grenadeCooldownRemainingMs = 0;
+    human.queuedGrenadeThrow = false;
+    human.queuedGrenadeSlot = null;
+    human.throwRequestHeld = false;
     for (let index = 0; index < human.weapons.length; index += 1) {
       human.weapons[index] = createWeaponState(PLAYER_WEAPONS[index]);
     }
@@ -825,6 +906,10 @@ export class GameSimulation {
       0,
       human.medkitCooldownRemainingMs - dtMs,
     );
+    human.grenadeCooldownRemainingMs = Math.max(
+      0,
+      human.grenadeCooldownRemainingMs - dtMs,
+    );
     human.health = stepHealthRegen(
       human.health,
       human.maxHealth,
@@ -885,6 +970,16 @@ export class GameSimulation {
       );
     }
 
+    if (human.queuedGrenadeSlot !== null) {
+      const selected = grenadeTypeFromSlot(human.queuedGrenadeSlot);
+      if (selected) human.selectedGrenade = selected;
+      human.queuedGrenadeSlot = null;
+    }
+    if (human.queuedGrenadeThrow) {
+      human.queuedGrenadeThrow = false;
+      this.tryThrowGrenade(human);
+    }
+
     if (human.queuedMedkit) {
       human.queuedMedkit = false;
       this.tryUseMedkit(human);
@@ -915,20 +1010,19 @@ export class GameSimulation {
   }
 
   private collectNearbyPickups(human: HumanRuntime): void {
-    while (human.medkits < MEDKIT_CONFIG.maxCarried) {
+    while (true) {
       const pickup = findCollectiblePickup(
         this.pickups,
         human.kin.x,
         human.kin.y - CHARACTER_AIM_HEIGHT,
-        (candidate) =>
-          candidate.type === "medkit" &&
-          human.medkits < MEDKIT_CONFIG.maxCarried,
+        (candidate) => this.canCollectPickup(human, candidate.type),
       );
       if (!pickup) return;
-      human.medkits = Math.min(
-        MEDKIT_CONFIG.maxCarried,
-        human.medkits + 1,
-      );
+      if (!this.grantPickup(human, pickup.type)) {
+        pickup.active = true;
+        pickup.respawnRemainingMs = 0;
+        return;
+      }
       this.events.push({
         type: "pickup-collected",
         pickupId: pickup.id,
@@ -939,6 +1033,300 @@ export class GameSimulation {
         y: pickup.y,
       });
     }
+  }
+
+  private canCollectPickup(
+    human: HumanRuntime,
+    type: PickupRuntime["type"],
+  ): boolean {
+    if (type === "medkit") {
+      return human.medkits < MEDKIT_CONFIG.maxCarried;
+    }
+    return grenadeTypeFromPickup(type) !== null && canAddGrenade(human.grenades);
+  }
+
+  private grantPickup(
+    human: HumanRuntime,
+    type: PickupRuntime["type"],
+  ): boolean {
+    if (type === "medkit") {
+      if (human.medkits >= MEDKIT_CONFIG.maxCarried) return false;
+      human.medkits = Math.min(MEDKIT_CONFIG.maxCarried, human.medkits + 1);
+      return true;
+    }
+    const grenadeType = grenadeTypeFromPickup(type);
+    if (!grenadeType || !canAddGrenade(human.grenades)) return false;
+    human.grenades = addGrenade(human.grenades, grenadeType);
+    return true;
+  }
+
+  private tryThrowGrenade(human: HumanRuntime): void {
+    if (!human.alive || this.phase !== "live") return;
+    if (human.grenadeCooldownRemainingMs > 0) return;
+    if (
+      this.activeGrenades.size >=
+      GRENADE_INVENTORY_CONFIG.maxActiveGrenades
+    ) {
+      return;
+    }
+    const type = human.selectedGrenade;
+    const nextInventory = consumeGrenade(human.grenades, type);
+    if (!nextInventory) return;
+    const definition = GRENADE_CONFIG[type];
+    human.grenades = nextInventory;
+    human.grenadeCooldownRemainingMs = definition.throwCooldownMs;
+
+    const aim = human.aimAngle;
+    const originX = Math.max(
+      definition.radius,
+      Math.min(
+        ARENA.width - definition.radius,
+        human.kin.x + CHARACTER_PIVOT_X + Math.cos(aim) * 26,
+      ),
+    );
+    const originY = Math.max(
+      definition.radius,
+      Math.min(
+        ARENA.height - definition.radius,
+        human.kin.y - CHARACTER_AIM_HEIGHT + Math.sin(aim) * 26,
+      ),
+    );
+    const grenade: GrenadeRuntime = {
+      id: ++this.grenadeCounter,
+      type,
+      ownerId: human.id,
+      ownerKind: "human",
+      x: originX,
+      y: originY,
+      vx: Math.cos(aim) * definition.throwSpeed + human.kin.vx * 0.22,
+      vy: Math.sin(aim) * definition.throwSpeed + human.kin.vy * 0.15,
+      armed: false,
+      armingRemainingMs: definition.armingMs,
+      distanceTraveled: 0,
+      bounces: 0,
+      detonateAtMs:
+        this.elapsedMs + (definition.fuseMs ?? definition.maxLifetimeMs),
+      exploded: false,
+    };
+    this.activeGrenades.set(grenade.id, grenade);
+    this.events.push({
+      type: "grenade-thrown",
+      grenadeId: grenade.id,
+      grenadeType: grenade.type,
+      ownerId: grenade.ownerId,
+      kind: grenade.ownerKind,
+      x: grenade.x,
+      y: grenade.y,
+      vx: grenade.vx,
+      vy: grenade.vy,
+      fuseMs: definition.fuseMs,
+    });
+  }
+
+  private stepGrenades(dtMs: number): void {
+    if (this.activeGrenades.size === 0) return;
+    for (const grenade of [...this.activeGrenades.values()]) {
+      if (grenade.exploded) continue;
+      const definition = GRENADE_CONFIG[grenade.type];
+      const dt = dtMs / 1000;
+      const speed = Math.hypot(grenade.vx, grenade.vy);
+      const substeps = Math.max(
+        1,
+        Math.min(
+          24,
+          Math.ceil((speed * dt + Math.abs(grenade.vy) * dt) / 5),
+        ),
+      );
+      for (
+        let step = 0;
+        step < substeps && !grenade.exploded;
+        step += 1
+      ) {
+        const stepDt = dt / substeps;
+        const stepMs = dtMs / substeps;
+        grenade.vy += definition.gravity * stepDt;
+        const previousX = grenade.x;
+        const previousY = grenade.y;
+        grenade.x += grenade.vx * stepDt;
+        grenade.y += grenade.vy * stepDt;
+        grenade.distanceTraveled += Math.hypot(
+          grenade.x - previousX,
+          grenade.y - previousY,
+        );
+        grenade.armingRemainingMs = Math.max(
+          0,
+          grenade.armingRemainingMs - stepMs,
+        );
+        if (
+          !grenade.armed &&
+          grenade.armingRemainingMs <= 0 &&
+          grenade.distanceTraveled >= definition.armingDistance
+        ) {
+          grenade.armed = true;
+        }
+        this.clampGrenadeToWorld(grenade, definition);
+
+        for (const platform of this.platforms) {
+          const hit = resolveCircleRect(
+            grenade.x,
+            grenade.y,
+            definition.radius,
+            platform,
+          );
+          if (!hit) continue;
+          if (grenade.type === "contact") {
+            grenade.x = hit.x;
+            grenade.y = hit.y;
+            this.detonateGrenade(grenade);
+            break;
+          }
+          this.applyGrenadeBounce(grenade, hit, definition);
+          grenade.bounces += 1;
+        }
+        if (grenade.exploded) break;
+
+        for (const combatant of [
+          ...this.humans.values(),
+          ...this.bots.values(),
+        ]) {
+          if (!combatant.alive) continue;
+          if (combatant.id === grenade.ownerId && !grenade.armed) continue;
+          const hit = resolveCircleRect(
+            grenade.x,
+            grenade.y,
+            definition.radius,
+            bodyRect(combatant),
+          );
+          if (!hit) continue;
+          if (grenade.type === "contact") {
+            grenade.x = hit.x;
+            grenade.y = hit.y;
+            this.detonateGrenade(grenade, combatant.id);
+            break;
+          }
+          this.applyGrenadeBounce(grenade, hit, definition);
+          grenade.bounces += 1;
+        }
+      }
+
+      if (!grenade.exploded && this.elapsedMs >= grenade.detonateAtMs) {
+        this.detonateGrenade(grenade);
+      }
+    }
+  }
+
+  private clampGrenadeToWorld(
+    grenade: GrenadeRuntime,
+    definition: (typeof GRENADE_CONFIG)[GrenadeType],
+  ): void {
+    if (grenade.x < definition.radius) {
+      grenade.x = definition.radius;
+      grenade.vx = Math.abs(grenade.vx) * definition.restitution;
+    } else if (grenade.x > ARENA.width - definition.radius) {
+      grenade.x = ARENA.width - definition.radius;
+      grenade.vx = -Math.abs(grenade.vx) * definition.restitution;
+    }
+    if (grenade.y < definition.radius) {
+      grenade.y = definition.radius;
+      grenade.vy = Math.abs(grenade.vy) * definition.restitution;
+    } else if (grenade.y > ARENA.height - definition.radius) {
+      grenade.y = ARENA.height - definition.radius;
+      grenade.vy = -Math.abs(grenade.vy) * definition.restitution;
+    }
+  }
+
+  private applyGrenadeBounce(
+    grenade: GrenadeRuntime,
+    hit: { x: number; y: number; normalX: number; normalY: number },
+    definition: (typeof GRENADE_CONFIG)[GrenadeType],
+  ): void {
+    grenade.x = hit.x;
+    grenade.y = hit.y;
+    const dot =
+      grenade.vx * hit.normalX + grenade.vy * hit.normalY;
+    if (dot < 0) {
+      grenade.vx -=
+        (1 + definition.restitution) * dot * hit.normalX;
+      grenade.vy -=
+        (1 + definition.restitution) * dot * hit.normalY;
+    }
+    if (Math.abs(hit.normalY) > 0.5) {
+      grenade.vx *= definition.friction;
+      if (Math.abs(grenade.vy) < 75) grenade.vy = 0;
+      if (Math.abs(grenade.vx) < 12) grenade.vx = 0;
+    } else {
+      grenade.vy *= 0.9;
+    }
+  }
+
+  private detonateGrenade(
+    grenade: GrenadeRuntime,
+    directVictimId?: string,
+  ): void {
+    if (grenade.exploded) return;
+    grenade.exploded = true;
+    this.activeGrenades.delete(grenade.id);
+    const definition = GRENADE_CONFIG[grenade.type];
+    this.events.push({
+      type: "grenade-exploded",
+      grenadeId: grenade.id,
+      grenadeType: grenade.type,
+      ownerId: grenade.ownerId,
+      kind: grenade.ownerKind,
+      x: grenade.x,
+      y: grenade.y,
+      blastRadius: definition.blastRadius,
+    });
+    if (this.timer.phase !== "live") return;
+
+    for (const victim of [
+      ...this.humans.values(),
+      ...this.bots.values(),
+    ]) {
+      if (this.timer.phase !== "live") break;
+      if (!victim.alive) continue;
+      const position = center(victim);
+      const distance =
+        victim.id === directVictimId
+          ? 0
+          : Math.hypot(
+              position.x - grenade.x,
+              position.aimY - grenade.y,
+            );
+      if (distance > definition.blastRadius) continue;
+      let damage = computeBlastDamage(distance, definition);
+      if (damage <= 0) continue;
+      if (
+        distance > 0 &&
+        this.isBlastObstructed(
+          grenade.x,
+          grenade.y,
+          position.x,
+          position.aimY,
+        )
+      ) {
+        damage = Math.round(damage * definition.coverMultiplier);
+      }
+      if (damage <= 0) continue;
+      this.damageCombatant(
+        victim,
+        damage,
+        grenade.ownerId,
+        definition.name,
+        false,
+      );
+    }
+  }
+
+  private isBlastObstructed(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+  ): boolean {
+    return this.platforms.some((platform) =>
+      segmentIntersectsRect(x1, y1, x2, y2, platform, -2),
+    );
   }
 
   private fireWeapon(
@@ -1030,10 +1418,11 @@ export class GameSimulation {
     amount: number,
     attackerId: string,
     weaponName: string,
+    trackAccuracy = true,
   ): void {
     if (!victim.alive || victim.invulnerableRemainingMs > 0) return;
     const attacker = this.findCombatant(attackerId);
-    if (attacker?.kind === "human") {
+    if (attacker?.kind === "human" && trackAccuracy) {
       attacker.shotsHit += 1;
     }
 
@@ -1073,7 +1462,31 @@ export class GameSimulation {
     victim: AnyCombatant,
     weaponName: string,
   ): void {
-    if (killerId === victim.id || this.timer.phase !== "live") return;
+    if (this.timer.phase !== "live") return;
+    if (killerId === victim.id) {
+      victim.deaths += 1;
+      victim.lastKillerName = null;
+      this.feedCounter += 1;
+      const atMs = this.elapsedMs;
+      this.feed.push({
+        id: this.feedCounter,
+        text: `${victim.name} was caught in their own blast`,
+        atMs,
+        killerId,
+        victimId: victim.id,
+      });
+      this.feed = this.feed.slice(-6);
+      this.events.push({
+        type: "elimination",
+        killerId,
+        victimId: victim.id,
+        killerName: victim.name,
+        victimName: victim.name,
+        weaponName,
+        atMs,
+      });
+      return;
+    }
     const killer = this.findCombatant(killerId);
     if (!killer) return;
     killer.eliminations += 1;
@@ -1114,6 +1527,7 @@ export class GameSimulation {
     this.endReason = reason;
     this.winnerName = this.getRanked()[0]?.name ?? null;
     this.projectiles.clear();
+    this.activeGrenades.clear();
     resetPickups(this.pickups);
     this.events.push({
       type: "match-end",
@@ -1410,6 +1824,10 @@ export class GameSimulation {
       accuracy: shots > 0 ? hits / shots : 0,
       lastKillerName: combatant.lastKillerName,
       medkits: human?.medkits ?? 0,
+      grenadeContact: human?.grenades.contact ?? 0,
+      grenadeFrag: human?.grenades.frag ?? 0,
+      grenadeSelected: human?.selectedGrenade ?? "contact",
+      grenadeCooldownMs: human?.grenadeCooldownRemainingMs ?? 0,
     };
   }
 

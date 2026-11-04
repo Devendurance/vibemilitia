@@ -61,16 +61,27 @@ describe("authoritative pickup field", () => {
 });
 
 describe("Sector 07 pickup placement", () => {
-  it("places unique medkits on platform tops away from spawn bodies", () => {
+  it("places unique supplies on platform tops away from spawn bodies", () => {
     const ids = new Set(ARENA.pickupSpawns.map((pickup) => pickup.id));
     expect(ids.size).toBe(ARENA.pickupSpawns.length);
-    expect(ARENA.pickupSpawns.length).toBeGreaterThanOrEqual(10);
+    expect(
+      ARENA.pickupSpawns.filter((pickup) => pickup.type === "medkit"),
+    ).toHaveLength(14);
+    expect(
+      ARENA.pickupSpawns.filter(
+        (pickup) => pickup.type === "contact-grenade",
+      ),
+    ).toHaveLength(3);
+    expect(
+      ARENA.pickupSpawns.filter(
+        (pickup) => pickup.type === "frag-grenade",
+      ),
+    ).toHaveLength(3);
     expect(
       new Set(ARENA.pickupSpawns.map((pickup) => pickup.y)).size,
     ).toBeGreaterThan(2);
 
     for (const pickup of ARENA.pickupSpawns) {
-      expect(pickup.type).toBe("medkit");
       const feetY = pickup.y + 16;
       const supported = ARENA.platforms.some(
         (platform) =>

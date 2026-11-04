@@ -96,5 +96,11 @@ export const ARENA: ArenaDefinition = {
     { id: "medkit-right-perch", type: "medkit", x: 2280, y: 704 },
     { id: "medkit-right-high", type: "medkit", x: 3250, y: 724 },
     { id: "medkit-far-low", type: "medkit", x: 3380, y: 1024 },
+    { id: "contact-mid-step", type: "contact-grenade", x: 940, y: 1144 },
+    { id: "contact-left-perch", type: "contact-grenade", x: 260, y: 744 },
+    { id: "contact-right-low", type: "contact-grenade", x: 2350, y: 1144 },
+    { id: "frag-center-bridge", type: "frag-grenade", x: 1680, y: 944 },
+    { id: "frag-right-high", type: "frag-grenade", x: 3350, y: 724 },
+    { id: "frag-crate-c", type: "frag-grenade", x: 1700, y: 1234 },
   ],
 };

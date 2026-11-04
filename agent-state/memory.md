@@ -56,6 +56,15 @@
 - `InputController` exposes `medkitPressed` from H. The online HUD also has a clickable use button through the `use-medkit` bridge command.
 - Online HUD fields include `medkits`, `maxMedkits`, `medkitFeedbackSeq` and `medkitFeedbackAmount`. The toast shows the authoritative healed amount.
 - `verify:online:pickups` covers two-client pickup sync, collection, late join, independent rooms, respawn and live healing.
+- P3B-B adds `src/game/core/grenades.ts` with contact and frag definitions, inventory helpers, blast damage and circle-rect collision.
+- Grenade config: contact 180 max damage, 220 blast radius, impact detonation, 920 throw speed, 1500 gravity. Frag 120 max damage, 215 blast radius, 5000 ms fuse, 820 throw speed, 1400 gravity. Both use 700 ms throw cooldown, 64 active-entity cap, and 55 percent damage behind cover.
+- `GameSimulation` owns `activeGrenades`, swept collision substeps, frag bounce/fuse, direct-hit damage, self-damage and cleanup. One explosion damages each combatant at most once.
+- `OnlineInputPayload` adds `grenadeSlot` (0 contact, 1 frag) and `throwGrenade`. Throws are edge-triggered with `throwRequestHeld`, sequence-guarded and cooldown-gated.
+- Snapshots add `grenades` plus per-human `grenadeContact`, `grenadeFrag`, `grenadeSelected` and `grenadeCooldownMs`. Events are `grenade-thrown` and `grenade-exploded`.
+- Human grenade inventory starts at one contact and one frag, caps at three, and resets on death/respawn. Pickup types are `medkit`, `contact-grenade` and `frag-grenade`. Grenade pickups respawn in 22 seconds.
+- Player self-eliminations increment deaths and add a feed entry, but do not increment the killer's eliminations. `lastKillerName` stays null for the death overlay.
+- The HUD throwables panel has inline contact/frag SVG icons, count badges, a selected state, a clickable throw control and cooldown status. The bridge commands are `select-grenade` and `throw-grenade`.
+- `verify:online:grenades` covers HUD inventory, selection, a shared frag fuse, five-second server fuse, warning visuals, a real contact-grenade bot elimination, kill-feed credit, medkit use and room isolation.
 
 ## Phaser 4 gotchas
 
@@ -82,8 +91,8 @@
 
 - Always measure production, not the dev server.
 - Headless Chrome can pace WebGL at 30 fps regardless of scene cost. Use `HEADED=1` for real gameplay frame rate.
-- Production headed Chrome measured 58 to 60 fps at 1440 x 810 with one human and seven Viber bots while moving and firing. The final P3A run measured 59 fps.
-- Server tick averaged 0.06 to 0.30 ms in final verification. Occasional 8 to 11 ms spikes are GC or scheduler noise, not sustained load.
+- Production headed Chrome measured 56 to 60 fps at 1440 x 810 with one human and seven Viber bots. P3B-B clean runs measured 56 to 58 fps.
+- Server tick averaged 0.33 to 1.04 ms on clean P3B-B runs, with p95 0.82 to 2.62 ms. Occasional 18 to 49 ms max spikes are GC or scheduler noise. Restart the server before a clean perf measurement.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
@@ -110,6 +119,7 @@
 - `npm run verify:online:bots`
 - `npm run verify:online:match`
 - `npm run verify:online:pickups`
+- `npm run verify:online:grenades`
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)
 - `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test

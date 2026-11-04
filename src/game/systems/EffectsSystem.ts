@@ -104,6 +104,37 @@ export class EffectsSystem {
     this.ring(x, y, 0x9bd8f2);
   }
 
+  grenadeThrow(x: number, y: number): void {
+    this.copper.explode(3, x, y);
+    this.smoke.explode(2, x, y);
+  }
+
+  grenadeExplosion(x: number, y: number, type: "contact" | "frag"): void {
+    const contact = type === "contact";
+    this.red.explode(contact ? 18 : 14, x, y);
+    this.copper.explode(contact ? 15 : 11, x, y);
+    this.cream.explode(contact ? 10 : 8, x, y);
+    this.smoke.explode(contact ? 12 : 10, x, y);
+    this.ring(x, y, contact ? 0xff6b35 : 0xf4e21c);
+    this.ring(x, y, 0xf5f3ec);
+    if (contact) {
+      this.ring(x, y, 0xff8a3d);
+    }
+
+    const flash = this.scene.add
+      .circle(x, y, contact ? 18 : 20, 0xffd166, 0.95)
+      .setDepth(50)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.scene.tweens.add({
+      targets: flash,
+      scale: 6.5,
+      alpha: 0,
+      duration: contact ? 420 : 320,
+      ease: "Cubic.Out",
+      onComplete: () => flash.destroy(),
+    });
+  }
+
   ring(x: number, y: number, color: number): void {
     const ring = this.scene.add
       .circle(x, y, 18, 0x000000, 0)
