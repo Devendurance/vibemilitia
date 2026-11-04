@@ -13,17 +13,18 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Online rooms: 90 seconds, first to 10 eliminations, eight combatant seats. New rooms run a configurable 10-second countdown, then fill empty seats with bots. Eight humans start immediately. Humans joining live replace bots. Disconnects backfill with a bot.
 - Matchmaking: Quick Match filters to rooms with open human seats, prefers the most populated room, and creates a new room when current rooms fill. Seat races retry safely.
 - Character selection: a keyboard-accessible ten-card picker with a large preview sits in the online lobby. The selection is stored locally, sent on every join path, validated by the server and shown in the HUD portrait, HUD name and in-world body. Invalid saved or submitted IDs fall back to VIBER-010.
-- Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, automatic fair-pad respawn and 1.5 s spawn protection.
+- Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, medkit inventory, automatic fair-pad respawn and 1.5 s spawn protection.
+- Supplies: fourteen fixed server-authoritative medkit caches across ground routes and elevated platforms. Players carry up to two, use them with H for 50 HP, and cannot exceed max health. Collected caches disappear for every client and respawn after 20 seconds.
 - Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision). Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
 - Bots: online bots use ten validated official Viber skins with unique server-assigned `skinId` values, visible Vibe Rifle, muzzle flare, recoil, jetpack exhaust, health bars, damage reaction, spawn shield, death/respawn presentation and BOT callsign labels. They keep A* navigation, platform colliders, path smoothing, line-of-sight burst fire, vertical thrusters, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns. Local P1 bots remain the original drones.
 - Online networking: Colyseus rooms, 60 Hz server tick, 20 Hz snapshots, 30 Hz client input, 45 messages/second input cap, local prediction with soft reconciliation, remote interpolation, projected bullets and server-side validation.
 - Room lifecycle: countdown, lobby, server-side quick match, create room, realtime room browser, invite links, full-room and ended-room errors, replay in the same room and auto-dispose when empty.
-- HUD: identity, health, jetpack, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
+- HUD: identity, health, jetpack, medkit count and use feedback, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
 - Browser test APIs: `window.__VIBE_MILITIA__` for local, `window.__VIBE_MILITIA_ONLINE__` for online.
 
 ## Architecture
 
-- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking and spawn selection.
+- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking, spawn selection and pickup/medkit supply rules.
 - `src/game/ai`: pure navigation grid and A* pathfinding.
 - `src/game/config`: tuning for movement, weapons, bots and match.
 - `src/game/arena`: arena data, baked visuals and collision helpers.
@@ -37,6 +38,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `src/game/bridge.ts`: typed HUD snapshot and command transport shared by both modes.
 - `scripts/verify-browser.mjs`: P1 Playwright regression suite.
 - `scripts/verify-online-match.mjs`, `verify-online-rooms.mjs`, `verify-online-perf.mjs`: P2 browser and performance suites.
+- `scripts/verify-online-pickups.mjs`: P3B-A pickup, medkit and room-isolation suite.
 
 ## Key decisions
 
@@ -56,13 +58,16 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `vibe-militia-skin` stores the selected ID locally. The default is persisted on first load and invalid values are repaired.
 - Bot projectiles use the Vibe Rifle presentation while preserving the previous 7 damage, 900 speed, 0.055 spread and 3-shot burst cadence.
 - Replay restarts the same room, resets scores and health, and keeps its human occupants.
+- Pickups are server-owned room state. Collection validates proximity and capacity, a pickup can be granted once, and the item respawns after a fixed cooldown. Late joins read the same authoritative state.
+- Medkits are instant, capped at 100 HP, consumed from a two-slot inventory and gated by a 900 ms server cooldown. A player loses carried medkits on death/respawn. Pickups reset when a match starts, when it ends and on replay.
+- Fourteen fixed medkit spawns sit on platform tops near, but outside, spawn bodies. Bots do not collect supplies yet; that belongs to P3B-C.
 - Static authored NFT pose is intentional. Weapon and effects remain separate layers.
 - HUD follows `DESIGN.md`: graphite panels, lime signal color, mono telemetry, Archivo display type.
 
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 53 tests pass
+- `npm test`: 68 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks against the production build
@@ -70,6 +75,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `npm run verify:online:matchmaking`: 11/11 checks against the production build
 - `npm run verify:online:characters`: 35/35 checks against the production build
 - `npm run verify:online:bots`: 32/32 checks against the production build
+- `npm run verify:online:pickups`: 28/28 checks against the production build
 - All ten cards render and select, keyboard arrows work, mobile keeps two columns, refresh persists the choice, and corrupt storage falls back to VIBER-010
 - Create Room, invite join and Quick Match all used the selected skin, and two clients with different selections agreed on shared combatant skins
 - Eight independent human clients kept eight requested skins with no bot visuals
@@ -78,7 +84,8 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
 - `npm run verify:online:match`: 25/25 checks, 8 humans, time-limit result, identical standings, replay reset, preserved selected skins
 - `npm run verify:online:rooms`: 16/16 checks, including countdown auto-start, full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.23 ms average server tick, 0.46 ms p95
+- `HEADED=1 npm run verify:online:perf`: 60 fps, 0.19 ms average server tick, 0.39 ms p95
+- Pickup suite covered identical 14-item snapshots on two clients, cross-client disappearance, late-join isolation, independent second-room state, 20 s respawn, H healing from 51 to 100 HP, +49 HP HUD feedback and duplicate-use rejection.
 - Original public sources, archived sources and VIBER-010 cutout hash are unchanged
 - Local P1 remains 37/37 with no regression
 
@@ -96,4 +103,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Bot navigation uses the compact movement body while damage uses the character-sized hitbox. Tight cover can overlap the visible character more than the navigation body.
 - If the roster is smaller than the combatant count, skin assignment gracefully reuses entries rather than fabricating assets.
 - Character body is static because the NFT is a 3/4 frontal portrait.
+- Medkits reset on death/respawn. Pickup respawn timers run only while the round is live and reset at round start, round end and replay.
+- Bots do not collect pickups yet. Bot supply decisions are planned for P3B-C.
+- Pickup spawns are fixed authored caches, not dynamic random spawns.
 - No audio, accounts, wallets, XP or persistent stats.

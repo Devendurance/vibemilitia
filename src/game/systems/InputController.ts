@@ -12,6 +12,7 @@ export interface ControlFrame {
   fire: boolean;
   reloadPressed: boolean;
   weaponSlotPressed: number | null;
+  medkitPressed: boolean;
   aimWorld: Phaser.Math.Vector2;
 }
 
@@ -26,6 +27,7 @@ export class InputController {
     | "weapon1"
     | "weapon2"
     | "weapon3"
+    | "medkit"
     | "leftArrow"
     | "rightArrow",
     Phaser.Input.Keyboard.Key
@@ -38,6 +40,7 @@ export class InputController {
   private bufferedReload = false;
   private bufferedDebug = false;
   private bufferedWeaponSlot: number | null = null;
+  private bufferedMedkit = false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -56,6 +59,7 @@ export class InputController {
       weapon1: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       weapon2: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
       weapon3: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+      medkit: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
     };
     keyboard.addCapture([
       Phaser.Input.Keyboard.KeyCodes.SPACE,
@@ -65,6 +69,7 @@ export class InputController {
       Phaser.Input.Keyboard.KeyCodes.ONE,
       Phaser.Input.Keyboard.KeyCodes.TWO,
       Phaser.Input.Keyboard.KeyCodes.THREE,
+      Phaser.Input.Keyboard.KeyCodes.H,
       Phaser.Input.Keyboard.KeyCodes.LEFT,
       Phaser.Input.Keyboard.KeyCodes.RIGHT,
       Phaser.Input.Keyboard.KeyCodes.F1,
@@ -89,6 +94,9 @@ export class InputController {
     });
     this.keys.weapon3.on("down", () => {
       this.bufferedWeaponSlot = 2;
+    });
+    this.keys.medkit.on("down", () => {
+      this.bufferedMedkit = true;
     });
 
     scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
@@ -117,9 +125,11 @@ export class InputController {
     const jumpPressed = this.bufferedJump;
     const reloadPressed = this.bufferedReload;
     const weaponSlotPressed = this.bufferedWeaponSlot;
+    const medkitPressed = this.bufferedMedkit;
     this.bufferedJump = false;
     this.bufferedReload = false;
     this.bufferedWeaponSlot = null;
+    this.bufferedMedkit = false;
 
     return {
       moveX,
@@ -128,6 +138,7 @@ export class InputController {
       fire: pointer.primaryDown,
       reloadPressed,
       weaponSlotPressed,
+      medkitPressed,
       aimWorld: this.aim.clone(),
     };
   }

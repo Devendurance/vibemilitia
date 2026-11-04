@@ -3,6 +3,8 @@ import {
   CHARACTER_ROSTER,
   HUMAN_DEFAULT_SKIN_ID,
 } from "@/game/characters/roster";
+import { MEDKIT_CONFIG } from "@/game/core/pickups";
+import type { OnlineInputPayload } from "@/game/multiplayer/protocol";
 import { GameSimulation } from "./GameSimulation";
 
 const rosterSkinIds = new Set(
@@ -13,6 +15,62 @@ function runTicks(sim: GameSimulation, count: number): void {
   for (let index = 0; index < count; index += 1) {
     sim.tick(1000 / 60);
   }
+}
+
+interface HumanTestView {
+  kin: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    grounded: boolean;
+  };
+  health: number;
+  medkits: number;
+  medkitCooldownRemainingMs: number;
+  lastDamageMs: number;
+  alive: boolean;
+  respawnRemainingMs: number;
+}
+
+function humanView(sim: GameSimulation, id: string): HumanTestView {
+  const humans = (
+    sim as unknown as { humans: Map<string, HumanTestView> }
+  ).humans;
+  const human = humans.get(id);
+  if (!human) throw new Error(`missing human ${id}`);
+  return human;
+}
+
+function placeOnPickup(
+  sim: GameSimulation,
+  id: string,
+  pickupId: string,
+): void {
+  const pickup = sim
+    .snapshot()
+    .pickups.find((candidate) => candidate.id === pickupId);
+  if (!pickup) throw new Error(`missing pickup ${pickupId}`);
+  const human = humanView(sim, id);
+  human.kin.x = pickup.x;
+  human.kin.y = pickup.y + 16;
+  human.kin.vx = 0;
+  human.kin.vy = 0;
+  human.kin.grounded = true;
+}
+
+function medkitInput(seq: number): OnlineInputPayload {
+  return {
+    seq,
+    moveX: 0,
+    jump: false,
+    jumpHeld: false,
+    fire: false,
+    reload: false,
+    weapon: null,
+    aim: 0,
+    useMedkit: true,
+  };
 }
 
 describe("authoritative match simulation", () => {
@@ -307,5 +365,253 @@ describe("authoritative match simulation", () => {
           .map((entry) => entry.skinId),
       ).size,
     ).toBe(7);
+  });
+
+  it("spawns fixed medkit pickups and grants one on proximity", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE");
+    const before = sim.snapshot();
+    expect(before.pickups).toHaveLength(14);
+    expect(
+      before.pickups.every(
+        (pickup) => pickup.type === "medkit" && pickup.active,
+      ),
+    ).toBe(true);
+    expect(before.participants[0].medkits).toBe(0);
+
+    const target = before.pickups[0];
+    placeOnPickup(sim, "one", target.id);
+    runTicks(sim, 1);
+    const after = sim.snapshot();
+    expect(after.participants[0].medkits).toBe(1);
+    expect(
+      after.pickups.find((pickup) => pickup.id === target.id)?.active,
+    ).toBe(false);
+    expect(
+      after.pickups.find((pickup) => pickup.id === target.id)?.respawnIn ?? 0,
+    ).toBeGreaterThan(19);
+  });
+
+  it("awards a contested pickup to only one player", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE");
+    sim.addHuman("two", "TWO");
+    const target = sim.snapshot().pickups[0];
+    placeOnPickup(sim, "one", target.id);
+    placeOnPickup(sim, "two", target.id);
+    runTicks(sim, 1);
+    const after = sim.snapshot();
+    const humans = after.participants.filter((entry) => entry.kind === "human");
+    expect(humans.reduce((total, human) => total + human.medkits, 0)).toBe(1);
+    expect(
+      after.pickups.find((pickup) => pickup.id === target.id)?.active,
+    ).toBe(false);
+  });
+
+  it("caps carried medkits and respawns collected world pickups", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE");
+    const pickups = sim.snapshot().pickups;
+    placeOnPickup(sim, "one", pickups[0].id);
+    runTicks(sim, 1);
+    placeOnPickup(sim, "one", pickups[1].id);
+    runTicks(sim, 1);
+    expect(sim.snapshot().participants[0].medkits).toBe(
+      MEDKIT_CONFIG.maxCarried,
+    );
+
+    placeOnPickup(sim, "one", pickups[2].id);
+    runTicks(sim, 1);
+    expect(sim.snapshot().participants[0].medkits).toBe(
+      MEDKIT_CONFIG.maxCarried,
+    );
+    expect(
+      sim.snapshot().pickups.find((pickup) => pickup.id === pickups[2].id)
+        ?.active,
+    ).toBe(true);
+
+    const human = humanView(sim, "one");
+    human.kin.x = 1800;
+    human.kin.y = 1340;
+    human.kin.grounded = true;
+    runTicks(
+      sim,
+      Math.ceil(MEDKIT_CONFIG.respawnMs / (1000 / 60)) + 2,
+    );
+    expect(
+      sim.snapshot().pickups.find((pickup) => pickup.id === pickups[0].id)
+        ?.active,
+    ).toBe(true);
+  });
+
+  it("heals with H, caps at max health and rejects cooldown and empty use", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE");
+    const pickups = sim.snapshot().pickups;
+    placeOnPickup(sim, "one", pickups[0].id);
+    runTicks(sim, 1);
+    placeOnPickup(sim, "one", pickups[1].id);
+    runTicks(sim, 1);
+
+    const human = humanView(sim, "one");
+    human.health = 40;
+    human.lastDamageMs = 0;
+    sim.applyInput("one", medkitInput(1));
+    runTicks(sim, 1);
+    expect(human.health).toBe(90);
+    expect(human.medkits).toBe(1);
+
+    human.health = 40;
+    human.lastDamageMs = 0;
+    sim.applyInput("one", medkitInput(2));
+    runTicks(sim, 1);
+    expect(human.health).toBe(40);
+    expect(human.medkits).toBe(1);
+
+    runTicks(sim, 60);
+    sim.drainEvents();
+    human.health = 80;
+    human.lastDamageMs = 0;
+    sim.applyInput("one", medkitInput(3));
+    runTicks(sim, 1);
+    expect(human.health).toBe(100);
+    expect(human.medkits).toBe(0);
+    const healEvents = sim
+      .drainEvents()
+      .filter((event) => event.type === "medkit-used");
+    expect(healEvents).toHaveLength(1);
+    expect(healEvents[0]).toMatchObject({ healed: 20, health: 100 });
+
+    human.health = 50;
+    sim.applyInput("one", medkitInput(4));
+    runTicks(sim, 1);
+    expect(human.health).toBe(50);
+    expect(human.medkits).toBe(0);
+
+    sim.applyInput("one", medkitInput(3));
+    runTicks(sim, 1);
+    expect(human.health).toBe(50);
+    expect(human.medkits).toBe(0);
+  });
+
+  it("rejects medkit use during countdown and while dead", () => {
+    const countdown = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 5_000,
+    });
+    countdown.addHuman("one", "ONE");
+    const countdownHuman = humanView(countdown, "one");
+    countdownHuman.health = 40;
+    countdownHuman.medkits = 1;
+    countdown.applyInput("one", medkitInput(1));
+    runTicks(countdown, 2);
+    expect(countdownHuman.health).toBe(40);
+    expect(countdownHuman.medkits).toBe(1);
+
+    const live = new GameSimulation({
+      roomId: "room-b",
+      roomName: "Arena B",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    live.addHuman("one", "ONE");
+    const deadHuman = humanView(live, "one");
+    deadHuman.health = 40;
+    deadHuman.medkits = 1;
+    deadHuman.alive = false;
+    deadHuman.respawnRemainingMs = 5_000;
+    live.applyInput("one", medkitInput(1));
+    runTicks(live, 2);
+    expect(deadHuman.health).toBe(40);
+    expect(deadHuman.medkits).toBe(1);
+  });
+
+  it("resets pickups and carried medkits on match replay", () => {
+    const sim = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    sim.addHuman("one", "ONE", "viber-123");
+    runTicks(sim, 60 * 89);
+    const target = sim.snapshot().pickups[0];
+    placeOnPickup(sim, "one", target.id);
+    runTicks(sim, 1);
+    expect(sim.snapshot().participants[0].medkits).toBe(1);
+    expect(
+      sim.snapshot().pickups.find((pickup) => pickup.id === target.id)?.active,
+    ).toBe(false);
+    runTicks(sim, 70);
+    expect(sim.snapshot().phase).toBe("ended");
+    expect(sim.snapshot().pickups.every((pickup) => pickup.active)).toBe(true);
+
+    const human = humanView(sim, "one");
+    human.health = 40;
+    sim.applyInput("one", medkitInput(1));
+    runTicks(sim, 1);
+    expect(human.health).toBe(40);
+
+    const result = sim.rematch();
+    expect(result.ok).toBe(true);
+    const restarted = sim.snapshot();
+    expect(restarted.phase).toBe("live");
+    expect(restarted.participants[0].medkits).toBe(0);
+    expect(restarted.participants[0].health).toBe(100);
+    expect(restarted.participants[0].skinId).toBe("viber-123");
+    expect(restarted.pickups.every((pickup) => pickup.active)).toBe(true);
+  });
+
+  it("keeps pickup state independent between rooms", () => {
+    const first = new GameSimulation({
+      roomId: "room-a",
+      roomName: "Arena A",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    const second = new GameSimulation({
+      roomId: "room-b",
+      roomName: "Arena B",
+      botsEnabled: false,
+      countdownMs: 0,
+    });
+    first.addHuman("one", "ONE");
+    second.addHuman("two", "TWO");
+    const target = first.snapshot().pickups[0];
+    placeOnPickup(first, "one", target.id);
+    runTicks(first, 1);
+    runTicks(second, 1);
+
+    expect(
+      first.snapshot().pickups.find((pickup) => pickup.id === target.id)
+        ?.active,
+    ).toBe(false);
+    expect(
+      second.snapshot().pickups.find((pickup) => pickup.id === target.id)
+        ?.active,
+    ).toBe(true);
+    expect(second.snapshot().participants[0].medkits).toBe(0);
   });
 });

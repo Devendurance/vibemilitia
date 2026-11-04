@@ -81,6 +81,10 @@ export interface HudSnapshot {
   uptimeMs: number;
   debug: boolean;
   damageSeq: number;
+  medkits: number;
+  maxMedkits: number;
+  medkitFeedbackSeq: number;
+  medkitFeedbackAmount: number;
 }
 
 export const INITIAL_HUD: HudSnapshot = {
@@ -125,6 +129,10 @@ export const INITIAL_HUD: HudSnapshot = {
   uptimeMs: 0,
   debug: false,
   damageSeq: 0,
+  medkits: 0,
+  maxMedkits: 2,
+  medkitFeedbackSeq: 0,
+  medkitFeedbackAmount: 0,
 };
 
 export type GameCommand =
@@ -132,6 +140,7 @@ export type GameCommand =
   | { type: "set-debug"; value: boolean }
   | { type: "respawn" }
   | { type: "equip-weapon"; slot: number }
+  | { type: "use-medkit" }
   | { type: "restart-match" }
   | { type: "force-match-end" };
 

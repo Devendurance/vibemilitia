@@ -91,6 +91,19 @@ export class EffectsSystem {
     this.ring(x, y - 48, 0x9bd8f2);
   }
 
+  pickupCollected(x: number, y: number): void {
+    this.mint.explode(9, x, y);
+    this.lime.explode(7, x, y);
+    this.cream.explode(5, x, y);
+    this.ring(x, y, 0xd7ff2e);
+  }
+
+  heal(x: number, y: number): void {
+    this.mint.explode(8, x, y);
+    this.cream.explode(6, x, y);
+    this.ring(x, y, 0x9bd8f2);
+  }
+
   ring(x: number, y: number, color: number): void {
     const ring = this.scene.add
       .circle(x, y, 18, 0x000000, 0)
@@ -123,6 +136,28 @@ export class EffectsSystem {
       y: y - 26,
       alpha: 0,
       duration: 620,
+      ease: "Cubic.Out",
+      onComplete: () => label.destroy(),
+    });
+  }
+
+  healNumber(x: number, y: number, amount: number): void {
+    const label = this.scene.add
+      .text(x, y, `+${Math.round(amount)}`, {
+        fontFamily: '"JetBrains Mono", ui-monospace, monospace',
+        fontSize: "15px",
+        fontStyle: "bold",
+        color: "#d7ff2e",
+        stroke: "#0c0d0f",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(60);
+    this.scene.tweens.add({
+      targets: label,
+      y: y - 30,
+      alpha: 0,
+      duration: 760,
       ease: "Cubic.Out",
       onComplete: () => label.destroy(),
     });

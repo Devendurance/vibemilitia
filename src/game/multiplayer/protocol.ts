@@ -1,3 +1,5 @@
+import type { PickupType } from "@/game/core/pickups";
+
 export const FFA_ROOM = "ffa";
 export const LOBBY_ROOM = "lobby";
 export const MAX_COMBATANTS = 8;
@@ -67,6 +69,16 @@ export interface OnlineCombatantSnapshot {
   deaths: number;
   accuracy: number;
   lastKillerName: string | null;
+  medkits: number;
+}
+
+export interface OnlinePickupSnapshot {
+  id: string;
+  type: PickupType;
+  x: number;
+  y: number;
+  active: boolean;
+  respawnIn: number;
 }
 
 export interface OnlineProjectileSnapshot {
@@ -94,6 +106,7 @@ export interface OnlineSnapshot {
   winnerName: string | null;
   participants: OnlineCombatantSnapshot[];
   projectiles: OnlineProjectileSnapshot[];
+  pickups: OnlinePickupSnapshot[];
   standings: OnlineStanding[];
   feed: OnlineFeedEntry[];
   roomId: string;
@@ -155,6 +168,31 @@ export type OnlineEvent =
       type: "player-left";
       id: string;
       name: string;
+    }
+  | {
+      type: "pickup-collected";
+      pickupId: string;
+      itemType: PickupType;
+      playerId: string;
+      playerName: string;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "pickup-respawn";
+      pickupId: string;
+      itemType: PickupType;
+      x: number;
+      y: number;
+    }
+  | {
+      type: "medkit-used";
+      playerId: string;
+      playerName: string;
+      healed: number;
+      health: number;
+      x: number;
+      y: number;
     };
 
 export interface OnlineInputPayload {
@@ -166,6 +204,7 @@ export interface OnlineInputPayload {
   reload: boolean;
   weapon: number | null;
   aim: number;
+  useMedkit?: boolean;
 }
 
 export interface JoinOptions {

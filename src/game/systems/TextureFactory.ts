@@ -227,8 +227,7 @@ function makeDrone(scene: Phaser.Scene): void {
 }
 
 export function createGameTextures(scene: Phaser.Scene): void {
-  makeSpark(scene, "spark-lime", 0xd7ff2e, 6);
-  makeSpark(scene, "spark-mint", 0x9bd8f2, 6);
+  makeSpark(scene, "spark-lime", 0xd7ff2e, 6);  makeSpark(scene, "spark-mint", 0x9bd8f2, 6);
   makeSpark(scene, "spark-copper", 0xc7692f, 6);
   makeSpark(scene, "spark-red", 0xe5484d, 6);
   makeSpark(scene, "spark-smoke", 0x9aa0a7, 9);
@@ -242,4 +241,39 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makePrecisionWeapon(scene);
   makeMuzzleFlash(scene);
   makeDrone(scene);
+  makeMedkitPickup(scene);
+}
+
+function makeMedkitPickup(scene: Phaser.Scene): void {
+  if (scene.textures.exists("pickup-medkit")) return;
+  const g = scene.add.graphics();
+  g.clear();
+
+  g.fillStyle(0xd7ff2e, 0.14);
+  g.fillEllipse(26, 34, 46, 14);
+
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRoundedRect(4, 9, 44, 29, 5);
+  g.fillStyle(0x16181c, 1);
+  g.fillRoundedRect(6, 11, 40, 25, 4);
+
+  g.fillStyle(0xc7692f, 1);
+  g.fillRoundedRect(20, 4, 12, 9, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRoundedRect(23, 6, 6, 5, 2);
+
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRoundedRect(8, 13, 36, 20, 3);
+  g.fillStyle(0xe5484d, 1);
+  g.fillRect(23, 16, 6, 14);
+  g.fillRect(19, 20, 14, 6);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(8, 30, 36, 3);
+  g.fillStyle(0xffffff, 0.55);
+  g.fillRect(11, 15, 7, 2);
+  g.fillStyle(0x0c0d0f, 0.32);
+  g.fillRect(8, 33, 36, 1);
+
+  g.generateTexture("pickup-medkit", 52, 42);
+  g.destroy();
 }

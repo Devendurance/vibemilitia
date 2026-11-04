@@ -4,6 +4,7 @@ import { ARENA } from "@/game/arena/arena";
 import { buildArena, type ArenaBuildResult } from "@/game/arena/ArenaBuilder";
 import { CHARACTER_ROSTER } from "@/game/characters/roster";
 import { PLAYER_WEAPONS } from "@/game/config/gameplay";
+import { MEDKIT_CONFIG } from "@/game/core/pickups";
 import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } from "@/game/bridge";
 import { createGameTextures } from "@/game/systems/TextureFactory";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
@@ -19,7 +20,15 @@ import type {
   OnlineInputPayload,
   OnlineSnapshot,
   OnlineCombatantSnapshot,
+  OnlinePickupSnapshot,
 } from "@/game/multiplayer/protocol";
+
+interface PickupView {
+  container: Phaser.GameObjects.Container;
+  glow: Phaser.GameObjects.Arc;
+  baseY: number;
+  phase: number;
+}
 
 interface OnlineProbe {
   roomId: string;
@@ -28,6 +37,7 @@ interface OnlineProbe {
   snapshot: OnlineSnapshot | null;
   hud: HudSnapshot;
   views: Array<{ id: string; name: string; kind: string; x: number; y: number; alive: boolean }>;
+  pickups: Array<{ id: string; x: number; y: number; active: boolean; visible: boolean }>;
 }
 
 export class OnlineScene extends Phaser.Scene {
@@ -38,6 +48,7 @@ export class OnlineScene extends Phaser.Scene {
   private inputController!: InputController;
   private effects!: EffectsSystem;
   private views = new Map<string, CombatantView>();
+  private pickupViews = new Map<string, PickupView>();
   private latestSnapshot: OnlineSnapshot | null = null;
   private snapshotAt = 0;
   private previousPhase: string | null = null;
@@ -55,6 +66,9 @@ export class OnlineScene extends Phaser.Scene {
   private pendingJump = false;
   private pendingReload = false;
   private pendingWeapon: number | null = null;
+  private pendingMedkit = false;
+  private medkitFeedbackSeq = 0;
+  private medkitFeedbackAmount = 0;
   private hitFeedbackMs = 0;
   private localDamageSeq = 0;
   private lastPlayerKill: HudSnapshot["lastPlayerKill"] = null;
@@ -75,6 +89,7 @@ export class OnlineScene extends Phaser.Scene {
       snapshot: null,
       hud: INITIAL_HUD,
       views: [],
+      pickups: [],
     };
   }
 
@@ -111,6 +126,9 @@ export class OnlineScene extends Phaser.Scene {
         case "equip-weapon":
           this.pendingWeapon = command.slot;
           break;
+        case "use-medkit":
+          this.pendingMedkit = true;
+          break;
         case "restart-match":
           this.room.send("rematch");
           break;
@@ -145,12 +163,21 @@ export class OnlineScene extends Phaser.Scene {
           alive: this.latestSnapshot?.participants.find((p) => p.id === view.id)?.alive ?? false,
           ...view.presentation,
         })),
+        pickups: [...this.pickupViews.entries()].map(([id, view]) => ({
+          id,
+          x: view.container.x,
+          y: view.baseY,
+          active:
+            this.latestSnapshot?.pickups.find((pickup) => pickup.id === id)
+              ?.active ?? false,
+          visible: view.container.visible,
+        })),
       }),
       sendCommand: (command) => this.bridge.send(command),
     };
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     const dtMs = Math.min(delta, 50);
     const frame = this.inputController.sample(
       this.cameras.main,
@@ -228,10 +255,12 @@ export class OnlineScene extends Phaser.Scene {
       if (frame.weaponSlotPressed !== null) {
         this.pendingWeapon = frame.weaponSlotPressed;
       }
+      this.pendingMedkit ||= frame.medkitPressed;
     } else {
       this.pendingJump = false;
       this.pendingReload = false;
       this.pendingWeapon = null;
+      this.pendingMedkit = false;
     }
 
     if (
@@ -251,11 +280,13 @@ export class OnlineScene extends Phaser.Scene {
         reload: this.pendingReload,
         weapon: this.pendingWeapon,
         aim: this.localAim,
+        useMedkit: this.pendingMedkit,
       };
       this.room.send("input", payload);
       this.pendingJump = false;
       this.pendingReload = false;
       this.pendingWeapon = null;
+      this.pendingMedkit = false;
     }
 
     if (this.latestSnapshot) {
@@ -275,6 +306,7 @@ export class OnlineScene extends Phaser.Scene {
           );
         }
       }
+      this.animatePickups(time);
       this.drawProjectiles();
       this.drawCrosshair(frame);
       this.drawDebug();
@@ -311,6 +343,7 @@ export class OnlineScene extends Phaser.Scene {
         this.views.delete(id);
       }
     }
+    this.syncPickupViews(snapshot.pickups);
 
     const local = snapshot.participants.find(
       (participant) => participant.id === this.room.sessionId,
@@ -355,10 +388,48 @@ export class OnlineScene extends Phaser.Scene {
       this.pendingJump = false;
       this.pendingReload = false;
       this.pendingWeapon = null;
+      this.pendingMedkit = false;
       this.wasFiring = false;
     }
     this.previousPhase = snapshot.phase;
     this.publishHud(true);
+  }
+
+  private syncPickupViews(pickups: OnlinePickupSnapshot[]): void {
+    const present = new Set(pickups.map((pickup) => pickup.id));
+    for (const pickup of pickups) {
+      let view = this.pickupViews.get(pickup.id);
+      if (!view) {
+        const glow = this.add
+          .circle(0, 8, 22, 0xd7ff2e, 0.08)
+          .setStrokeStyle(1, 0xd7ff2e, 0.3);
+        const image = this.add.image(0, -4, "pickup-medkit");
+        const container = this.add
+          .container(pickup.x, pickup.y, [glow, image])
+          .setDepth(24);
+        view = {
+          container,
+          glow,
+          baseY: pickup.y,
+          phase: this.pickupViews.size * 0.9,
+        };
+        this.pickupViews.set(pickup.id, view);
+      }
+      view.container.setVisible(pickup.active);
+    }
+    for (const [id, view] of this.pickupViews) {
+      if (present.has(id)) continue;
+      view.container.destroy(true);
+      this.pickupViews.delete(id);
+    }
+  }
+
+  private animatePickups(time: number): void {
+    for (const view of this.pickupViews.values()) {
+      if (!view.container.visible) continue;
+      view.container.y = view.baseY + Math.sin(time / 420 + view.phase) * 3;
+      view.glow.setScale(1 + Math.sin(time / 520 + view.phase) * 0.08);
+    }
   }
 
   private onEvents(events: OnlineEvent[]): void {
@@ -411,6 +482,25 @@ export class OnlineScene extends Phaser.Scene {
         }
         case "respawn": {
           this.effects.spawn(event.x, event.y);
+          break;
+        }
+        case "pickup-collected": {
+          this.pickupViews.get(event.pickupId)?.container.setVisible(false);
+          this.effects.pickupCollected(event.x, event.y);
+          break;
+        }
+        case "pickup-respawn": {
+          this.pickupViews.get(event.pickupId)?.container.setVisible(true);
+          this.effects.ring(event.x, event.y, 0xd7ff2e);
+          break;
+        }
+        case "medkit-used": {
+          this.effects.heal(event.x, event.y);
+          this.effects.healNumber(event.x, event.y - 18, event.healed);
+          if (event.playerId === this.room.sessionId) {
+            this.medkitFeedbackSeq += 1;
+            this.medkitFeedbackAmount = event.healed;
+          }
           break;
         }
         case "match-end": {
@@ -519,6 +609,10 @@ export class OnlineScene extends Phaser.Scene {
       uptimeMs: snapshot.elapsedMs,
       debug: this.debugVisible,
       damageSeq: this.localDamageSeq,
+      medkits: local?.medkits ?? 0,
+      maxMedkits: MEDKIT_CONFIG.maxCarried,
+      medkitFeedbackSeq: this.medkitFeedbackSeq,
+      medkitFeedbackAmount: this.medkitFeedbackAmount,
     };
     this.bridge.publish(hud);
   }
@@ -641,6 +735,8 @@ export class OnlineScene extends Phaser.Scene {
     this.commandUnsubscribe = null;
     for (const view of this.views.values()) view.destroy();
     this.views.clear();
+    for (const view of this.pickupViews.values()) view.container.destroy(true);
+    this.pickupViews.clear();
     if (window.__VIBE_MILITIA_ONLINE__) {
       delete window.__VIBE_MILITIA_ONLINE__;
     }

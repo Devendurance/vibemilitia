@@ -57,6 +57,7 @@ Bots fight each other as well as the player. A match can be won or lost while th
 | Mouse | Aim the weapon in 360 degrees |
 | Left mouse button | Fire |
 | `1` / `2` / `3` | Equip the rifle, scatter blaster or vibe lance |
+| `H` | Use a carried medkit in online matches |
 | `R` | Reload |
 | `F1` | Toggle physics, navigation and collision debug |
 | `Enter` | Replay after the results screen |
@@ -81,6 +82,8 @@ Each weapon has its own magazine state, weapon texture, projectile texture, muzz
 - Automatic rifle, seven-pellet shotgun and precision two-shot rail weapon.
 - Terrain collisions for the player, bots and projectiles.
 - Health, delayed regeneration, damage, eliminations, deaths and respawns.
+- Fourteen fixed medkit caches across ground routes and elevated platforms. Online players carry up to two, use them with `H`, and heal 50 HP without exceeding maximum health.
+- Server-authoritative pickup collection, 20-second respawn timers and per-room pickup state.
 - Three local bot drones with pathfinding, terrain collision, line-of-sight fire, burst fire and vertical thruster movement.
 - Online bots use distinct validated Viber cutouts, PlayerVisuals weapon and jetpack layers, BOT callsign labels, Vibe Rifle projectiles and the same character-sized damage hitbox as humans.
 - Bot-versus-bot combat. Every participant can score on every other participant.
@@ -98,8 +101,8 @@ The `/online` route adds a Colyseus lobby and independent free-for-all rooms. Th
 - New rooms count down before combat. The HUD, lobby card and room metadata share the same countdown and phase state.
 - Quick Match uses server-side matchmaking. It filters to open rooms, sorts by the most connected humans, and creates a new room when existing rooms fill.
 - Full-room and ended-room races retry before falling back to a fresh room, so simultaneous joins are not stranded.
-- Rooms run concurrently with their own simulation, clock, leaderboard, bots, projectiles and results.
-- The Node server owns movement, health, ammunition, projectile flight, damage, eliminations, respawns, bots, the match clock and the outcome.
+- Rooms run concurrently with their own simulation, clock, leaderboard, bots, projectiles, pickups and results.
+- The Node server owns movement, health, ammunition, projectile flight, damage, eliminations, respawns, medkit inventory, pickup collection, bots, the match clock and the outcome.
 - Browsers send input frames only. They never send positions, hit confirmations or scores.
 - The server ticks at 60 Hz and broadcasts snapshots at 20 Hz. Input is capped at 45 messages per second per client.
 - Online bots share the human character renderer. They show the equipped Vibe Rifle, 360-degree aim, muzzle flash, recoil, jetpack exhaust, health bars, damage reactions, spawn shields and death/respawn presentation.
@@ -222,6 +225,7 @@ npm run verify:online:matchmaking
 npm run verify:online:characters
 npm run verify:online:bots
 npm run verify:online:match
+npm run verify:online:pickups
 npm run verify:online:rooms
 npm run verify:online:perf
 HEADED=1 npm run verify:online:perf
@@ -239,6 +243,8 @@ HEADED=1 npm run verify:online:perf
 
 `verify:online:match` opens two independent Chromium contexts with different selected skins in one room, fills the other six seats with SDK clients, waits for the 90-second clock, checks identical results on both browsers, then clicks replay and checks both clients return to a live match with reset scores and their original character selections.
 
+`verify:online:pickups` joins two browsers to one room, compares all fourteen pickup IDs and positions, walks a player onto a medkit, checks both clients hide the collected pickup and the HUD reports the carried count, verifies late-join inventory isolation, confirms a concurrent room keeps its own pickup active, waits for the world respawn, then waits for bot damage and verifies `H` consumes a medkit, heals without exceeding 100 HP, shows the HUD feedback and rejects a duplicate use during cooldown.
+
 `verify:online:rooms` creates two concurrent rooms, checks state isolation, rejects a ninth human with the full-room message, releases a seat and rejoins, then waits for an independent match to end and checks the replay error.
 
 `verify:online:perf` measures render rate, ping and sampled server tick time. Headless Chrome may pace WebGL below the display refresh rate, so use `HEADED=1` for the gameplay frame-rate number.
@@ -246,7 +252,7 @@ HEADED=1 npm run verify:online:perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 53 tests pass
+- `npm test`: 68 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass
@@ -261,8 +267,9 @@ Last verification against the production build:
 - The server rejected an arbitrary asset URL and fell back to VIBER-010.
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms.
 - `verify:online:match`: 25/25 checks pass, 8 humans, time-limit result, identical standings, replay reset, and preserved VIBER-123/BUREAU-023 selections.
+- `verify:online:pickups`: 28/28 checks pass. Two clients saw the same fourteen pickups, a collected medkit disappeared for both, a late join saw no duplicated inventory, a second room kept independent pickup state, the world pickup respawned, `H` healed from 51 to 100 HP without exceeding the cap, the HUD showed `+49 HP`, and a duplicate use consumed no extra medkit.
 - `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors.
-- `HEADED=1 npm run verify:online:perf`: 59 fps with eight Viber combatants while moving and firing, 0.23 ms average server tick, 0.46 ms p95.
+- `HEADED=1 npm run verify:online:perf`: 60 fps with eight Viber combatants while moving and firing, 0.19 ms average server tick, 0.39 ms p95.
 - Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
@@ -271,7 +278,10 @@ Last verification against the production build:
 - The client predicts local movement and renders remote interpolation, but there is no historical lag compensation for hit registration. High-latency shots can feel inconsistent.
 - Ended rooms stay ended until a current occupant starts a replay. New players need to join or create another room.
 - Room discovery uses the Colyseus lobby and in-memory room metadata. It is not a persistent matchmaking service and does not survive a server restart.
-- Combat input is frozen during the pre-match countdown. Players can aim but cannot move, fire or use the jetpack until the clock starts.
+- Combat input is frozen during the pre-match countdown. Players can aim but cannot move, fire, use the jetpack or use a medkit until the clock starts.
+- Medkits are consumed on respawn. A player who dies loses carried medkits, and pickup respawn timers keep running only while the round is live.
+- Online bots do not collect pickups yet. Bot supply decisions are planned for P3B-C.
+- Pickup positions are fixed authored caches. There is no dynamic or random supply spawning.
 - Under extreme simultaneous contention, Quick Match can fall back to creating a fresh room after repeated seat races.
 - Character selection is only available in the lobby. A player cannot switch skins during a live match.
 - Humans may choose the same character. Human selections take priority at bot assignment time, but bots keep their existing skins if a late human joins with the same appearance.
@@ -283,18 +293,19 @@ Last verification against the production build:
 - The arena uses runtime-baked primitive art, not a final authored tileset.
 - Guest names and room membership are temporary. There are no accounts, wallets, XP or persistent stats.
 
-## Out of scope for P2.5
+## Out of scope for P3B-A
 
+- Contact, frag and stinking grenades. Those are P3B-B and P3B-C.
+- Weapon drops from eliminated players, elimination loot and akimbo rifles.
 - Accounts, wallets and blockchain integration.
 - XP, progression, unlocks or ranked matchmaking.
-- New non-official characters, maps or loadouts.
-- Grenades, pickups or new game modes.
+- New non-official characters, maps or modes.
 - Spectator tools, voice chat or tournaments.
 - Final character animation. The source NFT perspective does not support it without new authored art.
 
 ## Next steps
 
-1. Await approval before beginning P3B.
+1. Get P3B-A approved, then begin P3B-B contact and frag grenades.
 2. Add reconnection tokens and mid-match resume.
 3. Add server-side lag compensation and a configurable latency test harness.
 4. Add audio and richer hit confirmation through the existing effects layer.

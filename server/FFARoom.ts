@@ -162,6 +162,7 @@ export class FFARoom extends Room {
           ? null
           : Number(value.weapon),
       aim: value.aim,
+      useMedkit: Boolean(value.useMedkit),
     });
   }
 

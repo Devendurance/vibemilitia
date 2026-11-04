@@ -16,6 +16,9 @@
 /test-results
 /playwright-report
 
+# fast-build local state
+/.fast-build/
+
 # next.js
 /.next/
 /out/

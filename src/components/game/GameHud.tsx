@@ -6,6 +6,7 @@ import { getCharacterSkin, HUMAN_DEFAULT_SKIN_ID } from "@/game/characters/roste
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
+import { MEDKIT_CONFIG } from "@/game/core/pickups";
 
 interface GameHudProps {
   bridge: GameBridge;
@@ -65,7 +66,9 @@ export function GameHud({
   );
   const [damageFlash, setDamageFlash] = useState(0);
   const [booted, setBooted] = useState(false);
+  const [medkitToast, setMedkitToast] = useState(0);
   const previousHealth = useRef(snapshot.health);
+  const lastMedkitSeq = useRef(snapshot.medkitFeedbackSeq);
   const low = isLowHealth(snapshot.health, snapshot.maxHealth);
   const matchEnded = snapshot.matchPhase === "ended";
   const matchStarting = snapshot.matchPhase === "countdown";
@@ -103,6 +106,17 @@ export function GameHud({
     const timer = window.setTimeout(() => setBooted(true), 700);
     return () => window.clearTimeout(timer);
   }, [snapshot.ready]);
+
+  useEffect(() => {
+    if (snapshot.medkitFeedbackSeq <= lastMedkitSeq.current) {
+      lastMedkitSeq.current = snapshot.medkitFeedbackSeq;
+      return undefined;
+    }
+    lastMedkitSeq.current = snapshot.medkitFeedbackSeq;
+    setMedkitToast(snapshot.medkitFeedbackAmount);
+    const timer = window.setTimeout(() => setMedkitToast(0), 1600);
+    return () => window.clearTimeout(timer);
+  }, [snapshot.medkitFeedbackSeq, snapshot.medkitFeedbackAmount]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -305,6 +319,52 @@ export function GameHud({
               <span className="mono-label">SPACE TO THRUST</span>
             </div>
           </div>
+
+          {mode === "online" ? (
+            <div
+              className="hud-vital-row hud-medkit"
+              data-testid="hud-medkits"
+              data-medkits={snapshot.medkits}
+            >
+              <div className="hud-vital-label">
+                <span className="hud-vital-name">MEDKITS</span>
+                <span className="hud-vital-value">
+                  {snapshot.medkits}
+                  <small>/{snapshot.maxMedkits}</small>
+                </span>
+              </div>
+              <div className="hud-medkit-row">
+                <div className="hud-medkit-pips" aria-hidden="true">
+                  {Array.from(
+                    { length: snapshot.maxMedkits },
+                    (_, index) => (
+                      <span
+                        key={index}
+                        className={`hud-medkit-pip${index < snapshot.medkits ? " is-filled" : ""}`}
+                      />
+                    ),
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="hud-medkit-use"
+                  onClick={() => bridge.send({ type: "use-medkit" })}
+                  disabled={
+                    dead || matchEnded || snapshot.medkits <= 0 || snapshot.health >= snapshot.maxHealth
+                  }
+                  data-testid="medkit-use"
+                  aria-label="Use medkit"
+                >
+                  <Keycap>H</Keycap>
+                  <span className="mono-label">USE</span>
+                </button>
+              </div>
+              <div className="hud-vital-foot">
+                <span className="mono-label">+{MEDKIT_CONFIG.healAmount} HP</span>
+                <span className="mono-label">CARRY {snapshot.maxMedkits}</span>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <section className="hud-panel hud-weapon">
@@ -380,6 +440,7 @@ export function GameHud({
           <span className="hud-control"><Keycap>MOUSE</Keycap><span className="mono-label">AIM</span></span>
           <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
           <span className="hud-control"><Keycap>1</Keycap><Keycap>2</Keycap><Keycap>3</Keycap><span className="mono-label">SWAP</span></span>
+          <span className="hud-control"><Keycap>H</Keycap><span className="mono-label">MEDKIT</span></span>
           <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
           <span className="hud-control"><Keycap>F1</Keycap><span className="mono-label">PHYSICS</span></span>
         </section>
@@ -389,6 +450,14 @@ export function GameHud({
             <span className="mono-label">ELIMINATION</span>
             <strong className="display">{recentKill.victimName}</strong>
             <span className="mono-label">{recentKill.weaponName}</span>
+          </div>
+        ) : null}
+
+        {medkitToast > 0 ? (
+          <div className="medkit-toast" aria-live="polite" data-testid="medkit-toast">
+            <span className="mono-label">MEDKIT</span>
+            <strong className="display">+{Math.round(medkitToast)} HP</strong>
+            <span className="mono-label">FIELD REPAIR</span>
           </div>
         ) : null}
       </div>

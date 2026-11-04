@@ -48,6 +48,14 @@
 - Online `PlayerVisuals` is constructed with `{ dust: false }` because dust and hit-dust emitters are unused online. Local P1 keeps the full effects.
 - Replay restarts the same room and keeps its humans. Everyone can click replay.
 - `tsx` must stay in `dependencies` because `server:start` runs TypeScript directly.
+- P3B-A adds server-owned medkit pickups. `src/game/core/pickups.ts` holds `MEDKIT_CONFIG` (50 HP, carry 2, 900 ms cooldown, 78 px radius, 20 s respawn) plus pure collection/respawn/heal rules.
+- Sector 07 has 14 fixed `pickupSpawns` in `arena.ts`, one near each spawn pad, on platform tops at least 60 px from spawn bodies.
+- `GameSimulation` owns pickup state, validatates proximity and capacity, emits `pickup-collected`, `pickup-respawn` and `medkit-used`, and sends `pickups` plus per-combatant `medkits` in every snapshot.
+- `OnlineInputPayload.useMedkit` is a request only. The server applies it on the next live tick, caps health, consumes one medkit and enforces a 900 ms cooldown. Duplicate/stale seq and full-health use are ignored.
+- Pickups reset on first human join, match start, match end and rematch. Players lose carried medkits on death/respawn. Bots do not collect supplies yet.
+- `InputController` exposes `medkitPressed` from H. The online HUD also has a clickable use button through the `use-medkit` bridge command.
+- Online HUD fields include `medkits`, `maxMedkits`, `medkitFeedbackSeq` and `medkitFeedbackAmount`. The toast shows the authoritative healed amount.
+- `verify:online:pickups` covers two-client pickup sync, collection, late join, independent rooms, respawn and live healing.
 
 ## Phaser 4 gotchas
 
@@ -58,6 +66,7 @@
 - Group `add` can reset body settings. Avoid adding pre-configured bodies to a physics group unless the settings are reapplied.
 - Phaser 4 uses `this.add.particles(x, y, texture, config)` and emitter `emitting` booleans.
 - Fast key taps can begin and end between frames. Buffer reload, jump, weapon and debug presses from `Key` down events instead of polling `JustDown` alone.
+- Name pure supply helpers `applyMedkit`, not `useMedkit`. ESLint's `react-hooks/rules-of-hooks` treats the `use` prefix as a React hook inside class methods.
 
 ## P1 systems
 
@@ -100,6 +109,7 @@
 - `npm run verify:online:characters`
 - `npm run verify:online:bots`
 - `npm run verify:online:match`
+- `npm run verify:online:pickups`
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)
 - `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test

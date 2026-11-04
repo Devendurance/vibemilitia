@@ -16,6 +16,15 @@ import {
 } from "@/game/characters/roster";
 import { buildNavigationGrid, findPath, lineClear, type NavGrid, type NavPoint } from "@/game/ai/navigation";
 import { applyDamage, stepHealthRegen } from "@/game/core/combat";
+import {
+  MEDKIT_CONFIG,
+  createPickups,
+  findCollectiblePickup,
+  resetPickups,
+  stepPickupRespawns,
+  applyMedkit,
+  type PickupRuntime,
+} from "@/game/core/pickups";
 import { createWeaponState, reloadProgress, stepWeapon, type WeaponState } from "@/game/core/weapon";
 import {
   createMatchTimer,
@@ -130,6 +139,9 @@ interface HumanRuntime {
   shotsFired: number;
   shotsHit: number;
   lastKillerName: string | null;
+  medkits: number;
+  medkitCooldownRemainingMs: number;
+  queuedMedkit: boolean;
 }
 
 interface BotRuntime {
@@ -250,6 +262,7 @@ export class GameSimulation {
   private humans = new Map<string, HumanRuntime>();
   private bots = new Map<string, BotRuntime>();
   private projectiles = new Map<number, ProjectileRuntime>();
+  private pickups: PickupRuntime[] = createPickups(ARENA.pickupSpawns);
   private timer: MatchTimerState = createMatchTimer(MATCH_CONFIG.durationMs);
   private countdown = false;
   private started = false;
@@ -349,6 +362,7 @@ export class GameSimulation {
       this.feed = [];
       this.feedCounter = 0;
       this.projectiles.clear();
+      resetPickups(this.pickups);
       if (this.countdownDurationMs > 0) {
         this.countdown = true;
         this.countdownRemainingMs = this.countdownDurationMs;
@@ -425,6 +439,7 @@ export class GameSimulation {
     human.lastInputSeq = seq;
     human.queuedJump ||= Boolean(payload.jump);
     human.queuedReload ||= Boolean(payload.reload);
+    human.queuedMedkit ||= Boolean(payload.useMedkit);
     if (payload.weapon !== null && payload.weapon !== undefined) {
       human.queuedWeapon = Math.max(0, Math.min(2, Math.floor(payload.weapon)));
     }
@@ -446,6 +461,7 @@ export class GameSimulation {
     this.feedCounter = 0;
     this.events = [];
     this.bots.clear();
+    resetPickups(this.pickups);
 
     for (const human of this.humans.values()) {
       human.eliminations = 0;
@@ -501,6 +517,16 @@ export class GameSimulation {
       this.stepBot(bot, dtMs);
     }
     this.stepProjectiles(dtMs);
+    const respawnedPickups = stepPickupRespawns(this.pickups, dtMs);
+    for (const pickup of respawnedPickups) {
+      this.events.push({
+        type: "pickup-respawn",
+        pickupId: pickup.id,
+        itemType: pickup.type,
+        x: pickup.x,
+        y: pickup.y,
+      });
+    }
 
     if (this.timer.phase === "live") {
       const scores = [...this.humans.values(), ...this.bots.values()].map(
@@ -524,6 +550,7 @@ export class GameSimulation {
     this.projectiles.clear();
     this.feed = [];
     this.feedCounter = 0;
+    resetPickups(this.pickups);
     this.fillBots();
   }
 
@@ -573,6 +600,14 @@ export class GameSimulation {
         kind: projectile.ownerKind,
         weaponId: projectile.weaponId,
       })),
+      pickups: this.pickups.map((pickup) => ({
+        id: pickup.id,
+        type: pickup.type,
+        x: pickup.x,
+        y: pickup.y,
+        active: pickup.active,
+        respawnIn: pickup.active ? 0 : pickup.respawnRemainingMs / 1000,
+      })),
       standings,
       feed: this.feed.slice(-6),
       roomId: this.roomId,
@@ -617,6 +652,9 @@ export class GameSimulation {
       shotsFired: 0,
       shotsHit: 0,
       lastKillerName: null,
+      medkits: 0,
+      medkitCooldownRemainingMs: 0,
+      queuedMedkit: false,
     };
   }
 
@@ -709,6 +747,9 @@ export class GameSimulation {
     human.queuedJump = false;
     human.queuedReload = false;
     human.queuedWeapon = null;
+    human.queuedMedkit = false;
+    human.medkits = 0;
+    human.medkitCooldownRemainingMs = 0;
     for (let index = 0; index < human.weapons.length; index += 1) {
       human.weapons[index] = createWeaponState(PLAYER_WEAPONS[index]);
     }
@@ -780,6 +821,10 @@ export class GameSimulation {
 
     human.invulnerableRemainingMs = Math.max(0, human.invulnerableRemainingMs - dtMs);
     human.lastDamageMs += dtMs;
+    human.medkitCooldownRemainingMs = Math.max(
+      0,
+      human.medkitCooldownRemainingMs - dtMs,
+    );
     human.health = stepHealthRegen(
       human.health,
       human.maxHealth,
@@ -838,6 +883,61 @@ export class GameSimulation {
         human.kin.y - 58,
         human.aimAngle,
       );
+    }
+
+    if (human.queuedMedkit) {
+      human.queuedMedkit = false;
+      this.tryUseMedkit(human);
+    }
+    this.collectNearbyPickups(human);
+  }
+
+  private tryUseMedkit(human: HumanRuntime): void {
+    const result = applyMedkit({
+      health: human.health,
+      maxHealth: human.maxHealth,
+      carried: human.medkits,
+      cooldownRemainingMs: human.medkitCooldownRemainingMs,
+    });
+    if (!result.ok) return;
+    human.health = result.health;
+    human.medkits = result.carried;
+    human.medkitCooldownRemainingMs = MEDKIT_CONFIG.useCooldownMs;
+    this.events.push({
+      type: "medkit-used",
+      playerId: human.id,
+      playerName: human.name,
+      healed: result.healed,
+      health: result.health,
+      x: human.kin.x,
+      y: human.kin.y - CHARACTER_AIM_HEIGHT,
+    });
+  }
+
+  private collectNearbyPickups(human: HumanRuntime): void {
+    while (human.medkits < MEDKIT_CONFIG.maxCarried) {
+      const pickup = findCollectiblePickup(
+        this.pickups,
+        human.kin.x,
+        human.kin.y - CHARACTER_AIM_HEIGHT,
+        (candidate) =>
+          candidate.type === "medkit" &&
+          human.medkits < MEDKIT_CONFIG.maxCarried,
+      );
+      if (!pickup) return;
+      human.medkits = Math.min(
+        MEDKIT_CONFIG.maxCarried,
+        human.medkits + 1,
+      );
+      this.events.push({
+        type: "pickup-collected",
+        pickupId: pickup.id,
+        itemType: pickup.type,
+        playerId: human.id,
+        playerName: human.name,
+        x: pickup.x,
+        y: pickup.y,
+      });
     }
   }
 
@@ -1014,6 +1114,7 @@ export class GameSimulation {
     this.endReason = reason;
     this.winnerName = this.getRanked()[0]?.name ?? null;
     this.projectiles.clear();
+    resetPickups(this.pickups);
     this.events.push({
       type: "match-end",
       reason,
@@ -1308,6 +1409,7 @@ export class GameSimulation {
       deaths: combatant.deaths,
       accuracy: shots > 0 ? hits / shots : 0,
       lastKillerName: combatant.lastKillerName,
+      medkits: human?.medkits ?? 0,
     };
   }
 

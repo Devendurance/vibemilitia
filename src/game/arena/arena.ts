@@ -1,3 +1,5 @@
+import type { PickupDefinition } from "@/game/core/pickups";
+
 export type PlatformStyle = "ground" | "grass" | "stone" | "copper" | "crate";
 
 export interface PlatformDefinition {
@@ -32,6 +34,7 @@ export interface ArenaDefinition {
   platforms: PlatformDefinition[];
   droneSpawns: DroneSpawn[];
   spawnPoints: ArenaSpawnPoint[];
+  pickupSpawns: PickupDefinition[];
 }
 
 export const ARENA: ArenaDefinition = {
@@ -77,5 +80,21 @@ export const ARENA: ArenaDefinition = {
     { id: "right-perch", x: 2200, y: 720 },
     { id: "right-high", x: 3150, y: 740 },
     { id: "far-low", x: 3300, y: 1040 },
+  ],
+  pickupSpawns: [
+    { id: "medkit-ground-left", type: "medkit", x: 300, y: 1324 },
+    { id: "medkit-ground-spawn", type: "medkit", x: 760, y: 1324 },
+    { id: "medkit-ground-mid", type: "medkit", x: 1220, y: 1324 },
+    { id: "medkit-ground-right", type: "medkit", x: 2000, y: 1324 },
+    { id: "medkit-ground-far", type: "medkit", x: 3000, y: 1324 },
+    { id: "medkit-left-ledge", type: "medkit", x: 430, y: 1164 },
+    { id: "medkit-left-high", type: "medkit", x: 460, y: 944 },
+    { id: "medkit-bridge", type: "medkit", x: 1360, y: 944 },
+    { id: "medkit-center-perch", type: "medkit", x: 1700, y: 704 },
+    { id: "medkit-top-shelf", type: "medkit", x: 880, y: 544 },
+    { id: "medkit-right-mid", type: "medkit", x: 2750, y: 924 },
+    { id: "medkit-right-perch", type: "medkit", x: 2280, y: 704 },
+    { id: "medkit-right-high", type: "medkit", x: 3250, y: 724 },
+    { id: "medkit-far-low", type: "medkit", x: 3380, y: 1024 },
   ],
 };
