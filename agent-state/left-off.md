@@ -50,4 +50,4 @@ P3A character selection is implemented and verified. P3B has not started.
 
 ## Checkpoint
 
-P3A code, tests and docs are committed on `main`. This file receives the checkpoint hash in the follow-up state commit.
+P3A code, tests and docs are committed at `b673539` on `main`. P3B has not started.
