@@ -41,4 +41,4 @@ P2.5 Slice B is implemented and verified. P3 has not started.
 
 ## Checkpoint
 
-P2.5 Slice B code and verification are committed on `main`. This file receives the checkpoint hash in the follow-up state commit.
+P2.5 Slice B code and verification are committed at `030ea6c` on `main`. P3 has not started.
