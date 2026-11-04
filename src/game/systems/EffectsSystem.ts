@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { GrenadeType } from "@/game/core/grenades";
 
 type ImpactKind = "player" | "drone" | "world";
 
@@ -104,12 +105,34 @@ export class EffectsSystem {
     this.ring(x, y, 0x9bd8f2);
   }
 
-  grenadeThrow(x: number, y: number): void {
-    this.copper.explode(3, x, y);
-    this.smoke.explode(2, x, y);
+  grenadeThrow(x: number, y: number, type: GrenadeType): void {
+    if (type === "stinking") {
+      this.mint.explode(4, x, y);
+      this.lime.explode(2, x, y);
+    } else {
+      this.copper.explode(3, x, y);
+      this.smoke.explode(2, x, y);
+    }
   }
 
-  grenadeExplosion(x: number, y: number, type: "contact" | "frag"): void {
+  toxicCloudCreated(x: number, y: number): void {
+    this.mint.explode(10, x, y);
+    this.lime.explode(8, x, y);
+    this.smoke.explode(4, x, y);
+    this.ring(x, y, 0x9bff5a);
+  }
+
+  toxicCloudExpired(x: number, y: number): void {
+    this.mint.explode(5, x, y);
+    this.smoke.explode(4, x, y);
+    this.ring(x, y, 0x6fbe2e);
+  }
+
+  toxicTick(x: number, y: number): void {
+    this.mint.explode(2, x, y);
+  }
+
+  grenadeExplosion(x: number, y: number, type: GrenadeType): void {
     const contact = type === "contact";
     this.red.explode(contact ? 18 : 14, x, y);
     this.copper.explode(contact ? 15 : 11, x, y);

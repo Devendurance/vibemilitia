@@ -86,6 +86,7 @@ const probe = (page) =>
             medkits: local.medkits,
             grenadeContact: local.grenadeContact,
             grenadeFrag: local.grenadeFrag,
+            grenadeStinking: local.grenadeStinking,
             grenadeSelected: local.grenadeSelected,
             grenadeCooldownMs: local.grenadeCooldownMs,
             eliminations: local.eliminations,
@@ -136,6 +137,10 @@ const probe = (page) =>
         document
           .querySelector('[data-testid="hud-grenades"]')
           ?.getAttribute("data-frag") ?? null,
+      stinkingHud:
+        document
+          .querySelector('[data-testid="hud-grenades"]')
+          ?.getAttribute("data-stinking") ?? null,
       grenadeStatus:
         document.querySelector('[data-testid="grenade-status"]')
           ?.textContent ?? "",
@@ -395,15 +400,20 @@ try {
   const fragCaches = initialA.pickups.filter(
     (pickup) => pickup.type === "frag-grenade",
   );
+  const stinkingCaches = initialA.pickups.filter(
+    (pickup) => pickup.type === "stinking-grenade",
+  );
   check(
-    "twenty supply caches spawn with fourteen medkits",
-    initialA.pickups.length === 20 && medkits.length === 14,
+    "twenty-three supply caches spawn with fourteen medkits",
+    initialA.pickups.length === 23 && medkits.length === 14,
     `total=${initialA.pickups.length} medkits=${medkits.length}`,
   );
   check(
-    "three contact and three frag caches spawn",
-    contactCaches.length === 3 && fragCaches.length === 3,
-    `contact=${contactCaches.length} frag=${fragCaches.length}`,
+    "three contact, three frag and three stinking caches spawn",
+    contactCaches.length === 3 &&
+      fragCaches.length === 3 &&
+      stinkingCaches.length === 3,
+    `contact=${contactCaches.length} frag=${fragCaches.length} stink=${stinkingCaches.length}`,
   );
   const contactViews = initialA.pickupViews.filter(
     (pickup) => pickup.type === "contact-grenade",
@@ -411,17 +421,24 @@ try {
   const fragViews = initialA.pickupViews.filter(
     (pickup) => pickup.type === "frag-grenade",
   );
+  const stinkingViews = initialA.pickupViews.filter(
+    (pickup) => pickup.type === "stinking-grenade",
+  );
   check(
-    "contact and frag caches use distinct artworks",
+    "all three grenade caches use distinct artworks",
     contactViews.length === 3 &&
       fragViews.length === 3 &&
+      stinkingViews.length === 3 &&
       contactViews.every(
         (pickup) => pickup.texture === "pickup-grenade-contact",
       ) &&
       fragViews.every(
         (pickup) => pickup.texture === "pickup-grenade-frag",
+      ) &&
+      stinkingViews.every(
+        (pickup) => pickup.texture === "pickup-grenade-stinking",
       ),
-    `contact=${contactViews.length} frag=${fragViews.length}`,
+    `contact=${contactViews.length} frag=${fragViews.length} stink=${stinkingViews.length}`,
   );
 
   await pageB.goto(roomUrl, { waitUntil: "networkidle" });
@@ -441,7 +458,7 @@ try {
   check(
     "all pickup views render with matching types",
     initialA.pickupViews.length === initialA.pickups.length &&
-      initialA.pickupViews.length === 20,
+      initialA.pickupViews.length === 23,
     `views=${initialA.pickupViews.length}`,
   );
 
@@ -459,19 +476,21 @@ try {
 
   const liveA = await probe(pageA);
   check(
-    "starting inventory is one contact and one frag",
+    "starting inventory is one of each grenade",
     liveA.local?.grenadeContact === 1 &&
       liveA.local?.grenadeFrag === 1 &&
+      liveA.local?.grenadeStinking === 1 &&
       liveA.local?.grenadeSelected === "contact",
-    `contact=${liveA.local?.grenadeContact} frag=${liveA.local?.grenadeFrag}`,
+    `contact=${liveA.local?.grenadeContact} frag=${liveA.local?.grenadeFrag} stink=${liveA.local?.grenadeStinking}`,
   );
   check(
-    "HUD shows both grenade slots and the selected type",
+    "HUD shows all three grenade slots and the selected type",
     liveA.selectedHud === "contact" &&
       liveA.contactHud === "1" &&
       liveA.fragHud === "1" &&
+      liveA.stinkingHud === "1" &&
       liveA.hud.grenadeMax === 3,
-    `selected=${liveA.selectedHud} contact=${liveA.contactHud} frag=${liveA.fragHud}`,
+    `selected=${liveA.selectedHud} contact=${liveA.contactHud} frag=${liveA.fragHud} stink=${liveA.stinkingHud}`,
   );
   check(
     "throw control is available at match start",
@@ -786,14 +805,17 @@ try {
   check(
     "second room starts with a fresh grenade inventory",
     secondRoom.local?.grenadeContact === 1 &&
-      secondRoom.local?.grenadeFrag === 1,
-    `contact=${secondRoom.local?.grenadeContact} frag=${secondRoom.local?.grenadeFrag}`,
+      secondRoom.local?.grenadeFrag === 1 &&
+      secondRoom.local?.grenadeStinking === 1,
+    `contact=${secondRoom.local?.grenadeContact} frag=${secondRoom.local?.grenadeFrag} stink=${secondRoom.local?.grenadeStinking}`,
   );
   check(
     "second room has all grenade caches active",
     secondRoom.pickups.filter(
       (pickup) =>
-        pickup.type === "contact-grenade" || pickup.type === "frag-grenade",
+        pickup.type === "contact-grenade" ||
+        pickup.type === "frag-grenade" ||
+        pickup.type === "stinking-grenade",
     ).every((pickup) => pickup.active),
   );
   await pageC.close();

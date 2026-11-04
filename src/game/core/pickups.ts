@@ -3,7 +3,11 @@ import {
   type GrenadeType,
 } from "@/game/core/grenades";
 
-export type PickupType = "medkit" | "contact-grenade" | "frag-grenade";
+export type PickupType =
+  | "medkit"
+  | "contact-grenade"
+  | "frag-grenade"
+  | "stinking-grenade";
 
 export const PICKUP_RADIUS = 78;
 
@@ -11,6 +15,7 @@ export const PICKUP_LABELS: Record<PickupType, string> = {
   medkit: "MEDKIT",
   "contact-grenade": "CONTACT GRENADE",
   "frag-grenade": "FRAG GRENADE",
+  "stinking-grenade": "STINKING GRENADE",
 };
 
 export function pickupRespawnMs(type: PickupType): number {
@@ -22,6 +27,7 @@ export function pickupRespawnMs(type: PickupType): number {
 export function grenadeTypeFromPickup(type: PickupType): GrenadeType | null {
   if (type === "contact-grenade") return "contact";
   if (type === "frag-grenade") return "frag";
+  if (type === "stinking-grenade") return "stinking";
   return null;
 }
 

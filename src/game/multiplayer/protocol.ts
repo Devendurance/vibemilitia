@@ -73,6 +73,7 @@ export interface OnlineCombatantSnapshot {
   medkits: number;
   grenadeContact: number;
   grenadeFrag: number;
+  grenadeStinking: number;
   grenadeSelected: GrenadeType;
   grenadeCooldownMs: number;
 }
@@ -85,9 +86,24 @@ export interface OnlineGrenadeSnapshot {
   vx: number;
   vy: number;
   ownerId: string;
+  ownerName: string;
   kind: PlayerKind;
   fuseRemainingMs: number | null;
+  activationRemainingMs: number | null;
   armed: boolean;
+}
+
+export interface OnlineToxicCloudSnapshot {
+  id: number;
+  ownerId: string;
+  ownerName: string;
+  kind: PlayerKind;
+  x: number;
+  y: number;
+  radius: number;
+  createdAtMs: number;
+  remainingMs: number;
+  durationMs: number;
 }
 
 export interface OnlinePickupSnapshot {
@@ -125,6 +141,7 @@ export interface OnlineSnapshot {
   participants: OnlineCombatantSnapshot[];
   projectiles: OnlineProjectileSnapshot[];
   grenades: OnlineGrenadeSnapshot[];
+  toxicClouds: OnlineToxicCloudSnapshot[];
   pickups: OnlinePickupSnapshot[];
   standings: OnlineStanding[];
   feed: OnlineFeedEntry[];
@@ -154,6 +171,7 @@ export type OnlineEvent =
       y: number;
       damage: number;
       kind: PlayerKind;
+      source: "bullet" | "grenade" | "toxic";
     }
   | {
       type: "elimination";
@@ -218,6 +236,7 @@ export type OnlineEvent =
       grenadeId: number;
       grenadeType: GrenadeType;
       ownerId: string;
+      ownerName: string;
       kind: PlayerKind;
       x: number;
       y: number;
@@ -230,10 +249,28 @@ export type OnlineEvent =
       grenadeId: number;
       grenadeType: GrenadeType;
       ownerId: string;
+      ownerName: string;
       kind: PlayerKind;
       x: number;
       y: number;
       blastRadius: number;
+    }
+  | {
+      type: "toxic-cloud-created";
+      cloudId: number;
+      ownerId: string;
+      ownerName: string;
+      kind: PlayerKind;
+      x: number;
+      y: number;
+      radius: number;
+      durationMs: number;
+    }
+  | {
+      type: "toxic-cloud-expired";
+      cloudId: number;
+      x: number;
+      y: number;
     };
 
 export interface OnlineInputPayload {

@@ -102,5 +102,8 @@ export const ARENA: ArenaDefinition = {
     { id: "frag-center-bridge", type: "frag-grenade", x: 1680, y: 944 },
     { id: "frag-right-high", type: "frag-grenade", x: 3350, y: 724 },
     { id: "frag-crate-c", type: "frag-grenade", x: 1700, y: 1234 },
+    { id: "stinking-mid-step", type: "stinking-grenade", x: 1140, y: 1144 },
+    { id: "stinking-right-low", type: "stinking-grenade", x: 2200, y: 1144 },
+    { id: "stinking-crate-b", type: "stinking-grenade", x: 2326, y: 1232 },
   ],
 };

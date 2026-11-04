@@ -319,6 +319,28 @@ function makeGrenadeAssets(scene: Phaser.Scene): void {
     g.destroy();
   }
 
+  if (!scene.textures.exists("grenade-stinking")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(4, 6, 18, 23, 7);
+    g.fillStyle(0x6fbe2e, 1);
+    g.fillRoundedRect(6, 8, 14, 19, 5);
+    g.fillStyle(0xd7ff2e, 1);
+    g.fillRoundedRect(8, 10, 10, 7, 3);
+    g.fillStyle(0x2f4a16, 1);
+    g.fillRect(6, 17, 14, 3);
+    g.fillRect(6, 22, 14, 2);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(10, 2, 6, 6);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRect(12, 0, 2, 3);
+    g.fillStyle(0x9bff5a, 0.9);
+    g.fillCircle(17, 15, 2);
+    g.fillCircle(10, 20, 1.5);
+    g.generateTexture("grenade-stinking", 26, 30);
+    g.destroy();
+  }
+
   if (!scene.textures.exists("pickup-grenade-contact")) {
     const g = scene.add.graphics();
     g.fillStyle(0xd7ff2e, 0.14);
@@ -360,6 +382,33 @@ function makeGrenadeAssets(scene: Phaser.Scene): void {
     g.fillStyle(0xf4e21c, 1);
     g.fillRect(8, 31, 36, 3);
     g.generateTexture("pickup-grenade-frag", 52, 42);
+    g.destroy();
+  }
+
+  if (!scene.textures.exists("pickup-grenade-stinking")) {
+    const g = scene.add.graphics();
+    g.fillStyle(0x9bff5a, 0.16);
+    g.fillEllipse(26, 34, 46, 14);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(4, 9, 44, 29, 5);
+    g.fillStyle(0x1f2b16, 1);
+    g.fillRoundedRect(6, 11, 40, 25, 4);
+    g.fillStyle(0x0c0d0f, 1);
+    g.fillRoundedRect(18, 13, 16, 20, 6);
+    g.fillStyle(0x6fbe2e, 1);
+    g.fillRoundedRect(20, 15, 12, 16, 5);
+    g.fillStyle(0xd7ff2e, 1);
+    g.fillRect(22, 18, 8, 5);
+    g.fillStyle(0x2f4a16, 1);
+    g.fillRect(20, 24, 12, 2);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(24, 10, 4, 5);
+    g.fillStyle(0x9bff5a, 0.9);
+    g.fillCircle(35, 18, 2);
+    g.fillCircle(15, 22, 1.5);
+    g.fillStyle(0x9bff5a, 1);
+    g.fillRect(8, 31, 36, 3);
+    g.generateTexture("pickup-grenade-stinking", 52, 42);
     g.destroy();
   }
 }

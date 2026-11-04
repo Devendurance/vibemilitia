@@ -1,6 +1,10 @@
-export type GrenadeType = "contact" | "frag";
+export type GrenadeType = "contact" | "frag" | "stinking";
 
-export const GRENADE_SLOT_TYPES: readonly GrenadeType[] = ["contact", "frag"];
+export const GRENADE_SLOT_TYPES: readonly GrenadeType[] = [
+  "contact",
+  "frag",
+  "stinking",
+];
 
 export interface GrenadeDefinition {
   type: GrenadeType;
@@ -67,13 +71,54 @@ export const GRENADE_CONFIG: Record<GrenadeType, GrenadeDefinition> = {
     armingDistance: 18,
     coverMultiplier: 0.45,
   },
+  stinking: {
+    type: "stinking",
+    name: "STINKING GRENADE",
+    shortName: "STINK",
+    selectionSlot: 6,
+    fuseMs: null,
+    maxLifetimeMs: 900,
+    throwSpeed: 760,
+    gravity: 1_400,
+    radius: 10,
+    blastRadius: 0,
+    maxDamage: 0,
+    minDamage: 0,
+    falloffExponent: 1,
+    restitution: 0.45,
+    friction: 0.75,
+    throwCooldownMs: 700,
+    armingMs: 100,
+    armingDistance: 18,
+    coverMultiplier: 0,
+  },
 };
+
+export const STINKING_CLOUD_CONFIG = {
+  radius: 160,
+  durationMs: 6_000,
+  activationDelayMs: 900,
+  damagePerSecond: 24,
+  damageIntervalMs: 250,
+  maxActiveClouds: 24,
+  terrainBlocksDamage: true,
+} as const;
+
+export const TOXIC_DAMAGE_PER_TICK = Math.max(
+  1,
+  Math.round(
+    (STINKING_CLOUD_CONFIG.damagePerSecond *
+      STINKING_CLOUD_CONFIG.damageIntervalMs) /
+      1000,
+  ),
+);
 
 export const GRENADE_INVENTORY_CONFIG = {
   maxTotal: 3,
   starting: {
     contact: 1,
     frag: 1,
+    stinking: 1,
   } satisfies Record<GrenadeType, number>,
   pickupRespawnMs: 22_000,
   maxActiveGrenades: 64,
@@ -101,6 +146,7 @@ export function createGrenadeInventory(
   const inventory: GrenadeInventory = {
     contact: Math.max(0, Math.floor(starting.contact)),
     frag: Math.max(0, Math.floor(starting.frag)),
+    stinking: Math.max(0, Math.floor(starting.stinking)),
   };
   const total = grenadeInventoryTotal(inventory);
   if (total <= GRENADE_INVENTORY_CONFIG.maxTotal) return inventory;
@@ -109,11 +155,13 @@ export function createGrenadeInventory(
   inventory.contact = Math.min(inventory.contact, remaining);
   remaining -= inventory.contact;
   inventory.frag = Math.min(inventory.frag, remaining);
+  remaining -= inventory.frag;
+  inventory.stinking = Math.min(inventory.stinking, remaining);
   return inventory;
 }
 
 export function grenadeInventoryTotal(inventory: GrenadeInventory): number {
-  return inventory.contact + inventory.frag;
+  return inventory.contact + inventory.frag + inventory.stinking;
 }
 
 export function canAddGrenade(inventory: GrenadeInventory): boolean {
@@ -141,7 +189,9 @@ export function grenadeTypeFromSlot(slot: number): GrenadeType | null {
 }
 
 export function grenadeSlot(type: GrenadeType): number {
-  return type === "contact" ? 0 : 1;
+  if (type === "contact") return 0;
+  if (type === "frag") return 1;
+  return 2;
 }
 
 export function computeBlastDamage(

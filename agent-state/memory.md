@@ -49,22 +49,27 @@
 - Replay restarts the same room and keeps its humans. Everyone can click replay.
 - `tsx` must stay in `dependencies` because `server:start` runs TypeScript directly.
 - P3B-A adds server-owned medkit pickups. `src/game/core/pickups.ts` holds `MEDKIT_CONFIG` (50 HP, carry 2, 900 ms cooldown, 78 px radius, 20 s respawn) plus pure collection/respawn/heal rules.
-- Sector 07 has 14 fixed `pickupSpawns` in `arena.ts`, one near each spawn pad, on platform tops at least 60 px from spawn bodies.
+- Sector 07 has 23 fixed `pickupSpawns` in `arena.ts`: 14 medkits, 3 contact, 3 frag and 3 stinking, on platform tops at least 60 px from spawn bodies.
 - `GameSimulation` owns pickup state, validatates proximity and capacity, emits `pickup-collected`, `pickup-respawn` and `medkit-used`, and sends `pickups` plus per-combatant `medkits` in every snapshot.
 - `OnlineInputPayload.useMedkit` is a request only. The server applies it on the next live tick, caps health, consumes one medkit and enforces a 900 ms cooldown. Duplicate/stale seq and full-health use are ignored.
-- Pickups reset on first human join, match start, match end and rematch. Players lose carried medkits on death/respawn. Bots do not collect supplies yet.
+- Pickups reset on first human join, match start, match end and rematch. Players lose carried medkits on death/respawn. Bots collect supplies and use medkits too.
 - `InputController` exposes `medkitPressed` from H. The online HUD also has a clickable use button through the `use-medkit` bridge command.
 - Online HUD fields include `medkits`, `maxMedkits`, `medkitFeedbackSeq` and `medkitFeedbackAmount`. The toast shows the authoritative healed amount.
 - `verify:online:pickups` covers two-client pickup sync, collection, late join, independent rooms, respawn and live healing.
-- P3B-B adds `src/game/core/grenades.ts` with contact and frag definitions, inventory helpers, blast damage and circle-rect collision.
-- Grenade config: contact 180 max damage, 220 blast radius, impact detonation, 920 throw speed, 1500 gravity. Frag 120 max damage, 215 blast radius, 5000 ms fuse, 820 throw speed, 1400 gravity. Both use 700 ms throw cooldown, 64 active-entity cap, and 55 percent damage behind cover.
-- `GameSimulation` owns `activeGrenades`, swept collision substeps, frag bounce/fuse, direct-hit damage, self-damage and cleanup. One explosion damages each combatant at most once.
-- `OnlineInputPayload` adds `grenadeSlot` (0 contact, 1 frag) and `throwGrenade`. Throws are edge-triggered with `throwRequestHeld`, sequence-guarded and cooldown-gated.
-- Snapshots add `grenades` plus per-human `grenadeContact`, `grenadeFrag`, `grenadeSelected` and `grenadeCooldownMs`. Events are `grenade-thrown` and `grenade-exploded`.
-- Human grenade inventory starts at one contact and one frag, caps at three, and resets on death/respawn. Pickup types are `medkit`, `contact-grenade` and `frag-grenade`. Grenade pickups respawn in 22 seconds.
+- P3B-B adds `src/game/core/grenades.ts` with contact, frag and stinking definitions, inventory helpers, blast damage and circle-rect collision.
+- Grenade config: contact 180 max damage, 220 blast radius, impact detonation, 920 throw speed, 1500 gravity. Frag 120 max damage, 215 blast radius, 5000 ms fuse, 820 throw speed, 1400 gravity. Stinking 760 throw speed, 1400 gravity, 900 ms activation, 160 px cloud, 6000 ms duration. All use 700 ms throw cooldown, 64 active-entity cap, and 55 percent blast damage behind cover.
+- `GameSimulation` owns `activeGrenades`, swept collision substeps, frag bounce/fuse, stinking bounce/activation, direct-hit damage, self-damage and cleanup. One explosion damages each combatant at most once.
+- `OnlineInputPayload` adds `grenadeSlot` (0 contact, 1 frag, 2 stinking) and `throwGrenade`. Throws are edge-triggered with `throwRequestHeld`, sequence-guarded and cooldown-gated.
+- Snapshots add `grenades`, `toxicClouds`, and per-combatant `grenadeContact`, `grenadeFrag`, `grenadeStinking`, `grenadeSelected` and `grenadeCooldownMs`. Events are `grenade-thrown`, `grenade-exploded`, `toxic-cloud-created` and `toxic-cloud-expired`.
+- Human grenade inventory starts at one of each type, caps at three, and resets on death/respawn. Pickup types are `medkit`, `contact-grenade`, `frag-grenade` and `stinking-grenade`. Grenade pickups respawn in 22 seconds.
+- Toxic clouds use `STINKING_CLOUD_CONFIG`: 24 HP/s, 250 ms tick, 6 HP per tick, 160 px radius, 6 s life, max 24 clouds. One global `nextToxicDamageAtMs` tick with catch-up keeps damage stable across step sizes.
+- Overlapping clouds apply one responsible cloud per tick. The closest cloud wins, with lower ID as the tie-breaker. Solid terrain fully blocks cloud damage. Cloud owner ID and name are stored for attribution after disconnect.
 - Player self-eliminations increment deaths and add a feed entry, but do not increment the killer's eliminations. `lastKillerName` stays null for the death overlay.
-- The HUD throwables panel has inline contact/frag SVG icons, count badges, a selected state, a clickable throw control and cooldown status. The bridge commands are `select-grenade` and `throw-grenade`.
+- The HUD throwables panel has inline contact/frag/stinking SVG icons, three count badges, a selected state, a clickable throw control and cooldown status. The bridge commands are `select-grenade` and `throw-grenade`.
+- Bots start with one of each grenade, 0 medkits, and server-owned cooldowns. They collect nearby supplies, seek medkits below 55 HP, use medkits, throw grenades on a 9 to 14 second decision cooldown with range/LoS gates, and apply a short local repulsion away from toxic clouds.
 - `verify:online:grenades` covers HUD inventory, selection, a shared frag fuse, five-second server fuse, warning visuals, a real contact-grenade bot elimination, kill-feed credit, medkit use and room isolation.
+- `verify:online:stinking` covers three-slot HUD inventory, green cache art, cloud activation, 6 HP toxic ticks, self-elimination without credit, respawn loadout restoration, opponent toxic damage/elimination with owner credit, late-join cloud visibility and room isolation.
+- `verify:online:grenade-perf` fills a room with 8 humans, throws all grenade types, and measures FPS, tick, active entities, cloud overlap and snapshot size while a second room stays live.
 
 ## Phaser 4 gotchas
 
@@ -91,8 +96,9 @@
 
 - Always measure production, not the dev server.
 - Headless Chrome can pace WebGL at 30 fps regardless of scene cost. Use `HEADED=1` for real gameplay frame rate.
-- Production headed Chrome measured 56 to 60 fps at 1440 x 810 with one human and seven Viber bots. P3B-B clean runs measured 56 to 58 fps.
-- Server tick averaged 0.33 to 1.04 ms on clean P3B-B runs, with p95 0.82 to 2.62 ms. Occasional 18 to 49 ms max spikes are GC or scheduler noise. Restart the server before a clean perf measurement.
+- Production headed Chrome measured 56 to 60 fps at 1440 x 810 with one human and seven Viber bots. P3B-C clean runs measured 59 fps standard and 60 fps with 8 active toxic clouds.
+- Server tick averaged 0.15 to 0.36 ms on clean P3B-C runs, with p95 0.27 to 1.10 ms. The grenade stress run measured 0.21 ms average, 0.27 ms p95 and 5.04 ms max with 8 peak grenades, 8 clouds, 8 humans and two concurrent rooms.
+- Snapshot size with 23 pickups, 8 clouds and grenades in an eight-human room was about 14.5 KB at 20 Hz. Occasional max spikes are GC or scheduler noise. Restart the server before a clean perf measurement.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
 
@@ -120,6 +126,8 @@
 - `npm run verify:online:match`
 - `npm run verify:online:pickups`
 - `npm run verify:online:grenades`
+- `npm run verify:online:stinking`
+- `npm run verify:online:grenade-perf` (add `HEADED=1` for real frame rate)
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)
 - `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test

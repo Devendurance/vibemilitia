@@ -14,18 +14,19 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Matchmaking: Quick Match filters to rooms with open human seats, prefers the most populated room, and creates a new room when current rooms fill. Seat races retry safely.
 - Character selection: a keyboard-accessible ten-card picker with a large preview sits in the online lobby. The selection is stored locally, sent on every join path, validated by the server and shown in the HUD portrait, HUD name and in-world body. Invalid saved or submitted IDs fall back to VIBER-010.
 - Player: accelerated movement, jump, fuel-limited jetpack, 360 aim, three weapons, reload, damage, delayed regeneration, medkit inventory, automatic fair-pad respawn and 1.5 s spawn protection.
-- Supplies: twenty fixed server-authoritative caches, fourteen medkits plus three contact and three frag grenade caches. Players carry up to two medkits and three grenades total. Collected caches disappear for every client and respawn after 20 to 22 seconds.
-- Grenades: contact grenades detonate on terrain or combatant impact. Frag grenades bounce and detonate after five seconds of server simulation time. Both use gravity, swept substeps, blast falloff, terrain cover reduction, self-damage and existing elimination attribution.
+- Supplies: twenty-three fixed server-authoritative caches, fourteen medkits plus three contact, three frag and three stinking grenade caches. Players carry up to two medkits and three grenades total. Collected caches disappear for every client and respawn after 20 to 22 seconds.
+- Grenades: contact grenades detonate on terrain or combatant impact. Frag grenades bounce and detonate after five seconds of server simulation time. Stinking grenades bounce, activate a 160 px toxic cloud after 900 ms, and apply 24 HP/s in deterministic 250 ms ticks for six seconds. All use gravity, swept substeps, owner clearance, blast falloff or toxic damage, self-damage and existing elimination attribution.
+- Bots: online bots now carry the one-of-each grenade loadout, collect nearby supplies, seek medkits when injured, use medkits, throw finite server-owned grenades with conservative cooldowns, and steer away from nearby toxic clouds. Existing A* movement, targeting and rifle combat are preserved.
 - Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision). Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
 - Bots: online bots use ten validated official Viber skins with unique server-assigned `skinId` values, visible Vibe Rifle, muzzle flare, recoil, jetpack exhaust, health bars, damage reaction, spawn shield, death/respawn presentation and BOT callsign labels. They keep A* navigation, platform colliders, path smoothing, line-of-sight burst fire, vertical thrusters, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns. Local P1 bots remain the original drones.
 - Online networking: Colyseus rooms, 60 Hz server tick, 20 Hz snapshots, 30 Hz client input, 45 messages/second input cap, local prediction with soft reconciliation, remote interpolation, projected bullets and server-side validation.
 - Room lifecycle: countdown, lobby, server-side quick match, create room, realtime room browser, invite links, full-room and ended-room errors, replay in the same room and auto-dispose when empty.
-- HUD: identity, health, jetpack, medkit count and use feedback, grenade selection and counts, throw cooldown, supply pickup feedback, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
+- HUD: identity, health, jetpack, medkit count and use feedback, contact/frag/stinking grenade selection and counts, throw cooldown, supply pickup feedback, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
 - Browser test APIs: `window.__VIBE_MILITIA__` for local, `window.__VIBE_MILITIA_ONLINE__` for online.
 
 ## Architecture
 
-- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking, spawn selection, pickup/medkit supply rules and grenade physics/damage helpers.
+- `src/game/core`: pure rules for jetpack, weapon, combat, match timer/ranking, spawn selection, pickup/medkit supply rules, grenade physics/damage and toxic cloud configuration.
 - `src/game/ai`: pure navigation grid and A* pathfinding.
 - `src/game/config`: tuning for movement, weapons, bots and match.
 - `src/game/arena`: arena data, baked visuals and collision helpers.
@@ -41,6 +42,8 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `scripts/verify-online-match.mjs`, `verify-online-rooms.mjs`, `verify-online-perf.mjs`: P2 browser and performance suites.
 - `scripts/verify-online-pickups.mjs`: P3B-A pickup, medkit and room-isolation suite.
 - `scripts/verify-online-grenades.mjs`: P3B-B grenade inventory, fuse, explosion, elimination and room-isolation suite.
+- `scripts/verify-online-stinking.mjs`: P3B-C stinking cloud, toxic damage, attribution, late join, HUD and green cache suite.
+- `scripts/verify-online-grenade-perf.mjs`: headed grenade stress performance and entity/snapshot measurement.
 
 ## Key decisions
 
@@ -62,17 +65,19 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Replay restarts the same room, resets scores and health, and keeps its human occupants.
 - Pickups are server-owned room state. Collection validates proximity and capacity, a pickup can be granted once, and the item respawns after a fixed cooldown. Late joins read the same authoritative state.
 - Medkits are instant, capped at 100 HP, consumed from a two-slot inventory and gated by a 900 ms server cooldown. A player loses carried medkits on death/respawn. Pickups reset when a match starts, when it ends and on replay.
-- Fourteen fixed medkit spawns sit on platform tops near, but outside, spawn bodies. Six grenade caches use distinct contact and frag artworks. Bots do not collect supplies or throw grenades yet; that belongs to P3B-C.
-- Grenade config: contact 180 max damage, 220 blast radius, immediate impact; frag 120 max damage, 215 blast radius, 5000 ms server fuse. Both use 700 ms throw cooldowns, 1500/1400 gravity, swept collision and a 64-entity active cap.
-- Grenade inventory is server-owned and starts at one contact plus one frag, capped at three total. Throws are edge-triggered, input-sequence guarded and cooldown-gated. Death and respawn reset the loadout.
-- One explosion damages each combatant at most once. Blast cover reduces damage by 55 percent. Self-eliminations count as deaths and feed entries but never award an opponent a kill. Grenades clear at match start, match end and replay.
+- Fourteen fixed medkit spawns and nine grenade caches sit on platform tops near, but outside, spawn bodies. Contact, frag and stinking caches use distinct artworks. Bots collect nearby supplies, seek medkits when injured and throw finite grenades through the existing movement/targeting systems.
+- Grenade config: contact 180 max damage, 220 blast radius, immediate impact; frag 120 max damage, 215 blast radius, 5000 ms server fuse; stinking 760 px/s, 1400 gravity, 900 ms activation, 160 px cloud, 6000 ms cloud life, 24 HP/s in 250 ms ticks. All use 700 ms throw cooldowns, swept collision and a 64-entity active cap.
+- Grenade inventory is server-owned and starts at one contact, one frag and one stinking, capped at three total. Throws are edge-triggered, input-sequence guarded and cooldown-gated. Death and respawn reset the loadout.
+- One explosion damages each combatant at most once. Blast cover reduces damage by 55 percent. Self-eliminations count as deaths and feed entries but never award an opponent a kill. Grenades and clouds clear at match start, match end and replay.
+- Toxic clouds use one global 250 ms server tick with catch-up for uneven step sizes. A combatant inside overlapping clouds takes damage from only the closest cloud, with the lower ID breaking ties. Solid terrain fully blocks cloud damage. Cloud owner names are retained for kill-feed attribution after disconnect.
+- Bot grenade decisions are conservative: finite inventory, 9 to 14 second decision cooldowns, range gates, LoS checks and shared throw creation with humans. Bots seek medkits below 55 HP and grenade caches when below two grenades. Cloud avoidance is a short local repulsion with upward thrust.
 - Static authored NFT pose is intentional. Weapon and effects remain separate layers.
 - HUD follows `DESIGN.md`: graphite panels, lime signal color, mono telemetry, Archivo display type.
 
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 86 tests pass
+- `npm test`: 102 tests pass
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks against the production build
@@ -82,6 +87,8 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `npm run verify:online:bots`: 32/32 checks against the production build
 - `npm run verify:online:pickups`: 29/29 checks against the production build
 - `npm run verify:online:grenades`: 29/29 checks against the production build
+- `npm run verify:online:stinking`: 25/25 checks against the production build
+- `npm run verify:online:grenade-perf`: 11/11 checks against the production build
 - All ten cards render and select, keyboard arrows work, mobile keeps two columns, refresh persists the choice, and corrupt storage falls back to VIBER-010
 - Create Room, invite join and Quick Match all used the selected skin, and two clients with different selections agreed on shared combatant skins
 - Eight independent human clients kept eight requested skins with no bot visuals
@@ -90,9 +97,11 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
 - `npm run verify:online:match`: 25/25 checks, 8 humans, time-limit result, identical standings, replay reset, preserved selected skins
 - `npm run verify:online:rooms`: 16/16 checks, including countdown auto-start, full-room and ended-room errors
-- `HEADED=1 npm run verify:online:perf`: 56 to 58 fps, 0.33 to 1.04 ms average server tick, 0.82 to 2.62 ms p95 across clean runs.
-- Pickup suite covered identical 20-cache snapshots on two clients, cross-client disappearance, late-join isolation, independent second-room state, medkit respawn, H healing, HUD feedback and duplicate-use rejection.
-- Grenade suite covered HUD selection, one-contact-one-frag starting inventory, a shared frag fuse on two clients, about 4.9 seconds of server simulation time, warning visuals, a real contact-grenade bot kill near 289 px, kill-feed credit, medkit use before combat and independent second-room state.
+- `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server. Accumulated history measured 56 fps, 0.23 ms average and 0.50 ms p95.
+- `HEADED=1 npm run verify:online:grenade-perf`: 60 fps, 0.21 ms average tick, 0.27 ms p95, 5.04 ms max with 8 humans, 8 peak in-flight grenades, 8 active clouds, 2 overlapping clouds, 23 pickups, 14,471-byte snapshots and a second concurrent room.
+- Pickup suite covered the 23-cache set, cross-client disappearance, late-join isolation, independent second-room state, the respawn cycle, H healing, HUD feedback and duplicate-use rejection.
+- Grenade suite covered HUD selection, the one-of-each starting inventory, a shared frag fuse, contact bot elimination and credit, medkit use and independent second-room state.
+- Stinking suite covered a 6 HP toxic tick, self-elimination without kill credit, respawn loadout restoration, an opponent toxic elimination with owner credit, late-join cloud visibility and green cache artwork.
 - Original public sources, archived sources and VIBER-010 cutout hash are unchanged
 - Local P1 remains 37/37 with no regression
 
@@ -111,9 +120,12 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - If the roster is smaller than the combatant count, skin assignment gracefully reuses entries rather than fabricating assets.
 - Character body is static because the NFT is a 3/4 frontal portrait.
 - Medkits reset on death/respawn. Pickup respawn timers run only while the round is live and reset at round start, round end and replay.
-- Grenades reset to one contact and one frag on death/respawn. Active grenades clear at match start, match end and replay.
-- Bots do not collect pickups or throw grenades yet. Bot supply decisions and grenade use are planned for P3B-C.
+- Grenades reset to one of each on death/respawn. Active grenades and toxic clouds clear at match start, match end and replay.
+- Bot supply decisions are range-based heuristics. Bots do not coordinate caches or plan multi-stop routes.
+- Bot grenade decisions are conservative and cooldown-gated, but not coordinated with other bots. Cloud avoidance is a short local repulsion, not full hazard pathfinding.
+- Toxic clouds are fully blocked by solid terrain, not attenuated. Overlapping clouds apply one responsible cloud per 250 ms tick, so damage does not stack.
+- A disconnected cloud owner keeps kill-feed name attribution, but there is no live standing entry to update.
 - Pickup spawns are fixed authored caches, not dynamic random spawns.
 - Blast cover uses a uniform 55 percent reduction when a platform blocks the blast line, not full occlusion.
-- Grenade damage is not counted in weapon accuracy. Each grenade has a stable ID and owner for attribution.
+- Grenade and toxic damage are not counted in weapon accuracy. Each grenade and cloud has a stable ID and owner for attribution.
 - No audio, accounts, wallets, XP or persistent stats.

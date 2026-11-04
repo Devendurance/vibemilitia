@@ -32,6 +32,7 @@ export class InputController {
     | "medkit"
     | "grenade4"
     | "grenade5"
+    | "grenade6"
     | "grenadeThrow"
     | "leftArrow"
     | "rightArrow",
@@ -69,6 +70,7 @@ export class InputController {
       medkit: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
       grenade4: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
       grenade5: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
+      grenade6: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX),
       grenadeThrow: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.G),
     };
     keyboard.addCapture([
@@ -82,6 +84,7 @@ export class InputController {
       Phaser.Input.Keyboard.KeyCodes.H,
       Phaser.Input.Keyboard.KeyCodes.FOUR,
       Phaser.Input.Keyboard.KeyCodes.FIVE,
+      Phaser.Input.Keyboard.KeyCodes.SIX,
       Phaser.Input.Keyboard.KeyCodes.G,
       Phaser.Input.Keyboard.KeyCodes.LEFT,
       Phaser.Input.Keyboard.KeyCodes.RIGHT,
@@ -116,6 +119,9 @@ export class InputController {
     });
     this.keys.grenade5.on("down", () => {
       this.bufferedGrenadeSlot = 1;
+    });
+    this.keys.grenade6.on("down", () => {
+      this.bufferedGrenadeSlot = 2;
     });
     this.keys.grenadeThrow.on("down", () => {
       this.bufferedGrenadeThrow = true;

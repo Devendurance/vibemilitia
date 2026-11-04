@@ -16,6 +16,8 @@
     "verify:online:match": "node scripts/verify-online-match.mjs",
     "verify:online:pickups": "node scripts/verify-online-pickups.mjs",
     "verify:online:grenades": "node scripts/verify-online-grenades.mjs",
+    "verify:online:stinking": "node scripts/verify-online-stinking.mjs",
+    "verify:online:grenade-perf": "node scripts/verify-online-grenade-perf.mjs",
     "verify:online:matchmaking": "node scripts/verify-online-matchmaking.mjs",
     "verify:online:bots": "node scripts/verify-online-bots.mjs",
     "verify:online:characters": "node scripts/verify-online-characters.mjs",

@@ -88,6 +88,7 @@ export interface HudSnapshot {
   medkitFeedbackAmount: number;
   grenadeContact: number;
   grenadeFrag: number;
+  grenadeStinking: number;
   grenadeSelected: GrenadeType;
   grenadeMax: number;
   grenadeCooldownRemainingMs: number;
@@ -144,6 +145,7 @@ export const INITIAL_HUD: HudSnapshot = {
   medkitFeedbackAmount: 0,
   grenadeContact: 0,
   grenadeFrag: 0,
+  grenadeStinking: 0,
   grenadeSelected: "contact",
   grenadeMax: 3,
   grenadeCooldownRemainingMs: 0,

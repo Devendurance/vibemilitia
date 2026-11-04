@@ -78,6 +78,12 @@ describe("Sector 07 pickup placement", () => {
       ),
     ).toHaveLength(3);
     expect(
+      ARENA.pickupSpawns.filter(
+        (pickup) => pickup.type === "stinking-grenade",
+      ),
+    ).toHaveLength(3);
+    expect(ARENA.pickupSpawns).toHaveLength(23);
+    expect(
       new Set(ARENA.pickupSpawns.map((pickup) => pickup.y)).size,
     ).toBeGreaterThan(2);
 

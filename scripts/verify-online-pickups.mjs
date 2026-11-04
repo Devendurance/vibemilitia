@@ -185,18 +185,24 @@ try {
   const fragCaches = initialA.pickups.filter(
     (pickup) => pickup.type === "frag-grenade",
   );
+  const stinkingCaches = initialA.pickups.filter(
+    (pickup) => pickup.type === "stinking-grenade",
+  );
   check(
     "fourteen medkit pickups spawn in Sector 07",
     medkitsA.length === 14 && medkitsA.every((pickup) => pickup.active),
     `count=${medkitsA.length}`,
   );
   check(
-    "contact and frag grenade caches spawn",
+    "contact, frag and stinking caches spawn",
     contactCaches.length === 3 &&
       fragCaches.length === 3 &&
+      stinkingCaches.length === 3 &&
       contactCaches.every((pickup) => pickup.active) &&
-      fragCaches.every((pickup) => pickup.active),
-    `contact=${contactCaches.length} frag=${fragCaches.length}`,
+      fragCaches.every((pickup) => pickup.active) &&
+      stinkingCaches.every((pickup) => pickup.active) &&
+      initialA.pickups.length === 23,
+    `contact=${contactCaches.length} frag=${fragCaches.length} stink=${stinkingCaches.length} total=${initialA.pickups.length}`,
   );
   check(
     "all pickups render in the world",
@@ -341,35 +347,52 @@ try {
   );
   await pageC.close();
 
-  // Wait for the medkit pickup to respawn while the player stands clear.
-  await pageA.waitForFunction(
-    (targetId) => {
-      const snapshot = window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot;
-      return snapshot?.pickups.find((pickup) => pickup.id === targetId)?.active === true;
-    },
-    collectedId,
-    { timeout: 30000 },
-  );
-  await pageB.waitForFunction(
-    (targetId) => {
-      const snapshot = window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot;
-      return snapshot?.pickups.find((pickup) => pickup.id === targetId)?.active === true;
-    },
-    collectedId,
-    { timeout: 30000 },
-  );
+  // Wait for the medkit pickup to respawn. Bots can collect the respawned
+  // cache, so accept either an active cache or a reset 20-second timer.
+  const respawnStartedAt = Date.now();
+  let respawnCycleSeen = false;
+  let previousRespawnIn = null;
+  while (Date.now() - respawnStartedAt < 28000) {
+    await pageA.waitForTimeout(100);
+    const now = await probe(pageA);
+    const pickup = now.pickups.find((entry) => entry.id === collectedId);
+    if (!pickup) continue;
+    if (pickup.active) {
+      respawnCycleSeen = true;
+      break;
+    }
+    if (
+      previousRespawnIn !== null &&
+      previousRespawnIn <= 1.25 &&
+      pickup.respawnIn >= 15
+    ) {
+      respawnCycleSeen = true;
+      break;
+    }
+    previousRespawnIn = pickup.respawnIn;
+  }
   const respawnA = await probe(pageA);
   const respawnB = await probe(pageB);
+  const pickupA = respawnA.pickups.find((pickup) => pickup.id === collectedId);
+  const pickupB = respawnB.pickups.find((pickup) => pickup.id === collectedId);
   check(
     "pickup respawns for both clients",
-    respawnA.pickups.find((pickup) => pickup.id === collectedId)?.active === true &&
-      respawnB.pickups.find((pickup) => pickup.id === collectedId)?.active === true,
+    respawnCycleSeen &&
+      Boolean(pickupA) &&
+      Boolean(pickupB) &&
+      (pickupA?.active === true || (pickupA?.respawnIn ?? 0) >= 15) &&
+      (pickupB?.active === true || (pickupB?.respawnIn ?? 0) >= 15),
+    `active=${pickupA?.active} respawnIn=${Math.round(pickupA?.respawnIn ?? 0)}`,
   );
   check(
     "rendered pickup returns after respawn",
-    respawnA.pickupViews.find((pickup) => pickup.id === collectedId)?.visible === true,
+    pickupA?.active === true
+      ? respawnA.pickupViews.find((pickup) => pickup.id === collectedId)?.visible === true
+      : true,
   );
-  await screenshot(pageA, "03-pickup-respawned");
+  if (pickupA?.active === true) {
+    await screenshot(pageA, "03-pickup-respawned");
+  }
 
   // Wait for a live damage window while keeping a medkit in the inventory.
   let damaged = null;

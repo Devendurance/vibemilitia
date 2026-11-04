@@ -53,6 +53,25 @@ function FragGrenadeIcon() {
   );
 }
 
+function StinkingGrenadeIcon() {
+  return (
+    <svg
+      className="hud-grenade-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
+      <rect x="5" y="4.5" width="14" height="18" rx="6" fill="#0C0D0F" />
+      <rect x="6.5" y="6" width="11" height="15" rx="5" fill="#6FBE2E" />
+      <rect x="7.5" y="7.5" width="9" height="5" rx="2.5" fill="#D7FF2E" />
+      <rect x="6.5" y="14" width="11" height="2" fill="#2F4A16" />
+      <rect x="6.5" y="18" width="11" height="1.6" fill="#2F4A16" />
+      <circle cx="16" cy="12" r="1.3" fill="#F5F3EC" opacity="0.9" />
+      <circle cx="9" cy="16.5" r="1" fill="#F5F3EC" opacity="0.7" />
+    </svg>
+  );
+}
+
 function placementLabel(placement: number): string {
   if (placement === 1) return "1ST";
   if (placement === 2) return "2ND";
@@ -128,7 +147,9 @@ export function GameHud({
   const selectedGrenadeCount =
     snapshot.grenadeSelected === "contact"
       ? snapshot.grenadeContact
-      : snapshot.grenadeFrag;
+      : snapshot.grenadeSelected === "frag"
+        ? snapshot.grenadeFrag
+        : snapshot.grenadeStinking;
   const grenadeCooldownSeconds = snapshot.grenadeCooldownRemainingMs / 1000;
   const grenadeReady =
     !dead &&
@@ -504,6 +525,7 @@ export function GameHud({
               data-selected={snapshot.grenadeSelected}
               data-contact={snapshot.grenadeContact}
               data-frag={snapshot.grenadeFrag}
+              data-stinking={snapshot.grenadeStinking}
             >
               <div className="hud-throwables__head">
                 <span className="mono-label">THROWABLES</span>
@@ -557,6 +579,27 @@ export function GameHud({
                     {snapshot.grenadeFrag}
                   </strong>
                 </button>
+
+                <button
+                  type="button"
+                  className={`hud-grenade-slot${snapshot.grenadeSelected === "stinking" ? " is-active" : ""}`}
+                  onClick={() =>
+                    bridge.send({ type: "select-grenade", slot: 2 })
+                  }
+                  aria-pressed={snapshot.grenadeSelected === "stinking"}
+                  disabled={dead || matchEnded}
+                  data-testid="grenade-select-stinking"
+                >
+                  <Keycap>6</Keycap>
+                  <StinkingGrenadeIcon />
+                  <span className="hud-grenade-slot__copy">
+                    <span className="hud-grenade-slot__name">STINK</span>
+                    <span className="mono-label">TOXIC</span>
+                  </span>
+                  <strong data-testid="grenade-count-stinking">
+                    {snapshot.grenadeStinking}
+                  </strong>
+                </button>
               </div>
 
               <button
@@ -569,7 +612,12 @@ export function GameHud({
               >
                 <Keycap>G</Keycap>
                 <span className="hud-grenade-throw__label">
-                  THROW {snapshot.grenadeSelected === "contact" ? "CONTACT" : "FRAG"}
+                  THROW{" "}
+                  {snapshot.grenadeSelected === "contact"
+                    ? "CONTACT"
+                    : snapshot.grenadeSelected === "frag"
+                      ? "FRAG"
+                      : "STINK"}
                 </span>
                 <span className="hud-grenade-throw__count">
                   {selectedGrenadeCount}/{snapshot.grenadeMax}

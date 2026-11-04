@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   GRENADE_CONFIG,
   GRENADE_INVENTORY_CONFIG,
+  STINKING_CLOUD_CONFIG,
+  TOXIC_DAMAGE_PER_TICK,
   addGrenade,
   canAddGrenade,
   computeBlastDamage,
@@ -23,38 +25,67 @@ describe("grenade configuration", () => {
     expect(GRENADE_CONFIG.frag.gravity).toBeGreaterThan(0);
   });
 
-  it("maps slots four and five to contact and frag", () => {
+  it("maps slots four, five and six to contact, frag and stinking", () => {
     expect(grenadeTypeFromSlot(0)).toBe("contact");
     expect(grenadeTypeFromSlot(1)).toBe("frag");
-    expect(grenadeTypeFromSlot(2)).toBeNull();
+    expect(grenadeTypeFromSlot(2)).toBe("stinking");
+    expect(grenadeTypeFromSlot(3)).toBeNull();
     expect(grenadeSlot("contact")).toBe(0);
     expect(grenadeSlot("frag")).toBe(1);
+    expect(grenadeSlot("stinking")).toBe(2);
+  });
+
+  it("defines the toxic cloud balance and tick damage", () => {
+    expect(STINKING_CLOUD_CONFIG.radius).toBe(160);
+    expect(STINKING_CLOUD_CONFIG.durationMs).toBe(6_000);
+    expect(STINKING_CLOUD_CONFIG.damagePerSecond).toBe(24);
+    expect(STINKING_CLOUD_CONFIG.damageIntervalMs).toBe(250);
+    expect(STINKING_CLOUD_CONFIG.maxActiveClouds).toBe(24);
+    expect(TOXIC_DAMAGE_PER_TICK).toBe(6);
+    expect(GRENADE_CONFIG.stinking.selectionSlot).toBe(6);
+    expect(GRENADE_CONFIG.stinking.fuseMs).toBeNull();
+    expect(GRENADE_CONFIG.stinking.throwCooldownMs).toBe(700);
   });
 });
 
 describe("grenade inventory", () => {
-  it("starts with one contact and one frag and caps at three total", () => {
+  it("starts with one of each grenade and caps at three total", () => {
     const inventory = createGrenadeInventory();
-    expect(inventory).toEqual({ contact: 1, frag: 1 });
-    expect(grenadeInventoryTotal(inventory)).toBe(2);
+    expect(inventory).toEqual({ contact: 1, frag: 1, stinking: 1 });
+    expect(grenadeInventoryTotal(inventory)).toBe(3);
+    expect(canAddGrenade(inventory)).toBe(false);
+    expect(addGrenade(inventory, "contact")).toBe(inventory);
 
-    const filled = addGrenade(inventory, "contact");
-    expect(filled).toEqual({ contact: 2, frag: 1 });
-    expect(grenadeInventoryTotal(filled)).toBe(
+    const truncated = createGrenadeInventory({
+      contact: 2,
+      frag: 2,
+      stinking: 2,
+    });
+    expect(grenadeInventoryTotal(truncated)).toBe(
       GRENADE_INVENTORY_CONFIG.maxTotal,
     );
-    expect(canAddGrenade(filled)).toBe(false);
-    expect(addGrenade(filled, "frag")).toBe(filled);
+    expect(truncated).toEqual({ contact: 2, frag: 1, stinking: 0 });
   });
 
   it("consumes exactly one grenade and rejects empty types", () => {
     const inventory = createGrenadeInventory();
     const after = consumeGrenade(inventory, "contact");
-    expect(after).toEqual({ contact: 0, frag: 1 });
+    expect(after).toEqual({ contact: 0, frag: 1, stinking: 1 });
     expect(consumeGrenade(after!, "contact")).toBeNull();
     expect(consumeGrenade(inventory, "frag")).toEqual({
       contact: 1,
       frag: 0,
+      stinking: 1,
+    });
+    expect(consumeGrenade(inventory, "stinking")).toEqual({
+      contact: 1,
+      frag: 1,
+      stinking: 0,
+    });
+    expect(addGrenade(after!, "contact")).toEqual({
+      contact: 1,
+      frag: 1,
+      stinking: 1,
     });
   });
 });

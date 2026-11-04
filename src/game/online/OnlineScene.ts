@@ -27,6 +27,7 @@ import type {
   OnlineSnapshot,
   OnlineCombatantSnapshot,
   OnlinePickupSnapshot,
+  OnlineToxicCloudSnapshot,
 } from "@/game/multiplayer/protocol";
 
 interface PickupView {
@@ -49,8 +50,23 @@ interface GrenadeView {
   toY: number;
   interpolation: number;
   fuseRemainingMs: number | null;
+  activationRemainingMs: number | null;
   fuseSnapshotAt: number;
   spin: number;
+}
+
+interface ToxicCloudView {
+  container: Phaser.GameObjects.Container;
+  fill: Phaser.GameObjects.Arc;
+  puffs: Phaser.GameObjects.Arc[];
+  ring: Phaser.GameObjects.Arc;
+  bubbles: Phaser.GameObjects.Arc[];
+  radius: number;
+  durationMs: number;
+  remainingMs: number;
+  snapshotAt: number;
+  spawnAt: number;
+  phase: number;
 }
 
 interface OnlineProbe {
@@ -62,6 +78,7 @@ interface OnlineProbe {
   views: Array<{ id: string; name: string; kind: string; x: number; y: number; alive: boolean }>;
   pickups: Array<{ id: string; type: string; x: number; y: number; active: boolean; visible: boolean; texture: string }>;
   grenades: Array<{ id: number; type: GrenadeType; x: number; y: number; visible: boolean; fuseRemainingMs: number | null }>;
+  toxicClouds: Array<{ id: number; x: number; y: number; radius: number; remainingMs: number; visible: boolean }>;
   camera: {
     scrollX: number;
     scrollY: number;
@@ -82,6 +99,7 @@ export class OnlineScene extends Phaser.Scene {
   private views = new Map<string, CombatantView>();
   private pickupViews = new Map<string, PickupView>();
   private grenadeViews = new Map<number, GrenadeView>();
+  private toxicCloudViews = new Map<number, ToxicCloudView>();
   private latestSnapshot: OnlineSnapshot | null = null;
   private snapshotAt = 0;
   private previousPhase: string | null = null;
@@ -128,6 +146,7 @@ export class OnlineScene extends Phaser.Scene {
       views: [],
       pickups: [],
       grenades: [],
+      toxicClouds: [],
       camera: { scrollX: 0, scrollY: 0, zoom: 1, width: 0, height: 0 },
       platforms: [],
     };
@@ -229,6 +248,14 @@ export class OnlineScene extends Phaser.Scene {
           y: view.container.y,
           visible: view.container.visible,
           fuseRemainingMs: view.fuseRemainingMs,
+        })),
+        toxicClouds: [...this.toxicCloudViews.entries()].map(([id, view]) => ({
+          id,
+          x: view.container.x,
+          y: view.container.y,
+          radius: view.radius,
+          remainingMs: view.remainingMs,
+          visible: view.container.visible,
         })),
         camera: {
           scrollX: this.cameras.main.scrollX,
@@ -389,6 +416,7 @@ export class OnlineScene extends Phaser.Scene {
       }
       this.animatePickups(time);
       this.animateGrenades(dtMs);
+      this.animateToxicClouds(time);
       this.drawProjectiles();
       this.drawCrosshair(frame);
       this.drawDebug();
@@ -427,6 +455,7 @@ export class OnlineScene extends Phaser.Scene {
     }
     this.syncPickupViews(snapshot.pickups);
     this.syncGrenadeViews(snapshot.grenades);
+    this.syncToxicCloudViews(snapshot.toxicClouds);
 
     const local = snapshot.participants.find(
       (participant) => participant.id === this.room.sessionId,
@@ -490,7 +519,9 @@ export class OnlineScene extends Phaser.Scene {
             ? 0xff6b35
             : pickup.type === "frag-grenade"
               ? 0xf4e21c
-              : 0xd7ff2e;
+              : pickup.type === "stinking-grenade"
+                ? 0x9bff5a
+                : 0xd7ff2e;
         const glow = this.add
           .circle(0, 8, 22, color, 0.08)
           .setStrokeStyle(1, color, 0.3);
@@ -499,7 +530,9 @@ export class OnlineScene extends Phaser.Scene {
             ? "pickup-grenade-contact"
             : pickup.type === "frag-grenade"
               ? "pickup-grenade-frag"
-              : "pickup-medkit";
+              : pickup.type === "stinking-grenade"
+                ? "pickup-grenade-stinking"
+                : "pickup-medkit";
         const image = this.add.image(0, -4, texture);
         const container = this.add
           .container(pickup.x, pickup.y, [glow, image])
@@ -548,16 +581,20 @@ export class OnlineScene extends Phaser.Scene {
           0,
           grenade.type === "contact"
             ? "grenade-contact"
-            : "grenade-frag",
+            : grenade.type === "frag"
+              ? "grenade-frag"
+              : "grenade-stinking",
         );
         const children: Phaser.GameObjects.GameObject[] = [shadow, body];
         let fuseDot: Phaser.GameObjects.Arc | null = null;
         let fuseRing: Phaser.GameObjects.Arc | null = null;
-        if (grenade.type === "frag") {
+        if (grenade.type !== "contact") {
+          const color =
+            grenade.type === "stinking" ? 0x9bff5a : 0xf4e21c;
           fuseRing = this.add
             .circle(0, 0, 17, 0x000000, 0)
-            .setStrokeStyle(2, 0xf4e21c, 0.55);
-          fuseDot = this.add.circle(0, -18, 3.5, 0xf4e21c, 0.9);
+            .setStrokeStyle(2, color, 0.55);
+          fuseDot = this.add.circle(0, -18, 3.5, color, 0.9);
           children.push(fuseRing, fuseDot);
         }
         const container = this.add
@@ -575,6 +612,7 @@ export class OnlineScene extends Phaser.Scene {
           toY: grenade.y,
           interpolation: 1,
           fuseRemainingMs: grenade.fuseRemainingMs,
+          activationRemainingMs: grenade.activationRemainingMs,
           fuseSnapshotAt: performance.now(),
           spin: 0,
         };
@@ -586,6 +624,7 @@ export class OnlineScene extends Phaser.Scene {
       view.toY = grenade.y;
       view.interpolation = 0;
       view.fuseRemainingMs = grenade.fuseRemainingMs;
+      view.activationRemainingMs = grenade.activationRemainingMs;
       view.fuseSnapshotAt = performance.now();
       view.container.setVisible(true);
     }
@@ -612,26 +651,39 @@ export class OnlineScene extends Phaser.Scene {
       view.spin += dtMs * 0.012;
       view.body.setRotation(view.spin);
 
-      if (
-        view.type !== "frag" ||
-        !view.fuseDot ||
-        !view.fuseRing ||
-        view.fuseRemainingMs === null
-      ) {
+      if (!view.fuseDot || !view.fuseRing) {
         continue;
       }
-      const remaining = Math.max(
-        0,
-        view.fuseRemainingMs - (now - view.fuseSnapshotAt),
-      );
+      let remaining: number;
+      let duration: number;
+      let color: number;
+      if (view.type === "frag" && view.fuseRemainingMs !== null) {
+        remaining = Math.max(
+          0,
+          view.fuseRemainingMs - (now - view.fuseSnapshotAt),
+        );
+        duration = 5_000;
+        color = remaining < 1_000 ? 0xff6b35 : 0xf4e21c;
+      } else if (
+        view.type === "stinking" &&
+        view.activationRemainingMs !== null
+      ) {
+        remaining = Math.max(
+          0,
+          view.activationRemainingMs - (now - view.fuseSnapshotAt),
+        );
+        duration = 900;
+        color = 0x9bff5a;
+      } else {
+        continue;
+      }
       const danger = remaining < 2_000;
       const blink = danger
         ? Math.sin(now / 55) > 0
           ? 1
           : 0.15
         : 0.72;
-      const color = remaining < 1_000 ? 0xff6b35 : 0xf4e21c;
-      const ratio = Math.max(0, Math.min(1, remaining / 5_000));
+      const ratio = Math.max(0, Math.min(1, remaining / duration));
       view.fuseDot.setFillStyle(color, blink);
       view.fuseRing.setStrokeStyle(
         2,
@@ -639,6 +691,128 @@ export class OnlineScene extends Phaser.Scene {
         0.35 + (1 - ratio) * 0.55,
       );
       view.fuseRing.setScale(1 + (1 - ratio) * 0.35);
+    }
+  }
+
+  private syncToxicCloudViews(clouds: OnlineToxicCloudSnapshot[]): void {
+    const present = new Set(clouds.map((cloud) => cloud.id));
+    for (const cloud of clouds) {
+      let view = this.toxicCloudViews.get(cloud.id);
+      if (!view) {
+        const fill = this.add.circle(
+          0,
+          0,
+          cloud.radius,
+          0x7cff3a,
+          0.22,
+        );
+        const puffs = [
+          this.add.circle(
+            -cloud.radius * 0.14,
+            cloud.radius * 0.08,
+            cloud.radius * 0.72,
+            0x9bff5a,
+            0.12,
+          ),
+          this.add.circle(
+            cloud.radius * 0.16,
+            -cloud.radius * 0.1,
+            cloud.radius * 0.52,
+            0x6fbe2e,
+            0.14,
+          ),
+        ];
+        const ring = this.add
+          .circle(0, 0, cloud.radius, 0x000000, 0)
+          .setStrokeStyle(3, 0x9bff5a, 0.75);
+        const outerRing = this.add
+          .circle(0, 0, cloud.radius + 5, 0x000000, 0)
+          .setStrokeStyle(1, 0xd7ff2e, 0.35);
+        const bubbles: Phaser.GameObjects.Arc[] = [];
+        for (let index = 0; index < 8; index += 1) {
+          const angle = (index / 8) * Math.PI * 2;
+          const distance = cloud.radius * (0.2 + (index % 4) * 0.15);
+          bubbles.push(
+            this.add.circle(
+              Math.cos(angle) * distance,
+              Math.sin(angle) * distance * 0.7,
+              3 + (index % 3) * 1.2,
+              0xd7ff2e,
+              0.4,
+            ),
+          );
+        }
+        const container = this.add
+          .container(cloud.x, cloud.y, [
+            fill,
+            ...puffs,
+            outerRing,
+            ring,
+            ...bubbles,
+          ])
+          .setDepth(22)
+          .setScale(0.2);
+        view = {
+          container,
+          fill,
+          puffs,
+          ring,
+          bubbles,
+          radius: cloud.radius,
+          durationMs: cloud.durationMs,
+          remainingMs: cloud.remainingMs,
+          snapshotAt: performance.now(),
+          spawnAt: performance.now(),
+          phase: cloud.id * 0.7,
+        };
+        this.toxicCloudViews.set(cloud.id, view);
+      }
+      view.radius = cloud.radius;
+      view.durationMs = cloud.durationMs;
+      view.remainingMs = cloud.remainingMs;
+      view.snapshotAt = performance.now();
+    }
+
+    for (const [id, view] of this.toxicCloudViews) {
+      if (present.has(id)) continue;
+      view.container.destroy(true);
+      this.toxicCloudViews.delete(id);
+    }
+  }
+
+  private animateToxicClouds(time: number): void {
+    const now = performance.now();
+    for (const view of this.toxicCloudViews.values()) {
+      const age = now - view.spawnAt;
+      const expand = Math.min(1, 0.2 + 0.8 * Math.min(1, age / 260));
+      const remaining = Math.max(
+        0,
+        view.remainingMs - (now - view.snapshotAt),
+      );
+      const fade = Math.min(1, remaining / 1_000);
+      const pulse = 0.85 + 0.15 * Math.sin(time / 500 + view.phase);
+      view.container.setScale(expand).setAlpha(fade * pulse);
+      for (let index = 0; index < view.puffs.length; index += 1) {
+        const puff = view.puffs[index];
+        puff.setScale(
+          0.94 + 0.08 * Math.sin(time / 900 + view.phase + index),
+        );
+        puff.setAlpha(
+          0.1 + 0.04 * Math.sin(time / 700 + index * 1.3),
+        );
+      }
+      for (let index = 0; index < view.bubbles.length; index += 1) {
+        const bubble = view.bubbles[index];
+        const angle = time / 1_800 + view.phase + index * 1.1;
+        const distance = view.radius * (0.2 + (index % 3) * 0.18);
+        bubble.setPosition(
+          Math.cos(angle) * distance,
+          Math.sin(angle * 1.3) * distance * 0.7 - 10,
+        );
+        bubble.setAlpha(
+          0.24 + 0.16 * Math.sin(time / 350 + index),
+        );
+      }
     }
   }
 
@@ -654,18 +828,31 @@ export class OnlineScene extends Phaser.Scene {
         case "hit": {
           const view = this.views.get(event.victimId);
           view?.onHit();
+          const toxic = event.source === "toxic";
           this.effects.bulletImpact(event.x, event.y, "player");
+          if (toxic) {
+            this.effects.toxicTick(event.x, event.y);
+          }
           this.effects.damageNumber(
             event.x,
             event.y - 12,
             event.damage,
-            event.kind === "human" ? "#ffb4b6" : "#f5f3ec",
+            toxic
+              ? "#9bff5a"
+              : event.kind === "human"
+                ? "#ffb4b6"
+                : "#f5f3ec",
           );
           if (event.victimId === this.room.sessionId) {
             this.localDamageSeq += 1;
-            this.cameras.main.shake(80, 0.0025, true);
+            if (!toxic) {
+              this.cameras.main.shake(80, 0.0025, true);
+            }
           }
-          if (event.ownerId === this.room.sessionId) {
+          if (
+            event.ownerId === this.room.sessionId &&
+            !toxic
+          ) {
             this.hitFeedbackMs = 100;
           }
           break;
@@ -720,7 +907,11 @@ export class OnlineScene extends Phaser.Scene {
           break;
         }
         case "grenade-thrown": {
-          this.effects.grenadeThrow(event.x, event.y);
+          this.effects.grenadeThrow(
+            event.x,
+            event.y,
+            event.grenadeType,
+          );
           break;
         }
         case "grenade-exploded": {
@@ -745,6 +936,16 @@ export class OnlineScene extends Phaser.Scene {
               );
             }
           }
+          break;
+        }
+        case "toxic-cloud-created": {
+          this.effects.toxicCloudCreated(event.x, event.y);
+          break;
+        }
+        case "toxic-cloud-expired": {
+          this.effects.toxicCloudExpired(event.x, event.y);
+          this.toxicCloudViews.get(event.cloudId)?.container.destroy(true);
+          this.toxicCloudViews.delete(event.cloudId);
           break;
         }
         case "match-end": {
@@ -859,6 +1060,7 @@ export class OnlineScene extends Phaser.Scene {
       medkitFeedbackAmount: this.medkitFeedbackAmount,
       grenadeContact: local?.grenadeContact ?? 0,
       grenadeFrag: local?.grenadeFrag ?? 0,
+      grenadeStinking: local?.grenadeStinking ?? 0,
       grenadeSelected: local?.grenadeSelected ?? "contact",
       grenadeMax: GRENADE_INVENTORY_CONFIG.maxTotal,
       grenadeCooldownRemainingMs: local?.grenadeCooldownMs ?? 0,
@@ -993,6 +1195,8 @@ export class OnlineScene extends Phaser.Scene {
     this.pickupViews.clear();
     for (const view of this.grenadeViews.values()) view.container.destroy(true);
     this.grenadeViews.clear();
+    for (const view of this.toxicCloudViews.values()) view.container.destroy(true);
+    this.toxicCloudViews.clear();
     if (window.__VIBE_MILITIA_ONLINE__) {
       delete window.__VIBE_MILITIA_ONLINE__;
     }
