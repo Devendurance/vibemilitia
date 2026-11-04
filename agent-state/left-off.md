@@ -54,4 +54,4 @@ P3B-C stinking grenades, toxic clouds, bot supplies and final P3B integration ar
 
 ## Checkpoint
 
-P3B-C code, tests and docs are committed at `PENDING` on `main`. P3C has not started.
+P3B-C code, tests and docs are committed at `b124b44` on `main`. P3C has not started.
