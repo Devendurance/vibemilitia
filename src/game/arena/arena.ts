@@ -107,5 +107,11 @@ export const ARENA: ArenaDefinition = {
     { id: "stinking-crate-b", type: "stinking-grenade", x: 2326, y: 1232 },
     { id: "lance-mid-step", type: "vibe-lance", x: 1000, y: 1144 },
     { id: "lance-right-high", type: "vibe-lance", x: 3250, y: 724 },
+    { id: "akimbo-left-high", type: "akimbo-rifles", x: 280, y: 944 },
+    { id: "akimbo-right-mid", type: "akimbo-rifles", x: 2560, y: 924 },
+    { id: "smg-center-bridge", type: "vibe-smg", x: 1580, y: 944 },
+    { id: "smg-far-low", type: "vibe-smg", x: 3220, y: 1024 },
+    { id: "cannon-center-perch", type: "heavy-cannon", x: 1535, y: 704 },
+    { id: "rocket-top-shelf", type: "rocket-launcher", x: 1035, y: 544 },
   ],
 };

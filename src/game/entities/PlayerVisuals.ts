@@ -14,6 +14,9 @@ interface VisualState {
   flash: boolean;
   alpha: number;
   weaponTexture: string;
+  secondaryWeaponTexture?: string;
+  barrelSeparation?: number;
+  muzzleBarrel?: 0 | 1;
   muzzleColor: number;
 }
 
@@ -35,7 +38,9 @@ export class PlayerVisuals {
   private shadow: Phaser.GameObjects.Ellipse;
   private weapon: Phaser.GameObjects.Container;
   private weaponImage: Phaser.GameObjects.Image;
+  private weaponImage2: Phaser.GameObjects.Image;
   private muzzle: Phaser.GameObjects.Image;
+  private muzzle2: Phaser.GameObjects.Image;
   private shield: Phaser.GameObjects.Arc;
   private jetLeft: Phaser.GameObjects.Particles.ParticleEmitter;
   private jetRight: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -73,12 +78,23 @@ export class PlayerVisuals {
 
     this.weapon = scene.add.container(sprite.x, sprite.y - PIVOT_Y).setDepth(31);
     this.weaponImage = scene.add.image(0, 0, "weapon-player").setOrigin(10 / 76, 0.5);
+    this.weaponImage2 = scene.add
+      .image(0, 0, "weapon-player")
+      .setOrigin(10 / 76, 0.5)
+      .setFlipY(true)
+      .setVisible(false);
     this.muzzle = scene.add
       .image(MUZZLE_LOCAL_X, 0, "muzzle-flash")
       .setAlpha(0)
       .setOrigin(0.32, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD);
-    this.weapon.add([this.weaponImage, this.muzzle]);
+    this.muzzle2 = scene.add
+      .image(MUZZLE_LOCAL_X, 0, "muzzle-flash")
+      .setAlpha(0)
+      .setOrigin(0.32, 0.5)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setVisible(false);
+    this.weapon.add([this.weaponImage2, this.weaponImage, this.muzzle, this.muzzle2]);
 
     this.shield = scene.add
       .circle(sprite.x, sprite.y - 58, 47, 0x000000, 0)
@@ -128,6 +144,10 @@ export class PlayerVisuals {
     return this.weapon.visible;
   }
 
+  get secondaryWeaponVisible(): boolean {
+    return this.weaponImage2.visible;
+  }
+
   update(state: VisualState): void {
     if (this.dead) {
       return;
@@ -153,11 +173,37 @@ export class PlayerVisuals {
     if (this.weaponImage.texture.key !== state.weaponTexture) {
       this.weaponImage.setTexture(state.weaponTexture);
     }
+    const separation = state.secondaryWeaponTexture
+      ? state.barrelSeparation ?? 10
+      : 0;
+    const hasSecondary = Boolean(state.secondaryWeaponTexture);
+    this.weaponImage.setY(hasSecondary ? separation / 2 : 0);
+    this.weaponImage2.setVisible(hasSecondary);
+    if (hasSecondary && state.secondaryWeaponTexture) {
+      if (this.weaponImage2.texture.key !== state.secondaryWeaponTexture) {
+        this.weaponImage2.setTexture(state.secondaryWeaponTexture);
+      }
+      this.weaponImage2.setY(-separation / 2);
+    }
     if (this.muzzle.tintTopLeft !== state.muzzleColor) {
       this.muzzle.setTint(state.muzzleColor);
     }
-    this.muzzle.setAlpha(state.muzzleFlash > 0 ? state.muzzleFlash : 0);
+    if (this.muzzle2.tintTopLeft !== state.muzzleColor) {
+      this.muzzle2.setTint(state.muzzleColor);
+    }
+    const barrel = state.muzzleBarrel ?? 0;
+    this.muzzle.setPosition(MUZZLE_LOCAL_X, hasSecondary ? separation / 2 : 0);
+    this.muzzle2.setPosition(MUZZLE_LOCAL_X, -separation / 2);
+    this.muzzle.setAlpha(
+      state.muzzleFlash > 0 && barrel === 0 ? state.muzzleFlash : 0,
+    );
+    this.muzzle2.setAlpha(
+      state.muzzleFlash > 0 && hasSecondary && barrel === 1
+        ? state.muzzleFlash
+        : 0,
+    );
     this.muzzle.setScale(0.9 + state.muzzleFlash * 0.45);
+    this.muzzle2.setScale(0.9 + state.muzzleFlash * 0.45);
 
     this.shieldVisible = state.shield;
     this.shield.setVisible(state.shield);
@@ -178,7 +224,8 @@ export class PlayerVisuals {
   }
 
   kick(): void {
-    this.muzzle.setPosition(MUZZLE_LOCAL_X, 0);
+    this.muzzle.setPosition(MUZZLE_LOCAL_X, this.weaponImage.y);
+    this.muzzle2.setPosition(MUZZLE_LOCAL_X, this.weaponImage2.y);
   }
 
   dustPuff(x: number, y: number): void {
@@ -203,6 +250,7 @@ export class PlayerVisuals {
     this.sprite.setVisible(false);
     this.weapon.setVisible(false);
     this.muzzle.setVisible(false);
+    this.muzzle2.setVisible(false);
     this.shield.setVisible(false);
     this.shadow.setVisible(false);
     this.jetLeft.emitting = false;
@@ -214,6 +262,7 @@ export class PlayerVisuals {
     this.sprite.setVisible(true);
     this.weapon.setVisible(true);
     this.muzzle.setVisible(true);
+    this.muzzle2.setVisible(true);
     this.shield.setVisible(this.shieldVisible);
     this.shadow.setVisible(true);
     this.sprite.clearTint();

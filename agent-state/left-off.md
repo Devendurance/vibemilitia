@@ -2,56 +2,36 @@
 
 ## Current task
 
-P3C-A elimination loot, real online weapon ownership and authored Vibe Lance pickups are implemented and verified. Stop before P3C-B.
+P3C is complete: elimination loot, real online weapon ownership, four advanced weapons, authored caches, bot acquisition and visual/performance verification are implemented. Stop before P4.
 
 ## Done
 
-- Added `src/game/core/weaponInventory.ts`: three-slot online ownership, starter rifle/scatter/empty loadout, empty and duplicate outcomes, explicit replacement rules and unowned-slot rejection.
-- Added server-owned `HumanRuntime.weaponIds` and per-slot `WeaponState`. Empty slots cannot fire or reload. Death and respawn restore the starter loadout.
-- Added duplicate magazine refill: equipped copy first, otherwise the lowest-ammo owned copy, capped at one full magazine.
-- Added full-loadout `E` swap. The server replaces the equipped slot, scraps the old weapon and emits `weapon-swapped`. No weapon duplication path remains.
-- Added `src/game/core/loot.ts`: three-item elimination bundles, victim weapon and ammo, deterministic grenade selection, platform settling, 12-second expiry, 48-entity room cap, oldest-first cleanup and nearest collectable search.
-- Added hostile elimination generation for bullets, contact, frag and toxic damage, including bot victims and disconnected toxic owners. Self and duplicate deaths create no loot.
-- Added server proximity collection, capacity-gated medkits/grenades, explicit full-inventory swap, two-client contest safety and match start/end/replay cleanup.
-- Added two authored Vibe Lance caches at mid-step and right-high with 25-second respawn. Existing medkit and grenade caches keep their behavior.
-- Added snapshot `loot`, per-slot `owned` weapon data, `equippedSlot`, and events `loot-collected`, `loot-expired`, `weapon-swapped`, extended elimination payloads.
-- Added HUD empty slots, owned and reload states, nearby weapon prompt, clickable swap control, field pickup payload text and batch feedback priority.
-- Added one-shot voxel cube elimination bursts, loot drop-in/beam/glow/bob/expiry presentation, and loot-expired/swap effects.
-- Added `E` to the buffered input controller. Local P1 still ignores it and keeps all three training weapons.
-- Added 32 focused unit tests across weapon inventory, loot rules and simulation integration.
-- Added `scripts/verify-online-loot.mjs` with 43 production browser checks and screenshots.
-- Extended the grenade stress suite with dynamic loot metrics and headed anti-throttling flags.
-- Updated README, agent state and Fast Build state.
-
-## Verified
-
-- `npm run typecheck`: pass
-- `npm test`: 134 tests pass
-- `npm run lint`: pass
-- `npm run build`: pass
-- `npm run verify:browser`: 37/37
-- `npm run verify:online:countdown`: 16/16
-- `npm run verify:online:matchmaking`: 11/11
-- `npm run verify:online:characters`: 35/35
-- `npm run verify:online:bots`: 32/32
-- `npm run verify:online:match`: 25/25
-- `npm run verify:online:pickups`: 29/29
-- `npm run verify:online:grenades`: all checks pass
-- `npm run verify:online:stinking`: 25/25
-- `npm run verify:online:loot`: 43/43
-- `npm run verify:online:rooms`: 16/16
-- `HEADED=1 npm run verify:online:perf`: 6/6, 57 fps, 0.28 ms average tick, 0.67 ms p95
-- `HEADED=1 npm run verify:online:grenade-perf`: 14/14, 51 fps, 1.04 ms average tick, 0.65 ms p95, 9 peak loot, 8 peak grenades, 7 clouds, 2 overlapping clouds, 25 pickups, 15,460-byte snapshot, second room live
-- P3B-C baseline: 60 fps, 0.21 ms average, 0.27 ms p95, 14,471-byte snapshot
-- Screenshots in `artifacts/p3c-a/`: elimination burst, three dropped rewards, weapon pickup, swap prompt, inventory swap, contested loot, respawn loadout, match-end cleanup, replay reset
-- Local P1 remains 37/37. The ten NFT skins and VIBER-010 cutout are unchanged.
+- P3C-A: three-slot online ownership, starter rifle/scatter/empty loadout, duplicate magazine refill, full-loadout `E` swap, server-owned ammo/cooldowns, elimination loot with 12-second expiry and 48-entity cap, Vibe Lance caches, both-client loot views, late join, contest, respawn reset and replay cleanup.
+- P3C advanced weapons: Akimbo Rifles, Vibe SMG, Heavy Cannon and Rocket Launcher in the registry, authoritative firing, projectiles, reload, swap, respawn and bot paths.
+- Akimbo: server-owned barrel alternation, dual PlayerVisuals layers, shared 36-round magazine, dual muzzle flash.
+- Rocket: 850 px/s projectile, 180 px blast, 120 to 40 falloff, terrain/combatant collision, self-damage, no double direct plus explosion damage, no grenade cost.
+- Caches: 31 authored supply caches, including 2 Akimbo, 2 SMG, 1 Heavy Cannon, 1 Rocket Launcher and the existing 2 Lance, 14 medkits and 9 grenades. Moved the unreachable akimbo cache to `akimbo-left-high` (280, 944).
+- Bots: can acquire advanced weapons and dynamic loot, respect advanced ammo/reload, and drop their actual carried weapon. Default rifle bots keep existing combat behavior.
+- Visuals: advanced weapon textures, projectile textures, rocket trail/explosion, cannon impact, HUD SVG icons, offscreen pickup/loot culling.
+- Tests: `advancedWeapons.test.ts`, `GameSimulationArsenal.test.ts`, updated loot/pickups/bots/grenade suites, new `verify-online-arsenal.mjs`.
+- Final suites: unit 147, local browser 37/37, countdown 16/16, matchmaking 11/11, characters 35/35, bots 32/32, match 25/25, pickups 29/29, grenades 28/28, stinking 25/25, loot 41/41, arsenal 26/26, rooms 16/16.
+- Typecheck, lint and production build pass.
+- Performance clean run: stress 60 fps, 0.06 ms average tick, 0.15 ms p95, 10 peak loot, 7 grenades, 7 clouds, 31 advanced shots, 16,319-byte snapshot, second room live, 15/15 checks. Standard 58 to 59 fps, 0.22 ms average, 0.77 ms p95, 6/6 checks.
+- Screenshots in `artifacts/p3c/`: akimbo pickup/firing, SMG firing, cannon firing/impact, rocket flight/explosion, advanced elimination loot, eight-combatant mixed lineup.
+- README, agent-state and `.fast-build/STATE.md` updated with P3C results and limitations.
 
 ## Next
 
-1. Stop and report P3C-A.
-2. Wait for P3C-B instructions.
-3. Known limitations: bots do not collect dynamic loot, swapped weapons are scrapped, and loot settles instantly with a client-only scatter animation.
+- Commit and push the P3C advanced arsenal checkpoint.
+- Stop before P4. Start P4 only on a new instruction.
 
-## Checkpoint
+## Known issues
 
-P3C-A code, tests, scripts and docs are committed at `4c06103` on `main`. The previous verified P3B-C checkpoint was `be249c3`. Stop before P3C-B.
+- FPS and tick measurements are sensitive to machine load. A clean run needs no competing Chrome or build processes.
+- Verification hooks require `VIBE_MILITIA_TEST_HOOKS=1`; arsenal and loot also use `MATCH_COUNTDOWN_MS=0`.
+- Projectile cap is 220 room-wide. Sustained fire degrades rather than growing state without bound.
+- No reconnect, lag compensation, audio or persistent progression.
+
+## Baseline
+
+- Last pre-P3C checkpoint: `b8f8641` (P3C-A). P3C-A baseline: `4c06103`.

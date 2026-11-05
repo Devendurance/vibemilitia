@@ -87,6 +87,20 @@ export class EffectsSystem {
     }
   }
 
+  heavyMuzzle(x: number, y: number): void {
+    this.cream.explode(5, x, y);
+    this.copper.explode(4, x, y);
+    this.voxelCopper.explode(3, x, y);
+    this.ring(x, y, 0xf4e21c);
+  }
+
+  rocketMuzzle(x: number, y: number): void {
+    this.copper.explode(6, x, y);
+    this.smoke.explode(5, x, y);
+    this.voxelCopper.explode(3, x, y);
+    this.ring(x, y, 0xc7692f);
+  }
+
   droneHit(x: number, y: number): void {
     this.lime.explode(7, x, y);
     this.copper.explode(5, x, y);
@@ -146,6 +160,38 @@ export class EffectsSystem {
     this.voxelCream.explode(5, x, y);
     this.mint.explode(5, x, y);
     this.ring(x, y, 0x9bd8f2);
+  }
+
+  heavyImpact(x: number, y: number): void {
+    this.voxelCream.explode(8, x, y);
+    this.voxelCopper.explode(7, x, y);
+    this.voxelRed.explode(5, x, y);
+    this.smoke.explode(5, x, y);
+    this.ring(x, y, 0xf4e21c);
+  }
+
+  rocketExplosion(x: number, y: number, radius: number): void {
+    this.voxelRed.explode(10, x, y);
+    this.voxelCopper.explode(9, x, y);
+    this.voxelCream.explode(6, x, y);
+    this.voxelLime.explode(4, x, y);
+    this.smoke.explode(6, x, y);
+    this.red.explode(6, x, y);
+    this.copper.explode(5, x, y);
+    this.ring(x, y, 0xe5484d);
+    this.ring(x, y, 0xf4e21c);
+    const shock = this.scene.add
+      .circle(x, y, Math.max(18, radius * 0.28), 0x000000, 0)
+      .setStrokeStyle(4, 0xf4e21c, 0.75)
+      .setDepth(44);
+    this.scene.tweens.add({
+      targets: shock,
+      scale: radius / Math.max(18, radius * 0.28),
+      alpha: 0,
+      duration: 320,
+      ease: "Cubic.Out",
+      onComplete: () => shock.destroy(),
+    });
   }
 
   spawn(x: number, y: number): void {

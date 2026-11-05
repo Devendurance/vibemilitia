@@ -85,7 +85,21 @@ describe("Sector 07 pickup placement", () => {
     expect(
       ARENA.pickupSpawns.filter((pickup) => pickup.type === "vibe-lance"),
     ).toHaveLength(2);
-    expect(ARENA.pickupSpawns).toHaveLength(25);
+    expect(
+      ARENA.pickupSpawns.filter((pickup) => pickup.type === "akimbo-rifles"),
+    ).toHaveLength(2);
+    expect(
+      ARENA.pickupSpawns.filter((pickup) => pickup.type === "vibe-smg"),
+    ).toHaveLength(2);
+    expect(
+      ARENA.pickupSpawns.filter((pickup) => pickup.type === "heavy-cannon"),
+    ).toHaveLength(1);
+    expect(
+      ARENA.pickupSpawns.filter(
+        (pickup) => pickup.type === "rocket-launcher",
+      ),
+    ).toHaveLength(1);
+    expect(ARENA.pickupSpawns).toHaveLength(31);
     expect(
       new Set(ARENA.pickupSpawns.map((pickup) => pickup.y)).size,
     ).toBeGreaterThan(2);

@@ -71,6 +71,17 @@ const probe = (page) =>
       clouds: snapshot?.toxicClouds ?? [],
       pickups: snapshot?.pickups ?? [],
       loot: snapshot?.loot ?? [],
+      advancedWeaponIds: (snapshot?.participants ?? [])
+        .map((participant) => participant.weaponId)
+        .filter((weaponId) =>
+          [
+            "akimbo-rifles",
+            "vibe-smg",
+            "heavy-cannon",
+            "rocket-launcher",
+          ].includes(weaponId),
+        ),
+      combatLog: value.combatLog ?? [],
       serverTickMs: snapshot?.serverTickMs ?? 0,
       snapshotBytes: snapshot ? JSON.stringify(snapshot).length : 0,
     };
@@ -190,6 +201,54 @@ const browserEliminate = async (page, count) => {
   }, count);
 };
 
+const browserArsenal = async (page) => {
+  return page.evaluate(() => {
+    const value = window.__VIBE_MILITIA_ONLINE__;
+    const probe = value?.getProbe();
+    const snapshot = probe?.snapshot;
+    if (!value || !probe || !snapshot) return [];
+    const hooks = probe.testHooks;
+    const weapons = [
+      "rocket-launcher",
+      "heavy-cannon",
+      "vibe-smg",
+      "akimbo-rifles",
+      "vibe-lance",
+      "scatter-blaster",
+      "vibe-rifle",
+    ];
+    hooks.giveWeapon(value.sessionId, "akimbo-rifles");
+    return snapshot.participants
+      .filter(
+        (participant) =>
+          participant.kind === "human" &&
+          participant.id !== value.sessionId,
+      )
+      .map((participant, index) => {
+        const weaponId = weapons[index % weapons.length];
+        hooks.giveWeapon(participant.id, weaponId);
+        hooks.teleport(participant.id, 1200 + index * 120, 1340);
+        return { id: participant.id, weaponId };
+      });
+  });
+};
+
+const holdFireInput = (filler, seq, aim) => {
+  filler.room.send("input", {
+    seq,
+    moveX: 0,
+    jump: false,
+    jumpHeld: false,
+    fire: true,
+    reload: false,
+    weapon: null,
+    aim,
+    useMedkit: false,
+    grenadeSlot: null,
+    throwGrenade: false,
+  });
+};
+
 const browser = await chromium.launch({
   ...(executablePath ? { executablePath } : { channel: "chrome" }),
   headless: !headed,
@@ -207,11 +266,10 @@ const context = await browser.newContext({
 const page = await context.newPage();
 const pageErrors = [];
 page.on("pageerror", (error) => pageErrors.push(error.message));
-const secondContext = await browser.newContext({
-  viewport: { width: 1200, height: 800 },
-});
-const secondPage = await secondContext.newPage();
 const fillers = [];
+let roomBClient = null;
+let roomBRoom = null;
+let roomBSnapshot = null;
 
 try {
   await page.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
@@ -237,12 +295,25 @@ try {
     `victims=${baselineVictims} loot=${baselineState.loot.length}`,
   );
 
-  await secondPage.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
-  await secondPage.waitForTimeout(800);
-  await secondPage.locator('[data-testid="create-room"]').click();
-  await waitOnlineReady(secondPage);
-  const roomB = await probe(secondPage);
-  check("second concurrent room is live", roomB.phase === "live");
+  roomBClient = new Client(serverUrl);
+  roomBRoom = await roomBClient.create("ffa", {
+    roomName: "PERF-B",
+  });
+  roomBRoom.onMessage("snapshot", (snapshot) => {
+    roomBSnapshot = snapshot;
+  });
+  const roomBStartedAt = Date.now();
+  while (
+    Date.now() - roomBStartedAt < 15000 &&
+    roomBSnapshot?.phase !== "live"
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  check(
+    "second concurrent room is live",
+    roomBSnapshot?.phase === "live",
+    `room=${roomBRoom.roomId}`,
+  );
 
   for (let index = 0; index < 7; index += 1) {
     const client = new Client(serverUrl);
@@ -263,6 +334,22 @@ try {
     filled.humans === 8 && filled.bots === 0,
     `humans=${filled.humans} bots=${filled.bots}`,
   );
+
+  await browserArsenal(page);
+  await page.waitForTimeout(350);
+  await page.evaluate(() => {
+    const value = window.__VIBE_MILITIA_ONLINE__;
+    value?.getProbe().testHooks.setAim(1200, 1280);
+  });
+  const canvas = await page.locator("canvas").boundingBox();
+  if (canvas) {
+    await page.mouse.move(
+      canvas.x + canvas.width / 2,
+      canvas.y + canvas.height / 2,
+    );
+  }
+  await page.mouse.down();
+  await page.waitForTimeout(500);
 
   const stressVictims = await browserEliminate(page, 2);
   await page.waitForTimeout(500);
@@ -286,6 +373,12 @@ try {
   await page.waitForTimeout(120);
   await page.keyboard.press("KeyG");
 
+  await browserArsenal(page);
+  await page.waitForTimeout(220);
+  for (let index = 0; index < fillers.length; index += 1) {
+    holdFireInput(fillers[index], 700 + index, Math.PI);
+  }
+
   for (const filler of fillers) {
     if (!filler.snapshot) {
       filler.snapshot = await new Promise((resolve) => {
@@ -308,6 +401,20 @@ try {
   const activeGrenades = stressState.grenades.length;
   const activeClouds = stressState.clouds.length;
   const overlap = maxOverlap(stressState.clouds);
+  const advancedWeapons = [
+    ...new Set(stressState.advancedWeaponIds),
+  ];
+  const advancedShots = stressState.combatLog.filter(
+    (entry) =>
+      entry.type === "shot" &&
+      entry.weaponId &&
+      [
+        "akimbo-rifles",
+        "vibe-smg",
+        "heavy-cannon",
+        "rocket-launcher",
+      ].includes(entry.weaponId),
+  ).length;
   const peakLoot = Math.max(
     baselineState.loot.length,
     lootState.loot.length,
@@ -323,6 +430,8 @@ try {
     pickups: stressState.pickups.length,
     loot: stressState.loot.length,
     peakLoot,
+    advancedWeapons,
+    advancedShots,
     snapshotBytes: stressState.snapshotBytes,
   });
 
@@ -336,6 +445,7 @@ try {
   const stressFps = await measureFps(page, 4000);
   const stressTicks = await collectTicks(page, 40);
   const finalState = await probe(page);
+  await page.mouse.up();
 
   check(
     "the stress scene has several active grenades",
@@ -358,6 +468,11 @@ try {
     `peakLoot=${peakLoot} active=${stressState.loot.length}`,
   );
   check(
+    "advanced weapons fire during the stress scene",
+    advancedWeapons.length >= 2 && advancedShots >= 2,
+    `weapons=${advancedWeapons.join(",")} shots=${advancedShots}`,
+  );
+  check(
     "client keeps a playable frame rate",
     (headed ? stressFps >= 45 : stressFps >= 25),
     `${Math.round(stressFps)} fps`,
@@ -374,8 +489,7 @@ try {
   );
   check(
     "both rooms remain live",
-    finalState.phase === "live" &&
-      (await probe(secondPage)).phase === "live",
+    finalState.phase === "live" && roomBSnapshot?.phase === "live",
   );
   check(
     "no browser page errors",
@@ -408,6 +522,8 @@ try {
     maxOverlap: overlap,
     peakLoot,
     loot: stressState.loot.length,
+    advancedWeapons,
+    advancedShots,
     snapshotBytes: stressState.snapshotBytes,
     samples: stressTicks.samples,
   });
@@ -427,6 +543,10 @@ try {
     }
   }
   await context.close();
-  await secondContext.close();
+  try {
+    await roomBRoom?.leave();
+  } catch {
+    // ignore cleanup errors
+  }
   await browser.close();
 }

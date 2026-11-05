@@ -3,13 +3,13 @@ import type { Room } from "@colyseus/sdk";
 import { ARENA } from "@/game/arena/arena";
 import { buildArena, type ArenaBuildResult } from "@/game/arena/ArenaBuilder";
 import { CHARACTER_ROSTER } from "@/game/characters/roster";
-import { PLAYER_WEAPONS } from "@/game/config/gameplay";
+import { ALL_PLAYER_WEAPONS } from "@/game/config/gameplay";
 import {
   GRENADE_CONFIG,
   GRENADE_INVENTORY_CONFIG,
   type GrenadeType,
 } from "@/game/core/grenades";
-import { MEDKIT_CONFIG, PICKUP_LABELS } from "@/game/core/pickups";
+import { MEDKIT_CONFIG, PICKUP_LABELS, weaponIdFromPickup } from "@/game/core/pickups";
 import { LOOT_CONFIG } from "@/game/core/loot";
 import {
   hasEmptyWeaponSlot,
@@ -42,6 +42,7 @@ interface PickupView {
   baseY: number;
   phase: number;
   texture: string;
+  active: boolean;
 }
 
 interface LootView {
@@ -111,7 +112,28 @@ interface OnlineProbe {
     teleportBot: (id: string, x: number, y: number) => void;
     endMatch: () => void;
     guard: () => void;
+    giveWeapon: (id: string, weaponId: string) => void;
+    freeze: (id: string, frozen: boolean) => void;
+    disableBotCuriosity: () => void;
+    setZoom: (zoom: number) => void;
+    setAim: (x: number, y: number) => void;
+    fireOnce: () => void;
+    reloadOnce: () => void;
+    guardTarget: (id: string) => void;
+    pauseBotLoot: (paused: boolean) => void;
+    pauseLoot: (paused: boolean) => void;
+    extendMatch: (durationMs: number) => void;
+    resetPickups: () => void;
   };
+  combatLog: Array<{
+    type: string;
+    weaponId: string | null;
+    barrel: number | null;
+    ownerId: string;
+    victimId: string | null;
+    damage: number | null;
+    atMs: number;
+  }>;
   grenades: Array<{ id: number; type: GrenadeType; x: number; y: number; visible: boolean; fuseRemainingMs: number | null }>;
   toxicClouds: Array<{ id: number; x: number; y: number; radius: number; remainingMs: number; visible: boolean }>;
   camera: {
@@ -145,6 +167,9 @@ export class OnlineScene extends Phaser.Scene {
   private debugVisible = false;
   private ready = false;
   private localAim = 0;
+  private testAimAngle: number | null = null;
+  private testFireFrames = 0;
+  private testReloadFrames = 0;
   private predictor: HumanKinematics | null = null;
   private lastFrame: ControlFrame | null = null;
   private sendAccumulator = 0;
@@ -162,6 +187,15 @@ export class OnlineScene extends Phaser.Scene {
   private supplyFeedbackSeq = 0;
   private supplyFeedbackText = "";
   private supplyFeedbackDetail = "+1";
+  private combatLog: Array<{
+    type: string;
+    weaponId: string | null;
+    barrel: number | null;
+    ownerId: string;
+    victimId: string | null;
+    damage: number | null;
+    atMs: number;
+  }> = [];
   private hitFeedbackMs = 0;
   private localDamageSeq = 0;
   private lastPlayerKill: HudSnapshot["lastPlayerKill"] = null;
@@ -190,7 +224,20 @@ export class OnlineScene extends Phaser.Scene {
         teleportBot: () => undefined,
         endMatch: () => undefined,
         guard: () => undefined,
+        giveWeapon: () => undefined,
+        freeze: () => undefined,
+        disableBotCuriosity: () => undefined,
+        setZoom: () => undefined,
+        setAim: () => undefined,
+        fireOnce: () => undefined,
+        reloadOnce: () => undefined,
+        guardTarget: () => undefined,
+        pauseBotLoot: () => undefined,
+        pauseLoot: () => undefined,
+        extendMatch: () => undefined,
+        resetPickups: () => undefined,
       },
+      combatLog: [],
       grenades: [],
       toxicClouds: [],
       camera: { scrollX: 0, scrollY: 0, zoom: 1, width: 0, height: 0 },
@@ -318,7 +365,52 @@ export class OnlineScene extends Phaser.Scene {
           guard: () => {
             this.room.send("debug-guard");
           },
+          giveWeapon: (id: string, weaponId: string) => {
+            this.room.send("debug-give-weapon", { id, weaponId });
+          },
+          freeze: (id: string, frozen: boolean) => {
+            this.room.send("debug-freeze", { id, frozen });
+          },
+          disableBotCuriosity: () => {
+            this.room.send("debug-disable-bot-curiosity");
+          },
+          setZoom: (zoom: number) => {
+            this.cameras.main.setZoom(
+              Math.max(0.8, Math.min(3, zoom)),
+            );
+          },
+          setAim: (x: number, y: number) => {
+            const local = this.localSnapshot();
+            if (!local) return;
+            this.testAimAngle = Math.atan2(
+              y - (local.y - 58),
+              x - local.x,
+            );
+            this.localAim = this.testAimAngle;
+          },
+          fireOnce: () => {
+            this.testFireFrames = 3;
+          },
+          reloadOnce: () => {
+            this.testReloadFrames = 3;
+          },
+          guardTarget: (id: string) => {
+            this.room.send("debug-guard-target", { id });
+          },
+          pauseBotLoot: (paused: boolean) => {
+            this.room.send("debug-pause-bot-loot", { paused });
+          },
+          pauseLoot: (paused: boolean) => {
+            this.room.send("debug-pause-loot", { paused });
+          },
+          extendMatch: (durationMs: number) => {
+            this.room.send("debug-extend-match", { durationMs });
+          },
+          resetPickups: () => {
+            this.room.send("debug-reset-pickups");
+          },
         },
+        combatLog: this.combatLog,
         grenades: [...this.grenadeViews.entries()].map(([id, view]) => ({
           id,
           type: view.type,
@@ -398,10 +490,12 @@ export class OnlineScene extends Phaser.Scene {
       }
       const aimX = this.predictor.x + 28;
       const aimY = this.predictor.y - 58;
-      this.localAim = Math.atan2(
-        frame.aimWorld.y - aimY,
-        frame.aimWorld.x - aimX,
-      );
+      this.localAim =
+        this.testAimAngle ??
+        Math.atan2(
+          frame.aimWorld.y - aimY,
+          frame.aimWorld.x - aimX,
+        );
     } else {
       this.predictor = null;
     }
@@ -460,8 +554,8 @@ export class OnlineScene extends Phaser.Scene {
         moveX: frame.moveX,
         jump: this.pendingJump,
         jumpHeld: frame.jumpHeld,
-        fire: frame.fire,
-        reload: this.pendingReload,
+        fire: frame.fire || this.testFireFrames > 0,
+        reload: this.pendingReload || this.testReloadFrames > 0,
         weapon: this.pendingWeapon,
         aim: this.localAim,
         useMedkit: this.pendingMedkit,
@@ -470,6 +564,8 @@ export class OnlineScene extends Phaser.Scene {
         swapWeapon: this.pendingSwap,
       };
       this.room.send("input", payload);
+      if (this.testFireFrames > 0) this.testFireFrames -= 1;
+      if (this.testReloadFrames > 0) this.testReloadFrames -= 1;
       this.pendingJump = false;
       this.pendingReload = false;
       this.pendingWeapon = null;
@@ -599,6 +695,10 @@ export class OnlineScene extends Phaser.Scene {
     for (const pickup of pickups) {
       let view = this.pickupViews.get(pickup.id);
       if (!view) {
+        const weaponId = weaponIdFromPickup(pickup.type);
+        const weaponDefinition = weaponId
+          ? ALL_PLAYER_WEAPONS.find((weapon) => weapon.id === weaponId)
+          : null;
         const color =
           pickup.type === "contact-grenade"
             ? 0xff6b35
@@ -606,8 +706,10 @@ export class OnlineScene extends Phaser.Scene {
               ? 0xf4e21c
               : pickup.type === "stinking-grenade"
                 ? 0x9bff5a
-                : pickup.type === "vibe-lance"
-                  ? 0x9bd8f2
+                : weaponDefinition
+                  ? weaponDefinition.id === "rocket-launcher"
+                    ? 0xc7692f
+                    : 0x9bd8f2
                   : 0xd7ff2e;
         const glow = this.add
           .circle(0, 8, 22, color, 0.08)
@@ -619,12 +721,10 @@ export class OnlineScene extends Phaser.Scene {
               ? "pickup-grenade-frag"
               : pickup.type === "stinking-grenade"
                 ? "pickup-grenade-stinking"
-                : pickup.type === "vibe-lance"
-                  ? "weapon-precision"
-                  : "pickup-medkit";
+                : weaponDefinition?.weaponTexture ?? "pickup-medkit";
         const image = this.add
-          .image(0, pickup.type === "vibe-lance" ? -10 : -4, texture)
-          .setScale(pickup.type === "vibe-lance" ? 1.05 : 1);
+          .image(0, weaponDefinition ? -10 : -4, texture)
+          .setScale(weaponDefinition ? 0.9 : 1);
         const container = this.add
           .container(pickup.x, pickup.y, [glow, image])
           .setDepth(24);
@@ -634,9 +734,11 @@ export class OnlineScene extends Phaser.Scene {
           baseY: pickup.y,
           phase: this.pickupViews.size * 0.9,
           texture,
+          active: pickup.active,
         };
         this.pickupViews.set(pickup.id, view);
       }
+      view.active = pickup.active;
       view.container.setVisible(pickup.active);
     }
     for (const [id, view] of this.pickupViews) {
@@ -647,10 +749,18 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   private animatePickups(time: number): void {
-    for (const view of this.pickupViews.values()) {
-      if (!view.container.visible) continue;
-      view.container.y = view.baseY + Math.sin(time / 420 + view.phase) * 3;
-      view.glow.setScale(1 + Math.sin(time / 520 + view.phase) * 0.08);
+    const view = this.cameras.main.worldView;
+    for (const pickup of this.pickupViews.values()) {
+      const onScreen =
+        pickup.container.x >= view.x - 120 &&
+        pickup.container.x <= view.right + 120 &&
+        pickup.baseY >= view.y - 120 &&
+        pickup.baseY <= view.bottom + 120;
+      pickup.container.setVisible(pickup.active && onScreen);
+      if (!pickup.active || !onScreen) continue;
+      pickup.container.y =
+        pickup.baseY + Math.sin(time / 420 + pickup.phase) * 3;
+      pickup.glow.setScale(1 + Math.sin(time / 520 + pickup.phase) * 0.08);
     }
   }
 
@@ -672,13 +782,13 @@ export class OnlineScene extends Phaser.Scene {
                 : item.grenadeType === "frag"
                   ? 0xf4e21c
                   : 0x9bff5a;
+        const weaponDefinition =
+          item.weaponId
+            ? ALL_PLAYER_WEAPONS.find((weapon) => weapon.id === item.weaponId)
+            : null;
         const texture =
           item.kind === "weapon"
-            ? item.weaponId === "scatter-blaster"
-              ? "weapon-scatter"
-              : item.weaponId === "vibe-lance"
-                ? "weapon-precision"
-                : "weapon-player"
+            ? weaponDefinition?.weaponTexture ?? "weapon-player"
             : item.kind === "medkit"
               ? "pickup-medkit"
               : item.grenadeType === "contact"
@@ -723,8 +833,15 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   private animateLoot(time: number): void {
+    const viewRect = this.cameras.main.worldView;
     for (const view of this.lootViews.values()) {
-      if (!view.container.visible) continue;
+      const onScreen =
+        view.container.x >= viewRect.x - 120 &&
+        view.container.x <= viewRect.right + 120 &&
+        view.baseY >= viewRect.y - 120 &&
+        view.baseY <= viewRect.bottom + 120;
+      view.container.setVisible(onScreen);
+      if (!onScreen) continue;
       const age = time - view.spawnedAtLocal;
       const drop = age < 260 ? -18 * (1 - age / 260) : 0;
       view.container.y =
@@ -1007,15 +1124,57 @@ export class OnlineScene extends Phaser.Scene {
       switch (event.type) {
         case "shot": {
           const view = this.views.get(event.ownerId);
-          view?.onShot();
-          this.effects.muzzle(event.x, event.y);
+          view?.onShot(event.barrel === 1 ? 1 : 0);
+          this.combatLog.push({
+            type: "shot",
+            weaponId: event.weaponId,
+            barrel: event.barrel,
+            ownerId: event.ownerId,
+            victimId: null,
+            damage: null,
+            atMs: this.latestSnapshot?.elapsedMs ?? 0,
+          });
+          if (this.combatLog.length > 80) this.combatLog.shift();
+          if (event.weaponId === "rocket-launcher") {
+            this.effects.rocketMuzzle(event.x, event.y);
+          } else if (event.weaponId === "heavy-cannon") {
+            this.effects.heavyMuzzle(event.x, event.y);
+          } else {
+            this.effects.muzzle(event.x, event.y);
+          }
           break;
         }
         case "hit": {
           const view = this.views.get(event.victimId);
           view?.onHit();
+          this.combatLog.push({
+            type: "hit",
+            weaponId: event.weaponId ?? null,
+            barrel: null,
+            ownerId: event.ownerId,
+            victimId: event.victimId,
+            damage: event.damage,
+            atMs: this.latestSnapshot?.elapsedMs ?? 0,
+          });
+          if (this.combatLog.length > 80) this.combatLog.shift();
           const toxic = event.source === "toxic";
-          this.effects.bulletImpact(event.x, event.y, "player");
+          if (event.source === "rocket") {
+            this.effects.damageNumber(
+              event.x,
+              event.y - 12,
+              event.damage,
+              event.kind === "human" ? "#ffb4b6" : "#f5f3ec",
+            );
+            if (event.victimId === this.room.sessionId) {
+              this.localDamageSeq += 1;
+            }
+            break;
+          }
+          if (event.weaponId === "heavy-cannon") {
+            this.effects.heavyImpact(event.x, event.y);
+          } else {
+            this.effects.bulletImpact(event.x, event.y, "player");
+          }
           if (toxic) {
             this.effects.toxicTick(event.x, event.y);
           }
@@ -1071,7 +1230,11 @@ export class OnlineScene extends Phaser.Scene {
           break;
         }
         case "pickup-collected": {
-          this.pickupViews.get(event.pickupId)?.container.setVisible(false);
+          const pickupView = this.pickupViews.get(event.pickupId);
+          if (pickupView) {
+            pickupView.active = false;
+            pickupView.container.setVisible(false);
+          }
           this.effects.pickupCollected(event.x, event.y);
           if (event.playerId === this.room.sessionId) {
             const text = event.text ?? PICKUP_LABELS[event.itemType];
@@ -1084,7 +1247,11 @@ export class OnlineScene extends Phaser.Scene {
           break;
         }
         case "pickup-respawn": {
-          this.pickupViews.get(event.pickupId)?.container.setVisible(true);
+          const pickupView = this.pickupViews.get(event.pickupId);
+          if (pickupView) {
+            pickupView.active = true;
+            pickupView.container.setVisible(true);
+          }
           this.effects.ring(event.x, event.y, 0xd7ff2e);
           break;
         }
@@ -1123,6 +1290,38 @@ export class OnlineScene extends Phaser.Scene {
               this.cameras.main.shake(
                 event.grenadeType === "contact" ? 170 : 230,
                 Math.max(0.0015, 0.007 * (1 - distance / 900)),
+                true,
+              );
+            }
+          }
+          break;
+        }
+        case "rocket-exploded": {
+          this.combatLog.push({
+            type: "rocket-exploded",
+            weaponId: "rocket-launcher",
+            barrel: null,
+            ownerId: event.ownerId,
+            victimId: null,
+            damage: null,
+            atMs: this.latestSnapshot?.elapsedMs ?? 0,
+          });
+          if (this.combatLog.length > 80) this.combatLog.shift();
+          this.effects.rocketExplosion(
+            event.x,
+            event.y,
+            event.blastRadius,
+          );
+          const local = this.localSnapshot();
+          if (local) {
+            const distance = Math.hypot(
+              local.x - event.x,
+              local.y - event.y,
+            );
+            if (distance < 1000) {
+              this.cameras.main.shake(
+                260,
+                Math.max(0.002, 0.009 * (1 - distance / 1000)),
                 true,
               );
             }
@@ -1342,14 +1541,20 @@ export class OnlineScene extends Phaser.Scene {
       nearestDistance = distance;
     }
     for (const pickup of snapshot.pickups) {
-      if (!pickup.active || pickup.type !== "vibe-lance") continue;
+      if (!pickup.active) continue;
+      const pickupWeaponId = weaponIdFromPickup(pickup.type);
+      if (!pickupWeaponId) continue;
+      const definition = ALL_PLAYER_WEAPONS.find(
+        (weapon) => weapon.id === pickupWeaponId,
+      );
+      if (!definition) continue;
       const dx = pickup.x - centerX;
       const dy = pickup.y - centerY;
       const distance = dx * dx + dy * dy;
       if (distance > radiusSq || distance >= nearestDistance) continue;
       nearest = {
-        id: "vibe-lance",
-        name: "VIBE LANCE",
+        id: definition.id,
+        name: definition.name,
         x: pickup.x,
         y: pickup.y,
       };
@@ -1381,21 +1586,80 @@ export class OnlineScene extends Phaser.Scene {
     for (const projectile of this.latestSnapshot.projectiles) {
       const x = projectile.x + projectile.vx * extrapolate;
       const y = projectile.y + projectile.vy * extrapolate;
-      const color =
-        projectile.weaponId === "vibe-lance"
-          ? 0x9bd8f2
-          : projectile.weaponId === "scatter-blaster"
-            ? 0xc7692f
-            : 0xd7ff2e;
-      this.bulletGraphics.lineStyle(4, color, 0.22);
+      const isRocket = projectile.weaponId === "rocket-launcher";
+      const isHeavy = projectile.weaponId === "heavy-cannon";
+      const isLance = projectile.weaponId === "vibe-lance";
+      const isScatter = projectile.weaponId === "scatter-blaster";
+      const isSmg =
+        projectile.weaponId === "vibe-smg" ||
+        projectile.weaponId === "akimbo-rifles";
+      const color = isRocket
+        ? 0xc7692f
+        : isHeavy
+          ? 0xf4e21c
+          : isLance
+            ? 0x9bd8f2
+            : isScatter
+              ? 0xc7692f
+              : isSmg
+                ? 0xd7ff2e
+                : 0xd7ff2e;
+      if (isRocket) {
+        this.bulletGraphics.lineStyle(11, 0xc7692f, 0.18);
+        this.bulletGraphics.lineBetween(
+          x - projectile.vx * 0.11,
+          y - projectile.vy * 0.11,
+          x - projectile.vx * 0.035,
+          y - projectile.vy * 0.035,
+        );
+        this.bulletGraphics.lineStyle(5, 0x9aa0a7, 0.24);
+        this.bulletGraphics.lineBetween(
+          x - projectile.vx * 0.16,
+          y - projectile.vy * 0.16,
+          x - projectile.vx * 0.06,
+          y - projectile.vy * 0.06,
+        );
+        this.bulletGraphics.lineStyle(7, 0x0c0d0f, 1);
+        this.bulletGraphics.lineBetween(
+          x - projectile.vx * 0.03,
+          y - projectile.vy * 0.03,
+          x,
+          y,
+        );
+        this.bulletGraphics.lineStyle(4, 0xe5484d, 1);
+        this.bulletGraphics.lineBetween(
+          x - projectile.vx * 0.026,
+          y - projectile.vy * 0.026,
+          x,
+          y,
+        );
+        this.bulletGraphics.fillStyle(0xf4e21c, 1);
+        this.bulletGraphics.fillCircle(
+          x - projectile.vx * 0.032,
+          y - projectile.vy * 0.032,
+          4.2,
+        );
+        this.bulletGraphics.fillStyle(0xf5f3ec, 1);
+        this.bulletGraphics.fillCircle(x, y, 2.2);
+        continue;
+      }
+      this.bulletGraphics.lineStyle(
+        isHeavy ? 8 : isLance ? 5 : isSmg ? 2.5 : 4,
+        color,
+        isHeavy ? 0.2 : 0.22,
+      );
       this.bulletGraphics.lineBetween(
-        x - projectile.vx * 0.014,
-        y - projectile.vy * 0.014,
+        x - projectile.vx * (isHeavy ? 0.04 : 0.014),
+        y - projectile.vy * (isHeavy ? 0.04 : 0.014),
         x,
         y,
       );
       this.bulletGraphics.fillStyle(color, 1);
-      this.bulletGraphics.fillCircle(x, y, 2.2);
+      this.bulletGraphics.fillCircle(
+        x,
+        y,
+        isHeavy ? 4.6 : isLance ? 2.4 : isSmg ? 1.8 : 2.2,
+      );
     }
   }
 
@@ -1404,11 +1668,17 @@ export class OnlineScene extends Phaser.Scene {
     const local = this.localSnapshot();
     if (!local?.alive) return;
     const definition =
-      PLAYER_WEAPONS.find((weapon) => weapon.id === local.weaponId) ??
-      PLAYER_WEAPONS[0];
+      ALL_PLAYER_WEAPONS.find((weapon) => weapon.id === local.weaponId) ??
+      ALL_PLAYER_WEAPONS[0];
     const spread = 7 + Math.min(24, definition.spreadRadians * 100);
     const color = this.hitFeedbackMs > 0 ? 0xf5f3ec : 0xd7ff2e;
-    const target = frame.aimWorld;
+    const target =
+      this.testAimAngle !== null
+        ? {
+            x: local.x + Math.cos(this.testAimAngle) * 400,
+            y: local.y - 58 + Math.sin(this.testAimAngle) * 400,
+          }
+        : frame.aimWorld;
     const muzzle = {
       x: local.x + 28 + Math.cos(this.localAim) * 66,
       y: local.y - 58 + Math.sin(this.localAim) * 66,

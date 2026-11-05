@@ -57,6 +57,7 @@ interface BotTestView {
   invulnerableRemainingMs: number;
   eliminations: number;
   deaths: number;
+  frozen?: boolean;
   medkits: number;
   medkitCooldownRemainingMs: number;
   grenades: { contact: number; frag: number; stinking: number };
@@ -564,7 +565,7 @@ describe("authoritative match simulation", () => {
     });
     sim.addHuman("one", "ONE");
     const before = sim.snapshot();
-    expect(before.pickups).toHaveLength(25);
+    expect(before.pickups).toHaveLength(31);
     const medkits = before.pickups.filter(
       (pickup) => pickup.type === "medkit",
     );
@@ -1044,15 +1045,16 @@ describe("authoritative match simulation", () => {
       countdownMs: 0,
     });
     sim.addHuman("one", "ONE");
-    placeHuman(sim, "one", 1000, 1340);
+    placeHuman(sim, "one", 400, 1340);
     const human = humanView(sim, "one");
     human.invulnerableRemainingMs = 0;
     const bot = spawnTestBot(sim);
-    bot.x = 1150;
+    bot.x = 650;
     bot.y = 1322;
     bot.health = 100;
     bot.alive = true;
     bot.invulnerableRemainingMs = 0;
+    bot.frozen = true;
     sim.drainEvents();
 
     sim.applyInput(
@@ -1063,7 +1065,7 @@ describe("authoritative match simulation", () => {
         aim: 0,
       }),
     );
-    runTicks(sim, 3);
+    runTicks(sim, 20);
     const snapshot = sim.snapshot();
     expect(bot.alive).toBe(false);
     expect(snapshot.participants.find((entry) => entry.id === "one")?.eliminations).toBe(1);

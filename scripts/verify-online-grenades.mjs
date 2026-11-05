@@ -158,6 +158,14 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: `${artifactDir}/${name}.png` });
 };
 
+const hook = async (page, name) => {
+  await page.evaluate((hookName) => {
+    const hooks = window.__VIBE_MILITIA_ONLINE__?.getProbe().testHooks;
+    if (!hooks) return;
+    if (hookName === "guard") hooks.guard();
+  }, name);
+};
+
 const aimAtWorld = async (page, camera, worldX, worldY) => {
   const box = await page.locator("canvas").boundingBox();
   if (!box || !camera.width || !camera.height) {
@@ -404,8 +412,8 @@ try {
     (pickup) => pickup.type === "stinking-grenade",
   );
   check(
-    "twenty-five supply caches spawn with fourteen medkits",
-    initialA.pickups.length === 25 &&
+    "thirty-one supply caches spawn with fourteen medkits",
+    initialA.pickups.length === 31 &&
       initialA.pickups.filter((pickup) => pickup.type === "vibe-lance")
         .length === 2 &&
       medkits.length === 14,
@@ -450,6 +458,8 @@ try {
   await waitOnlineReady(pageB);
   const joinedB = await probe(pageB);
   check("second browser joins the same room", joinedB.roomId === roomId);
+  await hook(pageA, "guard");
+  await hook(pageB, "guard");
 
   const idsA = initialA.pickups.map((pickup) => `${pickup.id}:${pickup.type}`).sort();
   const idsB = joinedB.pickups.map((pickup) => `${pickup.id}:${pickup.type}`).sort();
@@ -461,7 +471,7 @@ try {
   check(
     "all pickup views render with matching types",
     initialA.pickupViews.length === initialA.pickups.length &&
-      initialA.pickupViews.length === 25,
+      initialA.pickupViews.length === 31,
     `views=${initialA.pickupViews.length}`,
   );
 

@@ -32,6 +32,23 @@ export const JETPACK_CONFIG: JetpackConfig = {
 export const JETPACK_THRUST_ACCELERATION = 2500;
 export const JETPACK_MAX_RISE_SPEED = 430;
 
+export interface RocketConfig {
+  blastRadius: number;
+  maxDamage: number;
+  minDamage: number;
+  falloffExponent: number;
+  coverMultiplier: number;
+}
+
+export type WeaponMechanic =
+  | "rifle"
+  | "scatter"
+  | "precision"
+  | "akimbo"
+  | "smg"
+  | "cannon"
+  | "rocket";
+
 export interface PlayerWeapon extends WeaponDefinition {
   slot: number;
   shortName: string;
@@ -40,9 +57,19 @@ export interface PlayerWeapon extends WeaponDefinition {
   projectileLifetimeMs: number;
   projectileTexture: string;
   weaponTexture: string;
+  secondaryWeaponTexture?: string;
+  barrelSeparation?: number;
   muzzleColor: number;
   recoil: number;
+  mechanic: WeaponMechanic;
+  rocket?: RocketConfig;
 }
+
+export const PROJECTILE_CONFIG = {
+  /** Hard bound on simultaneous player and bot projectiles per room. */
+  maxActiveProjectiles: 220,
+} as const;
+
 
 export const PLAYER_WEAPONS: readonly PlayerWeapon[] = [
   {
@@ -63,6 +90,7 @@ export const PLAYER_WEAPONS: readonly PlayerWeapon[] = [
     weaponTexture: "weapon-player",
     muzzleColor: 0xd7ff2e,
     recoil: 1,
+    mechanic: "rifle",
   },
   {
     id: "scatter-blaster",
@@ -82,6 +110,7 @@ export const PLAYER_WEAPONS: readonly PlayerWeapon[] = [
     weaponTexture: "weapon-scatter",
     muzzleColor: 0xc7692f,
     recoil: 3.4,
+    mechanic: "scatter",
   },
   {
     id: "vibe-lance",
@@ -101,8 +130,116 @@ export const PLAYER_WEAPONS: readonly PlayerWeapon[] = [
     weaponTexture: "weapon-precision",
     muzzleColor: 0x9bd8f2,
     recoil: 2.2,
+    mechanic: "precision",
   },
 ];
+
+export const ADVANCED_WEAPONS: readonly PlayerWeapon[] = [
+  {
+    id: "akimbo-rifles",
+    slot: 0,
+    name: "AKIMBO RIFLES",
+    shortName: "AKIMBO",
+    role: "TWIN AUTO / SHARED MAG",
+    magazineSize: 36,
+    damage: 10,
+    fireIntervalMs: 85,
+    reloadMs: 1800,
+    projectileSpeed: 1650,
+    spreadRadians: 0.045,
+    pellets: 1,
+    projectileLifetimeMs: 1500,
+    projectileTexture: "bullet-akimbo",
+    weaponTexture: "weapon-akimbo",
+    secondaryWeaponTexture: "weapon-akimbo",
+    barrelSeparation: 11,
+    muzzleColor: 0xd7ff2e,
+    recoil: 0.8,
+    mechanic: "akimbo",
+  },
+  {
+    id: "vibe-smg",
+    slot: 0,
+    name: "VIBE SMG",
+    shortName: "SMG",
+    role: "RAPID AUTO / CLOSE RANGE",
+    magazineSize: 30,
+    damage: 8,
+    fireIntervalMs: 70,
+    reloadMs: 1250,
+    projectileSpeed: 1500,
+    spreadRadians: 0.095,
+    pellets: 1,
+    projectileLifetimeMs: 1200,
+    projectileTexture: "bullet-smg",
+    weaponTexture: "weapon-smg",
+    muzzleColor: 0x9bd8f2,
+    recoil: 0.5,
+    mechanic: "smg",
+  },
+  {
+    id: "heavy-cannon",
+    slot: 0,
+    name: "HEAVY CANNON",
+    shortName: "CANNON",
+    role: "SLOW SLUG / HIGH IMPACT",
+    magazineSize: 5,
+    damage: 60,
+    fireIntervalMs: 900,
+    reloadMs: 2100,
+    projectileSpeed: 1050,
+    spreadRadians: 0.012,
+    pellets: 1,
+    projectileLifetimeMs: 2400,
+    projectileTexture: "bullet-heavy",
+    weaponTexture: "weapon-cannon",
+    muzzleColor: 0xf4e21c,
+    recoil: 4.2,
+    mechanic: "cannon",
+  },
+  {
+    id: "rocket-launcher",
+    slot: 0,
+    name: "ROCKET LAUNCHER",
+    shortName: "ROCKET",
+    role: "BLAST / SELF DANGER",
+    magazineSize: 3,
+    damage: 120,
+    fireIntervalMs: 1100,
+    reloadMs: 2400,
+    projectileSpeed: 850,
+    spreadRadians: 0.006,
+    pellets: 1,
+    projectileLifetimeMs: 3200,
+    projectileTexture: "rocket-projectile",
+    weaponTexture: "weapon-rocket",
+    muzzleColor: 0xc7692f,
+    recoil: 3.8,
+    mechanic: "rocket",
+    rocket: {
+      blastRadius: 180,
+      maxDamage: 120,
+      minDamage: 40,
+      falloffExponent: 1.15,
+      coverMultiplier: 0.55,
+    },
+  },
+];
+
+export const ALL_PLAYER_WEAPONS: readonly PlayerWeapon[] = [
+  ...PLAYER_WEAPONS,
+  ...ADVANCED_WEAPONS,
+];
+
+export function findPlayerWeaponById(
+  weaponId: string | null,
+): PlayerWeapon | null {
+  if (!weaponId) return null;
+  return (
+    ALL_PLAYER_WEAPONS.find((weapon) => weapon.id === weaponId) ?? null
+  );
+}
+
 
 export const MATCH_CONFIG = {
   durationMs: 90_000,

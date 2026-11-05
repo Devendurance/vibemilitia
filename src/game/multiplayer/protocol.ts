@@ -179,6 +179,7 @@ export type OnlineEvent =
       x: number;
       y: number;
       angle: number;
+      barrel: number | null;
     }
   | {
       type: "hit";
@@ -188,7 +189,8 @@ export type OnlineEvent =
       y: number;
       damage: number;
       kind: PlayerKind;
-      source: "bullet" | "grenade" | "toxic";
+      source: "bullet" | "grenade" | "toxic" | "rocket";
+      weaponId?: string;
     }
   | {
       type: "elimination";
@@ -271,6 +273,16 @@ export type OnlineEvent =
       type: "grenade-exploded";
       grenadeId: number;
       grenadeType: GrenadeType;
+      ownerId: string;
+      ownerName: string;
+      kind: PlayerKind;
+      x: number;
+      y: number;
+      blastRadius: number;
+    }
+  | {
+      type: "rocket-exploded";
+      projectileId: number;
       ownerId: string;
       ownerName: string;
       kind: PlayerKind;

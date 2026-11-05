@@ -1010,6 +1010,19 @@ a:focus-visible {
   font-size: 8px;
 }
 
+.hud-weapon-slot__icon {
+  flex: 0 0 auto;
+  width: clamp(12px, 1.05cqw, 17px);
+  height: auto;
+  color: var(--muted);
+  opacity: 0.85;
+}
+
+.hud-weapon-slot.is-active .hud-weapon-slot__icon {
+  color: var(--lime);
+  opacity: 1;
+}
+
 .hud-weapon-slot__name {
   flex: 1;
   overflow: hidden;

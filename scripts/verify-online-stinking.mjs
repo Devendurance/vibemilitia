@@ -292,8 +292,8 @@ try {
     (pickup) => pickup.type === "frag-grenade",
   );
   check(
-    "twenty-five caches preserve all three grenade types and two lances",
-    initialA.pickups.length === 25 &&
+    "thirty-one caches preserve all three grenade types and two lances",
+    initialA.pickups.length === 31 &&
       stinkingCaches.length === 3 &&
       contactCaches.length === 3 &&
       fragCaches.length === 3 &&

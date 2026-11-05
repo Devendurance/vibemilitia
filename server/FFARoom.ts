@@ -86,6 +86,48 @@ export class FFARoom extends Room {
       this.onMessage("debug-guard", (client) => {
         this.simulation?.debugSetInvulnerable(client.sessionId, 600_000);
       });
+      this.onMessage("debug-guard-target", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { id?: unknown };
+        if (typeof value.id !== "string") return;
+        this.simulation.debugSetInvulnerable(value.id, 600_000);
+      });
+      this.onMessage("debug-give-weapon", (client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { id?: unknown; weaponId?: unknown };
+        if (typeof value.weaponId !== "string") return;
+        const targetId =
+          typeof value.id === "string" ? value.id : client.sessionId;
+        this.simulation.debugGiveWeapon(targetId, value.weaponId);
+      });
+      this.onMessage("debug-freeze", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { id?: unknown; frozen?: unknown };
+        if (typeof value.id !== "string") return;
+        this.simulation.debugFreeze(value.id, Boolean(value.frozen));
+      });
+      this.onMessage("debug-disable-bot-curiosity", () => {
+        this.simulation?.debugDisableBotWeaponCuriosity();
+      });
+      this.onMessage("debug-pause-bot-loot", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { paused?: unknown };
+        this.simulation.debugPauseBotLoot(Boolean(value.paused));
+      });
+      this.onMessage("debug-pause-loot", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { paused?: unknown };
+        this.simulation.debugPauseLootCollection(Boolean(value.paused));
+      });
+      this.onMessage("debug-extend-match", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { durationMs?: unknown };
+        if (typeof value.durationMs !== "number") return;
+        this.simulation.debugExtendMatch(value.durationMs);
+      });
+      this.onMessage("debug-reset-pickups", () => {
+        this.simulation?.debugResetPickups();
+      });
     }
   }
 

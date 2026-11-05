@@ -178,6 +178,161 @@ function makeWeapon(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+function makeAkimboWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-akimbo")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Compact twin-rail receiver, shared drum, short vented barrels.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(4, 6, 52, 16);
+  g.fillStyle(0x2a2e34, 1);
+  g.fillRect(7, 8, 45, 11);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(10, 8, 38, 3);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(12, 13, 8, 4);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(23, 13, 4, 4);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(50, 7, 12, 6);
+  g.fillRect(50, 15, 12, 6);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(52, 8, 8, 3);
+  g.fillRect(52, 17, 8, 3);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(60, 8, 2, 3);
+  g.fillRect(60, 17, 2, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(10, 20, 12, 9);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(12, 22, 8, 6);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(13, 23, 6, 2);
+
+  g.generateTexture("weapon-akimbo", 64, 30);
+  g.destroy();
+}
+
+function makeSmgWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-smg")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Stubby receiver, oversized magazine, angular wire stock.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(6, 7, 44, 15);
+  g.fillStyle(0x1f2227, 1);
+  g.fillRect(8, 9, 39, 11);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(10, 9, 33, 2);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(14, 13, 6, 4);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(23, 13, 5, 4);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(46, 9, 11, 7);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(48, 11, 8, 3);
+  g.fillRect(54, 7, 3, 3);
+  g.fillRect(54, 17, 3, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(19, 21, 10, 12);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(21, 22, 7, 10);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(22, 24, 5, 2);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(2, 11, 6, 5);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(3, 12, 3, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(30, 3, 12, 4);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(32, 4, 3, 2);
+
+  g.generateTexture("weapon-smg", 58, 34);
+  g.destroy();
+}
+
+function makeCannonWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-cannon")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Wide industrial receiver, heat shroud and heavy muzzle brake.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(2, 7, 72, 24);
+  g.fillStyle(0x2a2e34, 1);
+  g.fillRect(5, 10, 63, 18);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(8, 12, 52, 4);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(10, 18, 30, 7);
+  g.fillStyle(0xf4e21c, 1);
+  g.fillRect(12, 20, 9, 3);
+  g.fillRect(25, 20, 9, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(62, 6, 24, 11);
+  g.fillRect(62, 20, 24, 9);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(65, 8, 18, 7);
+  g.fillRect(65, 22, 18, 5);
+  g.fillStyle(0xf4e21c, 1);
+  g.fillRect(79, 9, 4, 4);
+  g.fillRect(79, 23, 4, 3);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(14, 31, 16, 9);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(16, 32, 12, 7);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(17, 34, 9, 2);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(44, 14, 5, 5);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(52, 14, 5, 5);
+
+  g.generateTexture("weapon-cannon", 88, 42);
+  g.destroy();
+}
+
+function makeRocketWeapon(scene: Phaser.Scene): void {
+  if (scene.textures.exists("weapon-rocket")) return;
+  const g = scene.make.graphics({ x: 0, y: 0 }, false);
+
+  // Thick shoulder tube with rear venturi, side grip, glowing warhead rail.
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(2, 9, 72, 20);
+  g.fillStyle(0x1f2227, 1);
+  g.fillRect(5, 12, 66, 14);
+  g.fillStyle(0x3d434b, 1);
+  g.fillRect(8, 13, 58, 4);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(12, 19, 42, 5);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(72, 7, 18, 24);
+  g.fillStyle(0x2a2e34, 1);
+  g.fillRect(75, 10, 12, 18);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(78, 12, 6, 14);
+  g.fillStyle(0xf4e21c, 1);
+  g.fillRect(79, 13, 3, 4);
+  g.fillStyle(0x9bd8f2, 1);
+  g.fillRect(24, 15, 6, 4);
+  g.fillStyle(0xd7ff2e, 1);
+  g.fillRect(34, 15, 4, 4);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(18, 27, 14, 11);
+  g.fillStyle(0xc7692f, 1);
+  g.fillRect(20, 28, 10, 9);
+  g.fillStyle(0xf5f3ec, 1);
+  g.fillRect(21, 30, 7, 2);
+  g.fillStyle(0x0c0d0f, 1);
+  g.fillRect(0, 15, 5, 8);
+  g.fillStyle(0xe5484d, 1);
+  g.fillRect(1, 17, 2, 4);
+
+  g.generateTexture("weapon-rocket", 92, 40);
+  g.destroy();
+}
+
 function makeMuzzleFlash(scene: Phaser.Scene): void {
   if (scene.textures.exists("muzzle-flash")) return;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
@@ -260,9 +415,17 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makeBullet(scene, "bullet-scatter", 0xc7692f, 0xf4e21c, 13, 8);
   makeBullet(scene, "bullet-precision", 0x9bd8f2, 0xf5f3ec, 34, 6);
   makeBullet(scene, "bullet-drone", 0xe5484d, 0xffb4b6);
+  makeBullet(scene, "bullet-akimbo", 0xd7ff2e, 0xf5f3ec, 16, 6);
+  makeBullet(scene, "bullet-smg", 0x9bd8f2, 0xf5f3ec, 14, 6);
+  makeBullet(scene, "bullet-heavy", 0xf4e21c, 0xc7692f, 28, 12);
+  makeBullet(scene, "rocket-projectile", 0xe5484d, 0xf4e21c, 34, 12);
   makeWeapon(scene);
   makeScatterWeapon(scene);
   makePrecisionWeapon(scene);
+  makeAkimboWeapon(scene);
+  makeSmgWeapon(scene);
+  makeCannonWeapon(scene);
+  makeRocketWeapon(scene);
   makeMuzzleFlash(scene);
   makeDrone(scene);
   makeMedkitPickup(scene);

@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { PLAYER_WEAPONS } from "@/game/config/gameplay";
+import { ALL_PLAYER_WEAPONS } from "@/game/config/gameplay";
 import { getCharacterSkin } from "@/game/characters/roster";
 import { PlayerVisuals } from "@/game/entities/PlayerVisuals";
 import type { OnlineCombatantSnapshot } from "@/game/multiplayer/protocol";
@@ -32,6 +32,7 @@ export class CombatantView {
   private alive = true;
   private wasAlive = true;
   private muzzleFlashMs = 0;
+  private muzzleBarrel: 0 | 1 = 0;
   private damageFlashMs = 0;
 
   constructor(
@@ -108,6 +109,7 @@ export class CombatantView {
     texture: string;
     weaponTexture: string;
     weaponVisible: boolean;
+    secondaryWeaponVisible: boolean;
     nameVisible: boolean;
     botLabelVisible: boolean;
     healthBarVisible: boolean;
@@ -116,6 +118,7 @@ export class CombatantView {
       texture: this.sprite.texture.key,
       weaponTexture: this.visuals.weaponTextureKey,
       weaponVisible: this.visuals.weaponVisible,
+      secondaryWeaponVisible: this.visuals.secondaryWeaponVisible,
       nameVisible: this.nameText.visible,
       botLabelVisible: this.botTag?.visible ?? false,
       healthBarVisible: this.healthFill.visible,
@@ -197,8 +200,8 @@ export class CombatantView {
     this.localRing?.setPosition(this.currentX, this.currentY + 2);
 
     const weapon =
-      PLAYER_WEAPONS.find((entry) => entry.id === snapshot.weaponId) ??
-      PLAYER_WEAPONS[0];
+      ALL_PLAYER_WEAPONS.find((entry) => entry.id === snapshot.weaponId) ??
+      ALL_PLAYER_WEAPONS[0];
     this.visuals.update({
       x: this.currentX,
       y: this.currentY,
@@ -209,17 +212,21 @@ export class CombatantView {
       moving: Math.abs(snapshot.vx) > 20,
       velocityX: snapshot.vx,
       muzzleFlash: this.muzzleFlashMs / 80,
+      muzzleBarrel: this.muzzleBarrel,
       shield: snapshot.invulnerable > 0,
       flash: this.damageFlashMs > 0,
       alpha: 1,
       weaponTexture: weapon.weaponTexture,
+      secondaryWeaponTexture: weapon.secondaryWeaponTexture,
+      barrelSeparation: weapon.barrelSeparation,
       muzzleColor: weapon.muzzleColor,
     });
 
     this.initialized = true;
   }
 
-  onShot(): void {
+  onShot(barrel: 0 | 1 = 0): void {
+    this.muzzleBarrel = barrel;
     this.muzzleFlashMs = 80;
   }
 

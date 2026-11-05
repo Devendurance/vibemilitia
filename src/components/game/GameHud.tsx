@@ -19,6 +19,86 @@ function Keycap({ children }: { children: React.ReactNode }) {
   return <kbd className="keycap">{children}</kbd>;
 }
 
+function WeaponIcon({ weaponId }: { weaponId: string }) {
+  const common = {
+    width: 20,
+    height: 11,
+    viewBox: "0 0 24 12",
+    fill: "currentColor",
+    "aria-hidden": true,
+    className: "hud-weapon-slot__icon",
+  } as const;
+  switch (weaponId) {
+    case "scatter-blaster":
+      return (
+        <svg {...common}>
+          <rect x="2" y="4" width="14" height="5" rx="1" />
+          <rect x="14" y="3" width="8" height="3" />
+          <rect x="14" y="7" width="8" height="3" />
+          <rect x="4" y="8" width="4" height="3" />
+        </svg>
+      );
+    case "vibe-lance":
+      return (
+        <svg {...common}>
+          <rect x="1" y="5" width="20" height="2.4" rx="1" />
+          <rect x="12" y="7" width="2" height="4" />
+          <rect x="6" y="2.5" width="6" height="2.6" rx="1" />
+          <rect x="20" y="4.6" width="3" height="3" />
+        </svg>
+      );
+    case "akimbo-rifles":
+      return (
+        <svg {...common}>
+          <rect x="3" y="1.5" width="12" height="3.2" rx="1" />
+          <rect x="12" y="1" width="8" height="2" />
+          <rect x="3" y="7.3" width="12" height="3.2" rx="1" />
+          <rect x="12" y="9" width="8" height="2" />
+          <rect x="5" y="4" width="3" height="1.5" />
+          <rect x="5" y="6.5" width="3" height="1.5" />
+        </svg>
+      );
+    case "vibe-smg":
+      return (
+        <svg {...common}>
+          <rect x="3" y="3.5" width="13" height="5" rx="1" />
+          <rect x="14" y="4.5" width="7" height="2.4" />
+          <rect x="6" y="8" width="4" height="3" />
+          <rect x="1" y="5" width="3" height="2" />
+        </svg>
+      );
+    case "heavy-cannon":
+      return (
+        <svg {...common}>
+          <rect x="1" y="3" width="15" height="6" rx="1" />
+          <rect x="14" y="2" width="9" height="3.6" />
+          <rect x="14" y="6.4" width="9" height="3.6" />
+          <rect x="4" y="8.5" width="5" height="3" />
+          <rect x="6" y="4.5" width="4" height="2" />
+        </svg>
+      );
+    case "rocket-launcher":
+      return (
+        <svg {...common}>
+          <rect x="1" y="3" width="17" height="6" rx="2" />
+          <rect x="16" y="2" width="5" height="8" rx="1" />
+          <path d="M21 4.5 L24 6 L21 7.5 Z" />
+          <rect x="5" y="8.5" width="4" height="3" />
+          <rect x="7" y="4.5" width="5" height="1.6" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common}>
+          <rect x="2" y="4" width="14" height="4.6" rx="1" />
+          <rect x="15" y="4.8" width="7" height="2.2" />
+          <rect x="4" y="8.2" width="4" height="3" />
+          <rect x="9" y="3" width="4" height="1.4" />
+        </svg>
+      );
+  }
+}
+
 function ContactGrenadeIcon() {
   return (
     <svg
@@ -518,6 +598,7 @@ export function GameHud({
                   data-owned={slot.owned}
                 >
                   <Keycap>{slot.slot}</Keycap>
+                  <WeaponIcon weaponId={empty ? "" : slot.id} />
                   <span className="hud-weapon-slot__name">
                     {empty ? "EMPTY" : slot.shortName}
                   </span>

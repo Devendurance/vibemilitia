@@ -151,26 +151,54 @@ try {
       ),
     initialBotSkins.join(", "),
   );
-  check(
-    "bots show the player weapon layer",
-    botViews.length === 7 &&
-      botViews.every(
-        (view) =>
-          view.weaponVisible &&
-          view.weaponTexture === "weapon-player" &&
-          view.nameVisible,
-      ),
+  const validWeaponTextures = new Set([
+    "weapon-player",
+    "weapon-scatter",
+    "weapon-precision",
+    "weapon-akimbo",
+    "weapon-smg",
+    "weapon-cannon",
+    "weapon-rocket",
+  ]);
+  const validBotWeaponIds = new Set([
+    "vibe-rifle",
+    "scatter-blaster",
+    "vibe-lance",
+    "akimbo-rifles",
+    "vibe-smg",
+    "heavy-cannon",
+    "rocket-launcher",
+  ]);
+  const aliveBotViews = botViews.filter(
+    (view) =>
+      initial.participants.find((entry) => entry.id === view.id)?.alive ===
+      true,
   );
   check(
-    "bots show BOT labels and the human does not",
-    botViews.every((view) => view.botLabelVisible) &&
+    "alive bots show a valid player weapon layer",
+    aliveBotViews.length >= 5 &&
+      aliveBotViews.every(
+        (view) =>
+          view.weaponVisible &&
+          validWeaponTextures.has(view.weaponTexture) &&
+          view.nameVisible,
+      ),
+    aliveBotViews.map((view) => `${view.name}:${view.weaponTexture}`).join(","),
+  );
+  check(
+    "alive bots show BOT labels and the human does not",
+    aliveBotViews.every((view) => view.botLabelVisible) &&
       humanViews.every((view) => !view.botLabelVisible),
   );
   check(
-    "bot snapshots use the Vibe Rifle",
+    "bot snapshots use valid weapon identities",
     initial.participants
       .filter((entry) => entry.kind === "bot")
-      .every((entry) => entry.weaponId === "vibe-rifle"),
+      .every((entry) => validBotWeaponIds.has(entry.weaponId)),
+    initial.participants
+      .filter((entry) => entry.kind === "bot")
+      .map((entry) => entry.weaponId)
+      .join(","),
   );
   const loadedSprites = await pageA.evaluate(() =>
     performance

@@ -25,6 +25,7 @@ declare global {
           texture: string;
           weaponTexture: string;
           weaponVisible: boolean;
+          secondaryWeaponVisible: boolean;
           nameVisible: boolean;
           botLabelVisible: boolean;
           healthBarVisible: boolean;
@@ -47,7 +48,28 @@ declare global {
           teleportBot: (id: string, x: number, y: number) => void;
           endMatch: () => void;
           guard: () => void;
+          giveWeapon: (id: string, weaponId: string) => void;
+          freeze: (id: string, frozen: boolean) => void;
+          disableBotCuriosity: () => void;
+          setZoom: (zoom: number) => void;
+          setAim: (x: number, y: number) => void;
+          fireOnce: () => void;
+          reloadOnce: () => void;
+          guardTarget: (id: string) => void;
+          pauseBotLoot: (paused: boolean) => void;
+          pauseLoot: (paused: boolean) => void;
+          extendMatch: (durationMs: number) => void;
+          resetPickups: () => void;
         };
+        combatLog: Array<{
+          type: string;
+          weaponId: string | null;
+          barrel: number | null;
+          ownerId: string;
+          victimId: string | null;
+          damage: number | null;
+          atMs: number;
+        }>;
       };
       sendCommand: (command: GameCommand) => void;
     };

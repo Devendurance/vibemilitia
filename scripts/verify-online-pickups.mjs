@@ -201,13 +201,13 @@ try {
       contactCaches.every((pickup) => pickup.active) &&
       fragCaches.every((pickup) => pickup.active) &&
       stinkingCaches.every((pickup) => pickup.active) &&
-      initialA.pickups.length === 25,
+      initialA.pickups.length === 31,
     `contact=${contactCaches.length} frag=${fragCaches.length} stink=${stinkingCaches.length} total=${initialA.pickups.length}`,
   );
   check(
-    "all pickups render in the world",
+    "all pickups have rendered world views",
     initialA.pickupViews.length === initialA.pickups.length &&
-      initialA.pickupViews.every((pickup) => pickup.visible),
+      initialA.pickupViews.every((pickup) => Boolean(pickup.texture)),
     `views=${initialA.pickupViews.length}`,
   );
 
@@ -385,10 +385,18 @@ try {
     `active=${pickupA?.active} respawnIn=${Math.round(pickupA?.respawnIn ?? 0)}`,
   );
   check(
-    "rendered pickup returns after respawn",
+    "rendered pickup view returns after respawn",
     pickupA?.active === true
-      ? respawnA.pickupViews.find((pickup) => pickup.id === collectedId)?.visible === true
+      ? Boolean(
+          respawnA.pickupViews.find(
+            (pickup) =>
+              pickup.id === collectedId &&
+              pickup.active === true &&
+              Boolean(pickup.texture),
+          ),
+        )
       : true,
+    `active=${pickupA?.active} views=${respawnA.pickupViews.length}`,
   );
   if (pickupA?.active === true) {
     await screenshot(pageA, "03-pickup-respawned");

@@ -1,10 +1,12 @@
 import {
   PLAYER_CONFIG,
   PLAYER_WEAPONS,
+  PROJECTILE_CONFIG,
   JETPACK_CONFIG,
   MATCH_CONFIG,
   DRONE_CONFIG,
   DRONE_WEAPON,
+  findPlayerWeaponById,
   type PlayerWeapon,
 } from "@/game/config/gameplay";
 import { ARENA } from "@/game/arena/arena";
@@ -23,7 +25,7 @@ import {
   TOXIC_DAMAGE_PER_TICK,
   addGrenade,
   canAddGrenade,
-  computeBlastDamage,
+  computeRadialDamage,
   consumeGrenade,
   createGrenadeInventory,
   grenadeInventoryTotal,
@@ -42,6 +44,7 @@ import {
   pickupRespawnMs,
   resetPickups,
   stepPickupRespawns,
+  weaponIdFromPickup,
   applyMedkit,
   type PickupRuntime,
   type PickupType,
@@ -118,14 +121,14 @@ const BOT_WEAPON: PlayerWeapon = {
   weaponTexture: PLAYER_WEAPONS[0].weaponTexture,
   muzzleColor: PLAYER_WEAPONS[0].muzzleColor,
   recoil: 0,
+  mechanic: "rifle",
 };
 
 const CHARACTER_AIM_HEIGHT = 58;
 const CHARACTER_PIVOT_X = 28;
 
 function findPlayerWeapon(weaponId: string | null): PlayerWeapon | null {
-  if (!weaponId) return null;
-  return PLAYER_WEAPONS.find((weapon) => weapon.id === weaponId) ?? null;
+  return findPlayerWeaponById(weaponId);
 }
 
 function emptyWeaponState(): WeaponState {
@@ -169,6 +172,7 @@ const BOT_SUPPLY_CONFIG = {
   medkitThreshold: 55,
   medkitSeekRange: 650,
   grenadeSeekRange: 420,
+  weaponSeekRange: 560,
   grenadeDecisionMs: 9_000,
   grenadeDecisionJitterMs: 5_000,
   grenadeMinRange: 190,
@@ -176,6 +180,14 @@ const BOT_SUPPLY_CONFIG = {
   cloudAvoidRange: 48,
   cloudAvoidMs: 650,
 } as const;
+
+const BOT_ADVANCED_RANGE: Record<string, { min: number; max: number }> = {
+  "akimbo-rifles": { min: 70, max: 760 },
+  "vibe-smg": { min: 50, max: 620 },
+  "heavy-cannon": { min: 120, max: 1000 },
+  "rocket-launcher": { min: 260, max: 900 },
+  "vibe-lance": { min: 150, max: 1100 },
+};
 
 interface ProjectileRuntime {
   id: number;
@@ -188,6 +200,8 @@ interface ProjectileRuntime {
   damage: number;
   weaponId: string;
   weaponName: string;
+  mechanic: PlayerWeapon["mechanic"];
+  rocket: PlayerWeapon["rocket"] | null;
   expiresAt: number;
 }
 
@@ -237,6 +251,7 @@ interface HumanRuntime {
   weapons: WeaponState[];
   weaponIds: (string | null)[];
   equippedIndex: number;
+  akimboBarrel: 0 | 1;
   input: OnlineInputPayload | null;
   lastInputSeq: number;
   queuedJump: boolean;
@@ -281,6 +296,11 @@ interface BotRuntime {
   deaths: number;
   lastKillerName: string | null;
   deathRecorded: boolean;
+  weaponId: string;
+  weaponState: WeaponState;
+  akimboBarrel: 0 | 1;
+  weaponCuriosity: boolean;
+  frozen: boolean;
   targetId: string | null;
   path: NavPoint[];
   pathIndex: number;
@@ -440,6 +460,9 @@ export class GameSimulation {
   private rng = createRng(0x5eedc0de);
   private skinRng: () => number;
   private botsEnabled: boolean;
+  private botsWeaponCuriosity = true;
+  private botsLootPaused = false;
+  private lootCollectionPaused = false;
 
   constructor(options: SimulationOptions) {
     this.roomId = options.roomId;
@@ -876,6 +899,7 @@ export class GameSimulation {
       weapons: createLoadoutStates(weaponIds),
       weaponIds,
       equippedIndex: 0,
+      akimboBarrel: 0,
       input: null,
       lastInputSeq: 0,
       queuedJump: false,
@@ -950,6 +974,12 @@ export class GameSimulation {
       deaths: 0,
       lastKillerName: null,
       deathRecorded: false,
+      weaponId: BOT_WEAPON.id,
+      weaponState: createWeaponState(BOT_WEAPON),
+      akimboBarrel: 0,
+      weaponCuriosity:
+        this.botsWeaponCuriosity && this.rng() < 0.6,
+      frozen: false,
       targetId: null,
       path: [],
       pathIndex: 0,
@@ -1013,6 +1043,7 @@ export class GameSimulation {
     human.weaponIds = createStarterWeaponLoadout();
     human.weapons = createLoadoutStates(human.weaponIds);
     human.equippedIndex = 0;
+    human.akimboBarrel = 0;
     this.events.push({
       type: "respawn",
       id: human.id,
@@ -1039,6 +1070,10 @@ export class GameSimulation {
     bot.respawnRemainingMs = 0;
     bot.lastDamageMs = 0;
     bot.deathRecorded = false;
+    bot.weaponId = BOT_WEAPON.id;
+    bot.weaponState = createWeaponState(BOT_WEAPON);
+    bot.akimboBarrel = 0;
+    bot.frozen = false;
     bot.path = [];
     bot.pathIndex = 0;
     bot.pathLength = 0;
@@ -1132,6 +1167,9 @@ export class GameSimulation {
     if (human.queuedWeapon !== null) {
       const requested = Math.max(0, Math.min(2, human.queuedWeapon));
       if (canEquipWeaponSlot(human.weaponIds, requested)) {
+        if (requested !== human.equippedIndex) {
+          human.akimboBarrel = 0;
+        }
         human.equippedIndex = requested;
       }
       human.queuedWeapon = null;
@@ -1151,6 +1189,8 @@ export class GameSimulation {
       human.weapons[human.equippedIndex] = weapon.state;
       if (weapon.fired) {
         human.shotsFired += definition.pellets;
+        const barrel: 0 | 1 =
+          definition.mechanic === "akimbo" ? human.akimboBarrel : 0;
         this.fireWeapon(
           human.id,
           "human",
@@ -1158,7 +1198,11 @@ export class GameSimulation {
           human.kin.x + 28,
           human.kin.y - 58,
           human.aimAngle,
+          barrel,
         );
+        if (definition.mechanic === "akimbo") {
+          human.akimboBarrel = human.akimboBarrel === 0 ? 1 : 0;
+        }
       }
     } else {
       human.weapons[human.equippedIndex] = emptyWeaponState();
@@ -1244,11 +1288,15 @@ export class GameSimulation {
     type: PickupType,
   ): boolean {
     if (isWeaponPickup(type)) {
-      if (combatant.kind !== "human") return false;
-      return (
-        weaponPickupOutcome(combatant.weaponIds, "vibe-lance") !==
-        "needs-swap"
-      );
+      const weaponId = weaponIdFromPickup(type);
+      if (!weaponId) return false;
+      if (combatant.kind === "human") {
+        return (
+          weaponPickupOutcome(combatant.weaponIds, weaponId) !==
+          "needs-swap"
+        );
+      }
+      return this.canBotAcquireWeapon(combatant, weaponId);
     }
     if (type === "medkit") {
       return combatant.medkits < MEDKIT_CONFIG.maxCarried;
@@ -1264,9 +1312,16 @@ export class GameSimulation {
     type: PickupType,
   ): PickupGrantResult {
     if (isWeaponPickup(type)) {
-      if (combatant.kind !== "human") return PICKUP_REJECTED;
-      const definition = findPlayerWeapon("vibe-lance");
-      if (!definition) return PICKUP_REJECTED;
+      const weaponId = weaponIdFromPickup(type);
+      const definition = findPlayerWeapon(weaponId);
+      if (!weaponId || !definition) return PICKUP_REJECTED;
+      if (combatant.kind === "bot") {
+        return this.grantBotWeapon(
+          combatant,
+          weaponId,
+          definition.magazineSize,
+        );
+      }
       const acquired = this.acquireWeapon(
         combatant,
         definition.id,
@@ -1297,6 +1352,39 @@ export class GameSimulation {
       text: `${grenadeLabel(grenadeType)} +1`,
       detail: PICKUP_LABELS[type],
     };
+  }
+
+  private canBotAcquireWeapon(
+    bot: BotRuntime,
+    weaponId: string,
+  ): boolean {
+    if (!bot.weaponCuriosity) return false;
+    return bot.weaponId === weaponId || bot.weaponId === BOT_WEAPON.id;
+  }
+
+  private grantBotWeapon(
+    bot: BotRuntime,
+    weaponId: string,
+    ammo: number,
+  ): PickupGrantResult {
+    const definition = findPlayerWeapon(weaponId);
+    if (!definition || !this.canBotAcquireWeapon(bot, weaponId)) {
+      return PICKUP_REJECTED;
+    }
+    if (bot.weaponId === weaponId) {
+      bot.weaponState.ammo = definition.magazineSize;
+      bot.weaponState.reloading = false;
+      bot.weaponState.reloadRemainingMs = 0;
+      return { ok: true, text: "AMMO RESTORED", detail: definition.name };
+    }
+    bot.weaponId = weaponId;
+    bot.weaponState = createWeaponState(definition);
+    bot.weaponState.ammo = clampWeaponAmmo(
+      ammo,
+      definition.magazineSize,
+    );
+    bot.akimboBarrel = 0;
+    return { ok: true, text: "WEAPON ACQUIRED", detail: definition.name };
   }
 
   private acquireWeapon(
@@ -1346,38 +1434,52 @@ export class GameSimulation {
     return { ok: false, slot: -1, mode: null, ammo: 0 };
   }
 
-  private canCollectLoot(human: HumanRuntime, item: LootRuntime): boolean {
+  private canCollectLoot(
+    combatant: AnyCombatant,
+    item: LootRuntime,
+  ): boolean {
     if (!item.active) return false;
     if (item.kind === "medkit") {
-      return human.medkits < MEDKIT_CONFIG.maxCarried;
+      return combatant.medkits < MEDKIT_CONFIG.maxCarried;
     }
     if (item.kind === "grenade") {
-      return item.grenadeType !== null && canAddGrenade(human.grenades);
+      return (
+        item.grenadeType !== null &&
+        canAddGrenade(combatant.grenades)
+      );
     }
     if (!item.weaponId) return false;
-    return weaponPickupOutcome(human.weaponIds, item.weaponId) !== "needs-swap";
+    if (combatant.kind === "bot") {
+      return this.canBotAcquireWeapon(combatant, item.weaponId);
+    }
+    return (
+      weaponPickupOutcome(combatant.weaponIds, item.weaponId) !==
+      "needs-swap"
+    );
   }
 
-  private collectNearbyLoot(human: HumanRuntime): void {
+  private collectNearbyLoot(combatant: AnyCombatant): void {
+    if (this.lootCollectionPaused) return;
+    if (combatant.kind === "bot" && this.botsLootPaused) return;
     while (true) {
-      const position = center(human);
+      const position = center(combatant);
       const item = findNearestActiveLoot(
         this.loot,
         position.x,
         position.aimY,
         LOOT_CONFIG.collectionRadius,
-        (candidate) => this.canCollectLoot(human, candidate),
+        (candidate) => this.canCollectLoot(combatant, candidate),
       );
       if (!item) return;
-      const granted = this.grantLoot(human, item);
+      const granted = this.grantLoot(combatant, item);
       if (!granted.ok) return;
       item.active = false;
       this.events.push({
         type: "loot-collected",
         lootId: item.id,
         kind: item.kind,
-        playerId: human.id,
-        playerName: human.name,
+        playerId: combatant.id,
+        playerName: combatant.name,
         x: item.x,
         y: item.y,
         weaponId: item.weaponId,
@@ -1389,19 +1491,27 @@ export class GameSimulation {
   }
 
   private grantLoot(
-    human: HumanRuntime,
+    combatant: AnyCombatant,
     item: LootRuntime,
   ): PickupGrantResult {
     if (item.kind === "medkit") {
-      if (human.medkits >= MEDKIT_CONFIG.maxCarried) return PICKUP_REJECTED;
-      human.medkits = Math.min(MEDKIT_CONFIG.maxCarried, human.medkits + 1);
+      if (combatant.medkits >= MEDKIT_CONFIG.maxCarried) {
+        return PICKUP_REJECTED;
+      }
+      combatant.medkits = Math.min(
+        MEDKIT_CONFIG.maxCarried,
+        combatant.medkits + 1,
+      );
       return { ok: true, text: "MEDKIT +1", detail: "FIELD REPAIR" };
     }
     if (item.kind === "grenade") {
-      if (!item.grenadeType || !canAddGrenade(human.grenades)) {
+      if (!item.grenadeType || !canAddGrenade(combatant.grenades)) {
         return PICKUP_REJECTED;
       }
-      human.grenades = addGrenade(human.grenades, item.grenadeType);
+      combatant.grenades = addGrenade(
+        combatant.grenades,
+        item.grenadeType,
+      );
       return {
         ok: true,
         text: `${grenadeLabel(item.grenadeType)} +1`,
@@ -1411,8 +1521,15 @@ export class GameSimulation {
     if (!item.weaponId) return PICKUP_REJECTED;
     const definition = findPlayerWeapon(item.weaponId);
     if (!definition) return PICKUP_REJECTED;
+    if (combatant.kind === "bot") {
+      return this.grantBotWeapon(
+        combatant,
+        item.weaponId,
+        item.ammo,
+      );
+    }
     const acquired = this.acquireWeapon(
-      human,
+      combatant,
       item.weaponId,
       item.ammo,
     );
@@ -1455,12 +1572,13 @@ export class GameSimulation {
     }
     for (const pickup of this.pickups) {
       if (!pickup.active || !isWeaponPickup(pickup.type)) continue;
-      if (ownsWeapon(human.weaponIds, "vibe-lance")) continue;
+      const pickupWeaponId = weaponIdFromPickup(pickup.type);
+      const definition = findPlayerWeapon(pickupWeaponId);
+      if (!definition) continue;
+      if (ownsWeapon(human.weaponIds, definition.id)) continue;
       const distance = Math.hypot(pickup.x - position.x, pickup.y - position.aimY);
       if (distance > LOOT_CONFIG.collectionRadius) continue;
       if (best && distance >= best.distance) continue;
-      const definition = findPlayerWeapon("vibe-lance");
-      if (!definition) continue;
       best = {
         loot: null,
         pickup,
@@ -1481,6 +1599,7 @@ export class GameSimulation {
     state.ammo = clampWeaponAmmo(best.ammo, definition.magazineSize);
     human.weapons[slot] = state;
     human.equippedIndex = slot;
+    human.akimboBarrel = 0;
 
     if (best.loot) {
       best.loot.active = false;
@@ -1500,11 +1619,11 @@ export class GameSimulation {
     }
     if (best.pickup) {
       best.pickup.active = false;
-      best.pickup.respawnRemainingMs = pickupRespawnMs("vibe-lance");
+      best.pickup.respawnRemainingMs = pickupRespawnMs(best.pickup.type);
       this.events.push({
         type: "pickup-collected",
         pickupId: best.pickup.id,
-        itemType: "vibe-lance",
+        itemType: best.pickup.type,
         playerId: human.id,
         playerName: human.name,
         x: best.pickup.x,
@@ -1548,13 +1667,13 @@ export class GameSimulation {
     const weaponId =
       victim.kind === "human"
         ? victim.weaponIds[victim.equippedIndex] ?? BOT_WEAPON.id
-        : BOT_WEAPON.id;
+        : victim.weaponId;
     const definition = findPlayerWeapon(weaponId) ?? findPlayerWeapon(BOT_WEAPON.id);
     if (!definition) return [];
     const weaponAmmo =
       victim.kind === "human"
         ? victim.weapons[victim.equippedIndex]?.ammo ?? 0
-        : definition.magazineSize;
+        : victim.weaponState.ammo;
     const created = createEliminationLoot({
       eliminationId,
       roomId: this.roomId,
@@ -1854,6 +1973,74 @@ export class GameSimulation {
     });
     if (this.timer.phase !== "live") return;
 
+    this.applyRadialDamage({
+      x: grenade.x,
+      y: grenade.y,
+      ownerId: grenade.ownerId,
+      ownerName: grenade.ownerName,
+      radius: definition.blastRadius,
+      maxDamage: definition.maxDamage,
+      minDamage: definition.minDamage,
+      falloffExponent: definition.falloffExponent,
+      coverMultiplier: definition.coverMultiplier,
+      weaponName: definition.name,
+      weaponId: undefined,
+      source: "grenade",
+      directVictimId,
+    });
+  }
+
+  private detonateRocket(
+    projectile: ProjectileRuntime,
+    directVictimId?: string,
+  ): void {
+    const rocket = projectile.rocket;
+    if (!rocket) return;
+    this.events.push({
+      type: "rocket-exploded",
+      projectileId: projectile.id,
+      ownerId: projectile.ownerId,
+      ownerName:
+        this.findCombatant(projectile.ownerId)?.name ?? "ROCKET",
+      kind: projectile.ownerKind,
+      x: projectile.x,
+      y: projectile.y,
+      blastRadius: rocket.blastRadius,
+    });
+    if (this.timer.phase !== "live") return;
+    this.applyRadialDamage({
+      x: projectile.x,
+      y: projectile.y,
+      ownerId: projectile.ownerId,
+      ownerName:
+        this.findCombatant(projectile.ownerId)?.name ?? "ROCKET",
+      radius: rocket.blastRadius,
+      maxDamage: rocket.maxDamage,
+      minDamage: rocket.minDamage,
+      falloffExponent: rocket.falloffExponent,
+      coverMultiplier: rocket.coverMultiplier,
+      weaponName: projectile.weaponName,
+      weaponId: projectile.weaponId,
+      source: "rocket",
+      directVictimId,
+    });
+  }
+
+  private applyRadialDamage(options: {
+    x: number;
+    y: number;
+    ownerId: string;
+    ownerName: string;
+    radius: number;
+    maxDamage: number;
+    minDamage: number;
+    falloffExponent: number;
+    coverMultiplier: number;
+    weaponName: string;
+    weaponId?: string;
+    source: "grenade" | "rocket";
+    directVictimId?: string;
+  }): void {
     for (const victim of [
       ...this.humans.values(),
       ...this.bots.values(),
@@ -1862,35 +2049,42 @@ export class GameSimulation {
       if (!victim.alive) continue;
       const position = center(victim);
       const distance =
-        victim.id === directVictimId
+        victim.id === options.directVictimId
           ? 0
           : Math.hypot(
-              position.x - grenade.x,
-              position.aimY - grenade.y,
+              position.x - options.x,
+              position.aimY - options.y,
             );
-      if (distance > definition.blastRadius) continue;
-      let damage = computeBlastDamage(distance, definition);
+      if (distance > options.radius) continue;
+      let damage = computeRadialDamage(
+        distance,
+        options.radius,
+        options.maxDamage,
+        options.minDamage,
+        options.falloffExponent,
+      );
       if (damage <= 0) continue;
       if (
         distance > 0 &&
         this.isBlastObstructed(
-          grenade.x,
-          grenade.y,
+          options.x,
+          options.y,
           position.x,
           position.aimY,
         )
       ) {
-        damage = Math.round(damage * definition.coverMultiplier);
+        damage = Math.round(damage * options.coverMultiplier);
       }
       if (damage <= 0) continue;
       this.damageCombatant(
         victim,
         damage,
-        grenade.ownerId,
-        definition.name,
+        options.ownerId,
+        options.weaponName,
         false,
-        grenade.ownerName,
-        "grenade",
+        options.ownerName,
+        options.source,
+        options.weaponId,
       );
     }
   }
@@ -2070,9 +2264,21 @@ export class GameSimulation {
     x: number,
     y: number,
     aim: number,
+    barrel: 0 | 1 = 0,
   ): void {
-    const pivotX = x + Math.cos(aim) * 66;
-    const pivotY = y + Math.sin(aim) * 66;
+    if (
+      this.projectiles.size + weapon.pellets >
+      PROJECTILE_CONFIG.maxActiveProjectiles
+    ) {
+      return;
+    }
+    const side = weapon.mechanic === "akimbo" && barrel === 1 ? 1 : -1;
+    const separation =
+      weapon.mechanic === "akimbo" ? weapon.barrelSeparation ?? 10 : 0;
+    const pivotX =
+      x + Math.cos(aim) * 66 - Math.sin(aim) * separation * side;
+    const pivotY =
+      y + Math.sin(aim) * 66 + Math.cos(aim) * separation * side;
     for (let index = 0; index < weapon.pellets; index += 1) {
       let offset: number;
       if (weapon.pellets === 1) {
@@ -2094,6 +2300,8 @@ export class GameSimulation {
         damage: weapon.damage,
         weaponId: weapon.id,
         weaponName: weapon.name,
+        mechanic: weapon.mechanic,
+        rocket: weapon.rocket ?? null,
         expiresAt: this.elapsedMs + weapon.projectileLifetimeMs,
       };
       this.projectiles.set(projectile.id, projectile);
@@ -2105,6 +2313,7 @@ export class GameSimulation {
       x: pivotX,
       y: pivotY,
       angle: aim,
+      barrel: weapon.mechanic === "akimbo" ? barrel : null,
     });
   }
 
@@ -2114,6 +2323,7 @@ export class GameSimulation {
       const speed = Math.hypot(projectile.vx, projectile.vy);
       const substeps = Math.max(1, Math.ceil((speed * dt) / 8));
       let hit = false;
+      let directVictimId: string | undefined;
       for (let step = 0; step < substeps && !hit; step += 1) {
         projectile.x += (projectile.vx * dt) / substeps;
         projectile.y += (projectile.vy * dt) / substeps;
@@ -2131,20 +2341,39 @@ export class GameSimulation {
           if (!combatant.alive || combatant.id === projectile.ownerId) continue;
           const rect = bodyRect(combatant);
           if (!pointInRect(projectile.x, projectile.y, rect)) continue;
-          this.damageCombatant(
-            combatant,
-            projectile.damage,
-            projectile.ownerId,
-            projectile.weaponName,
-          );
+          directVictimId = combatant.id;
           hit = true;
           break;
         }
       }
       if (hit || this.elapsedMs >= projectile.expiresAt) {
         this.projectiles.delete(projectile.id);
+        this.resolveProjectileImpact(projectile, directVictimId);
       }
     }
+  }
+
+  private resolveProjectileImpact(
+    projectile: ProjectileRuntime,
+    directVictimId?: string,
+  ): void {
+    if (projectile.mechanic === "rocket") {
+      this.detonateRocket(projectile, directVictimId);
+      return;
+    }
+    if (!directVictimId) return;
+    const victim = this.findCombatant(directVictimId);
+    if (!victim) return;
+    this.damageCombatant(
+      victim,
+      projectile.damage,
+      projectile.ownerId,
+      projectile.weaponName,
+      true,
+      undefined,
+      "bullet",
+      projectile.weaponId,
+    );
   }
 
   private damageCombatant(
@@ -2154,7 +2383,8 @@ export class GameSimulation {
     weaponName: string,
     trackAccuracy = true,
     attackerName?: string,
-    source: "bullet" | "grenade" | "toxic" = "bullet",
+    source: "bullet" | "grenade" | "toxic" | "rocket" = "bullet",
+    weaponId?: string,
   ): void {
     if (!victim.alive || victim.invulnerableRemainingMs > 0) return;
     const attacker = this.findCombatant(attackerId);
@@ -2175,6 +2405,7 @@ export class GameSimulation {
       damage: amount,
       kind: victim.kind,
       source,
+      weaponId,
     });
 
     if (victim.health <= 0) {
@@ -2330,6 +2561,14 @@ export class GameSimulation {
       return;
     }
 
+    if (bot.frozen) {
+      bot.vx = 0;
+      bot.vy = 0;
+      bot.thrusting = false;
+      bot.burstRemaining = 0;
+      return;
+    }
+
     bot.invulnerableRemainingMs = Math.max(0, bot.invulnerableRemainingMs - dtMs);
     bot.medkitCooldownRemainingMs = Math.max(
       0,
@@ -2355,6 +2594,7 @@ export class GameSimulation {
       this.tryUseMedkitFor(bot);
     }
     this.collectNearbyPickups(bot);
+    this.collectNearbyLoot(bot);
     const dt = Math.min(dtMs, 50) / 1000;
     const target = this.chooseBotTarget(bot);
     if (!target) {
@@ -2366,9 +2606,10 @@ export class GameSimulation {
 
     const position = center(target);
     const origin = botWeaponOrigin(bot);
+    const botWeapon = this.botWeaponDefinition(bot);
     const flightTime =
       Math.hypot(position.x - origin.x, position.aimY - origin.y) /
-      BOT_WEAPON.projectileSpeed;
+      botWeapon.projectileSpeed;
     const targetVX = target.kind === "human" ? target.kin.vx : target.vx;
     const targetVY = target.kind === "human" ? target.kin.vy : target.vy;
     bot.aimAngle = Math.atan2(
@@ -2491,7 +2732,9 @@ export class GameSimulation {
     bot.lastX = bot.x;
     bot.lastY = bot.y;
 
-    if (hasLoS && distance < DRONE_CONFIG.aggroRange) {
+    if (bot.weaponId !== BOT_WEAPON.id) {
+      this.stepBotAdvancedWeapon(bot, dtMs, hasLoS, distance);
+    } else if (hasLoS && distance < DRONE_CONFIG.aggroRange) {
       bot.fireCooldownMs = Math.max(0, bot.fireCooldownMs - dtMs);
       if (bot.burstRemaining > 0) {
         bot.burstTimerMs -= dtMs;
@@ -2522,6 +2765,52 @@ export class GameSimulation {
     }
   }
 
+  private botWeaponDefinition(bot: BotRuntime): PlayerWeapon {
+    if (bot.weaponId === BOT_WEAPON.id) return BOT_WEAPON;
+    return findPlayerWeapon(bot.weaponId) ?? BOT_WEAPON;
+  }
+
+  private stepBotAdvancedWeapon(
+    bot: BotRuntime,
+    dtMs: number,
+    hasLoS: boolean,
+    distance: number,
+  ): void {
+    const definition = findPlayerWeapon(bot.weaponId);
+    if (!definition) return;
+    const range = BOT_ADVANCED_RANGE[definition.id] ?? {
+      min: 60,
+      max: 900,
+    };
+    const canFire =
+      hasLoS &&
+      distance >= range.min &&
+      distance <= range.max &&
+      distance < DRONE_CONFIG.aggroRange;
+    const step = stepWeapon(bot.weaponState, definition, {
+      fire: canFire,
+      reload: bot.weaponState.ammo <= 0,
+      dtMs,
+    });
+    bot.weaponState = step.state;
+    if (!step.fired) return;
+    const barrel: 0 | 1 =
+      definition.mechanic === "akimbo" ? bot.akimboBarrel : 0;
+    const origin = botWeaponOrigin(bot);
+    this.fireWeapon(
+      bot.id,
+      "bot",
+      definition,
+      origin.x,
+      origin.y,
+      bot.aimAngle,
+      barrel,
+    );
+    if (definition.mechanic === "akimbo") {
+      bot.akimboBarrel = bot.akimboBarrel === 0 ? 1 : 0;
+    }
+  }
+
   private findBotSupplyGoal(bot: BotRuntime): NavPoint | null {
     const position = center(bot);
     if (
@@ -2544,6 +2833,33 @@ export class GameSimulation {
         BOT_SUPPLY_CONFIG.grenadeSeekRange,
       );
       if (grenade) return { x: grenade.x, y: grenade.y };
+    }
+    if (
+      bot.weaponCuriosity &&
+      bot.weaponId === BOT_WEAPON.id
+    ) {
+      const weaponPickup = this.findNearestPickup(
+        position.x,
+        position.aimY,
+        (pickup) => isWeaponPickup(pickup.type),
+        BOT_SUPPLY_CONFIG.weaponSeekRange,
+      );
+      if (weaponPickup) {
+        return { x: weaponPickup.x, y: weaponPickup.y };
+      }
+      if (!this.botsLootPaused) {
+        const weaponLoot = findNearestActiveLoot(
+          this.loot,
+          position.x,
+          position.aimY,
+          BOT_SUPPLY_CONFIG.weaponSeekRange,
+          (item) =>
+            item.kind === "weapon" &&
+            Boolean(item.weaponId) &&
+            this.canBotAcquireWeapon(bot, item.weaponId!),
+        );
+        if (weaponLoot) return { x: weaponLoot.x, y: weaponLoot.y };
+      }
     }
     return null;
   }
@@ -2759,6 +3075,66 @@ export class GameSimulation {
     return true;
   }
 
+  debugGiveWeapon(id: string, weaponId: string): boolean {
+    const combatant = this.findCombatant(id);
+    const definition = findPlayerWeapon(weaponId);
+    if (!combatant || !definition) return false;
+    if (combatant.kind === "human") {
+      const emptySlot = findEmptyWeaponSlot(combatant.weaponIds);
+      const slot = emptySlot !== -1 ? emptySlot : combatant.equippedIndex;
+      combatant.weaponIds[slot] = definition.id;
+      combatant.weapons[slot] = createWeaponState(definition);
+      combatant.equippedIndex = slot;
+      combatant.akimboBarrel = 0;
+      return true;
+    }
+    combatant.weaponId = definition.id;
+    combatant.weaponState = createWeaponState(definition);
+    combatant.akimboBarrel = 0;
+    return true;
+  }
+
+  debugFreeze(id: string, frozen: boolean): boolean {
+    const combatant = this.findCombatant(id);
+    if (!combatant || combatant.kind !== "bot") return false;
+    combatant.frozen = frozen;
+    combatant.vx = 0;
+    combatant.vy = 0;
+    combatant.thrusting = false;
+    if (frozen) combatant.invulnerableRemainingMs = 0;
+    return true;
+  }
+
+  debugDisableBotWeaponCuriosity(): void {
+    this.botsWeaponCuriosity = false;
+    for (const bot of this.bots.values()) {
+      bot.weaponCuriosity = false;
+    }
+  }
+
+  debugPauseBotLoot(paused: boolean): void {
+    this.botsLootPaused = paused;
+  }
+
+  debugPauseLootCollection(paused: boolean): void {
+    this.lootCollectionPaused = paused;
+  }
+
+  debugExtendMatch(durationMs: number): boolean {
+    if (this.timer.phase !== "live" || !Number.isFinite(durationMs)) {
+      return false;
+    }
+    this.timer = {
+      ...this.timer,
+      remainingMs: Math.max(this.timer.remainingMs, durationMs),
+    };
+    return true;
+  }
+
+  debugResetPickups(): void {
+    resetPickups(this.pickups);
+  }
+
   private combatantSnapshot(combatant: AnyCombatant): OnlineCombatantSnapshot {
     const position = center(combatant);
     const human = combatant.kind === "human" ? combatant : null;
@@ -2797,7 +3173,7 @@ export class GameSimulation {
       lastProcessedInputSeq: human?.lastInputSeq ?? 0,
       fuel: human?.kin.jetpack.fuel ?? 0,
       maxFuel: JETPACK_CONFIG.maxFuel,
-      weaponId: human ? equippedId ?? "" : BOT_WEAPON.id,
+      weaponId: human ? equippedId ?? "" : bot!.weaponId,
       weapons,
       equippedSlot: equippedIndex,
       eliminations: combatant.eliminations,

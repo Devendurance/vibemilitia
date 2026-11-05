@@ -8,11 +8,32 @@ export type PickupType =
   | "contact-grenade"
   | "frag-grenade"
   | "stinking-grenade"
-  | "vibe-lance";
+  | "vibe-lance"
+  | "akimbo-rifles"
+  | "vibe-smg"
+  | "heavy-cannon"
+  | "rocket-launcher";
 
 export const PICKUP_RADIUS = 78;
 
-export const VIBE_LANCE_PICKUP_RESPAWN_MS = 25_000;
+export const WEAPON_PICKUP_RESPAWN_MS = 25_000;
+export const VIBE_LANCE_PICKUP_RESPAWN_MS = WEAPON_PICKUP_RESPAWN_MS;
+
+export const WEAPON_PICKUP_TYPES: readonly PickupType[] = [
+  "vibe-lance",
+  "akimbo-rifles",
+  "vibe-smg",
+  "heavy-cannon",
+  "rocket-launcher",
+];
+
+export const WEAPON_PICKUP_IDS: Partial<Record<PickupType, string>> = {
+  "vibe-lance": "vibe-lance",
+  "akimbo-rifles": "akimbo-rifles",
+  "vibe-smg": "vibe-smg",
+  "heavy-cannon": "heavy-cannon",
+  "rocket-launcher": "rocket-launcher",
+};
 
 export const PICKUP_LABELS: Record<PickupType, string> = {
   medkit: "MEDKIT",
@@ -20,20 +41,24 @@ export const PICKUP_LABELS: Record<PickupType, string> = {
   "frag-grenade": "FRAG GRENADE",
   "stinking-grenade": "STINKING GRENADE",
   "vibe-lance": "VIBE LANCE",
+  "akimbo-rifles": "AKIMBO RIFLES",
+  "vibe-smg": "VIBE SMG",
+  "heavy-cannon": "HEAVY CANNON",
+  "rocket-launcher": "ROCKET LAUNCHER",
 };
 
 export function pickupRespawnMs(type: PickupType): number {
   if (type === "medkit") return MEDKIT_CONFIG.respawnMs;
-  if (type === "vibe-lance") return VIBE_LANCE_PICKUP_RESPAWN_MS;
+  if (isWeaponPickup(type)) return VIBE_LANCE_PICKUP_RESPAWN_MS;
   return GRENADE_INVENTORY_CONFIG.pickupRespawnMs;
 }
 
 export function isWeaponPickup(type: PickupType): boolean {
-  return type === "vibe-lance";
+  return WEAPON_PICKUP_TYPES.includes(type);
 }
 
 export function weaponIdFromPickup(type: PickupType): string | null {
-  return type === "vibe-lance" ? "vibe-lance" : null;
+  return WEAPON_PICKUP_IDS[type] ?? null;
 }
 
 export function grenadeTypeFromPickup(type: PickupType): GrenadeType | null {

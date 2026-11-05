@@ -194,25 +194,39 @@ export function grenadeSlot(type: GrenadeType): number {
   return 2;
 }
 
+export function computeRadialDamage(
+  distance: number,
+  radius: number,
+  maxDamage: number,
+  minDamage: number,
+  falloffExponent: number,
+  coverFactor = 1,
+): number {
+  if (distance > radius || coverFactor <= 0 || maxDamage <= 0) {
+    return 0;
+  }
+  const falloff = Math.pow(
+    Math.max(0, 1 - distance / radius),
+    falloffExponent,
+  );
+  return Math.max(
+    minDamage,
+    Math.round(maxDamage * falloff * coverFactor),
+  );
+}
+
 export function computeBlastDamage(
   distance: number,
   definition: GrenadeDefinition,
   coverFactor = 1,
 ): number {
-  if (
-    distance > definition.blastRadius ||
-    coverFactor <= 0 ||
-    definition.maxDamage <= 0
-  ) {
-    return 0;
-  }
-  const falloff = Math.pow(
-    Math.max(0, 1 - distance / definition.blastRadius),
-    definition.falloffExponent,
-  );
-  return Math.max(
+  return computeRadialDamage(
+    distance,
+    definition.blastRadius,
+    definition.maxDamage,
     definition.minDamage,
-    Math.round(definition.maxDamage * falloff * coverFactor),
+    definition.falloffExponent,
+    coverFactor,
   );
 }
 

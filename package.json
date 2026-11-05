@@ -18,6 +18,7 @@
     "verify:online:grenades": "node scripts/verify-online-grenades.mjs",
     "verify:online:stinking": "node scripts/verify-online-stinking.mjs",
     "verify:online:loot": "node scripts/verify-online-loot.mjs",
+    "verify:online:arsenal": "node scripts/verify-online-arsenal.mjs",
     "verify:online:grenade-perf": "node scripts/verify-online-grenade-perf.mjs",
     "verify:online:matchmaking": "node scripts/verify-online-matchmaking.mjs",
     "verify:online:bots": "node scripts/verify-online-bots.mjs",
