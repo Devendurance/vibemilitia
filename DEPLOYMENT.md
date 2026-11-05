@@ -331,5 +331,11 @@ COLYSEUS_URL=https://vibemilitia-game.endyos.xyz \
 npm run verify:production
 ```
 
+Restart the game service first so no leftover rooms compete with matchmaking:
+
+```bash
+ssh endy-vps 'systemctl --user restart vibe-militia.service'
+```
+
 The suite uses real Chromium sessions and no test hooks. It covers HTTPS endpoints, PostgreSQL readiness, guest creation, the character picker, countdown join, bot fill, movement sync between two browsers, firing, grenades, cache collection, match completion, replay, reconnect, mobile landscape layout and WSS handling. XP needs a full-length round, so the suite plays a second human-only match to clear the 45 second participation floor.
 
