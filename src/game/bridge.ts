@@ -232,7 +232,13 @@ export interface DebugProbe {
   }>;
   platforms: Array<{ id: string; x: number; y: number; width: number; height: number }>;
   spawnPoints: Array<{ id: string; x: number; y: number }>;
-  camera: { scrollX: number; scrollY: number; zoom: number };
+  camera: {
+    scrollX: number;
+    scrollY: number;
+    zoom: number;
+    width: number;
+    height: number;
+  };
   match: {
     phase: MatchPhase;
     remainingMs: number;

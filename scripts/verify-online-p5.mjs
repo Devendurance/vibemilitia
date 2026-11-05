@@ -224,6 +224,11 @@ try {
     trackErrors(shape.label, page);
     await page.goto(`${baseUrl}/online?touch=1`, { waitUntil: "networkidle" });
     await page.waitForTimeout(900);
+    const lobbyGuide = page.locator('[data-testid="onboarding-dismiss"]');
+    if (await lobbyGuide.count()) {
+      await lobbyGuide.first().click();
+      await page.waitForTimeout(200);
+    }
     await page.locator('[data-testid="create-room"]').click();
     await waitLive(page);
     await page.waitForTimeout(1400);
@@ -452,6 +457,11 @@ try {
   trackErrors("desktop", desktop);
   await desktop.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await desktop.waitForTimeout(900);
+  const desktopGuide = desktop.locator('[data-testid="onboarding-dismiss"]');
+  if (await desktopGuide.count()) {
+    await desktopGuide.first().click();
+    await desktop.waitForTimeout(200);
+  }
   await desktop.locator('[data-testid="create-room"]').click();
   await waitLive(desktop);
   await desktop.waitForTimeout(500);

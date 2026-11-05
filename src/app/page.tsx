@@ -1,5 +1,5 @@
-import { GameShell } from "@/components/game/GameShell";
+import { GameHub } from "@/components/hub/GameHub";
 
 export default function Home() {
-  return <GameShell />;
+  return <GameHub />;
 }

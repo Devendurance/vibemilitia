@@ -1,20 +1,28 @@
 import Phaser from "phaser";
 import type { GameBridge } from "@/game/bridge";
+import type { PracticeDifficulty } from "@/game/config/gameplay";
 import { ArenaScene } from "@/game/scenes/ArenaScene";
 
-export function createVibeMilitiaGame(parent: HTMLElement, bridge: GameBridge): Phaser.Game {
+export function createVibeMilitiaGame(
+  parent: HTMLElement,
+  bridge: GameBridge,
+  difficulty: PracticeDifficulty = "normal",
+  skinId = "viber-010",
+): Phaser.Game {
+  const width = Math.max(320, parent.clientWidth || 1440);
+  const height = Math.max(240, parent.clientHeight || 810);
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
-    width: 1440,
-    height: 810,
+    width,
+    height,
     backgroundColor: "#0c0d0f",
-    scene: [new ArenaScene(bridge)],
+    scene: [new ArenaScene(bridge, difficulty, skinId)],
     scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-      width: 1440,
-      height: 810,
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.NO_CENTER,
+      width,
+      height,
     },
     physics: {
       default: "arcade",

@@ -3,12 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import type { Game } from "phaser";
 import { INITIAL_HUD, type GameBridge } from "@/game/bridge";
+import type { PracticeDifficulty } from "@/game/config/gameplay";
 
 interface GameCanvasProps {
   bridge: GameBridge;
+  difficulty?: PracticeDifficulty;
+  skinId?: string;
 }
 
-export function GameCanvas({ bridge }: GameCanvasProps) {
+export function GameCanvas({
+  bridge,
+  difficulty = "normal",
+  skinId = "viber-010",
+}: GameCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +28,12 @@ export function GameCanvas({ bridge }: GameCanvasProps) {
       try {
         const { createVibeMilitiaGame } = await import("@/game/GameApp");
         if (cancelled || !containerRef.current) return;
-        game = createVibeMilitiaGame(containerRef.current, bridge);
+        game = createVibeMilitiaGame(
+          containerRef.current,
+          bridge,
+          difficulty,
+          skinId,
+        );
       } catch (bootError) {
         console.error("Vibe Militia failed to start", bootError);
         if (!cancelled) {
@@ -41,7 +53,7 @@ export function GameCanvas({ bridge }: GameCanvasProps) {
       game?.destroy(true);
       game = null;
     };
-  }, [bridge]);
+  }, [bridge, difficulty, skinId]);
 
   return (
     <div className="game-canvas" ref={containerRef} data-testid="game-canvas">

@@ -263,6 +263,101 @@ export const DRONE_CONFIG = {
   repathMs: 850,
 } as const;
 
+export type PracticeDifficulty = "easy" | "normal" | "hard" | "merciless";
+
+export interface BotDifficultyProfile {
+  label: string;
+  reactionMs: number;
+  fireIntervalMs: number;
+  burstCount: number;
+  burstSpacingMs: number;
+  aimErrorRadians: number;
+  hoverSpeed: number;
+  standoffDistance: number;
+  repathMs: number;
+  strafeMinMs: number;
+  strafeMaxMs: number;
+  projectileSpeed: number;
+  projectileDamage: number;
+}
+
+/**
+ * Real behavioral tuning for local practice bots. Higher tiers react faster,
+ * fire longer and more accurate bursts, close distance more aggressively and
+ * reposition sooner. Nothing here changes the player or grants progression.
+ */
+export const BOT_DIFFICULTIES: Record<PracticeDifficulty, BotDifficultyProfile> = {
+  easy: {
+    label: "EASY",
+    reactionMs: 1100,
+    fireIntervalMs: 2500,
+    burstCount: 2,
+    burstSpacingMs: 190,
+    aimErrorRadians: 0.16,
+    hoverSpeed: 112,
+    standoffDistance: 330,
+    repathMs: 1350,
+    strafeMinMs: 1800,
+    strafeMaxMs: 3200,
+    projectileSpeed: 760,
+    projectileDamage: 5,
+  },
+  normal: {
+    label: "NORMAL",
+    reactionMs: 250,
+    fireIntervalMs: DRONE_CONFIG.fireIntervalMs,
+    burstCount: DRONE_CONFIG.burstCount,
+    burstSpacingMs: DRONE_CONFIG.burstSpacingMs,
+    aimErrorRadians: 0.055,
+    hoverSpeed: DRONE_CONFIG.hoverSpeed,
+    standoffDistance: DRONE_CONFIG.standoffDistance,
+    repathMs: DRONE_CONFIG.repathMs,
+    strafeMinMs: 1200,
+    strafeMaxMs: 2400,
+    projectileSpeed: DRONE_CONFIG.projectileSpeed,
+    projectileDamage: DRONE_CONFIG.projectileDamage,
+  },
+  hard: {
+    label: "HARD",
+    reactionMs: 120,
+    fireIntervalMs: 1100,
+    burstCount: 4,
+    burstSpacingMs: 130,
+    aimErrorRadians: 0.028,
+    hoverSpeed: 188,
+    standoffDistance: 235,
+    repathMs: 600,
+    strafeMinMs: 750,
+    strafeMaxMs: 1600,
+    projectileSpeed: 980,
+    projectileDamage: 8,
+  },
+  merciless: {
+    label: "MERCILESS",
+    reactionMs: 40,
+    fireIntervalMs: 760,
+    burstCount: 6,
+    burstSpacingMs: 95,
+    aimErrorRadians: 0.012,
+    hoverSpeed: 218,
+    standoffDistance: 205,
+    repathMs: 420,
+    strafeMinMs: 480,
+    strafeMaxMs: 1050,
+    projectileSpeed: 1080,
+    projectileDamage: 9,
+  },
+};
+
+export function getPracticeDifficulty(value: unknown): PracticeDifficulty {
+  return value === "easy" ||
+    value === "hard" ||
+    value === "merciless" ||
+    value === "normal"
+    ? value
+    : "normal";
+}
+
 export const DRONE_WEAPON: WeaponDefinition = {
   id: "drone-burst",
   name: "GLITCH BURST",

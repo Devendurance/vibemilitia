@@ -2,40 +2,32 @@
 
 ## Current task
 
-Public beta is deployed and live verified. Next step is the real-player beta from `BETA_TESTING.md` and physical device testing.
+UX overhaul milestone: hub, onboarding/leaderboard, practice difficulty, focused online lobby, mobile v2 controls, 30s reload recovery, production deploy and verification. P6 not started.
 
 ## Done
 
-- Public frontend live at `https://vibemilitia.vercel.app`. Vercel project `vibemilitia` in team `endy-s-winning-szn`, Next.js framework, Node 24.x, root directory `.`, production branch `main`, GitHub repo connected.
-- Public game server live at `https://vibemilitia-game.endyos.xyz` with a valid Cloudflare certificate and WSS.
-- VPS `endy-vps` (`hermes.endyos.xyz`): systemd user units `vibe-militia.service` (loopback `127.0.0.1:2767`) and `vibe-militia-tunnel.service` (Cloudflare named tunnel `vibe-militia-game`). Linger enabled, `Restart=always`, `MemoryMax=1400M`.
-- PostgreSQL production branch `main` in Neon project `vibe-militia` is live behind the game server. `/ready` reports `postgres`.
-- Backend hardening commit `7cb6a76`: `HOST` config so the server can bind loopback. Test added to `serverConfig.test.ts`.
-- `npm run verify:production` added (`scripts/verify-production-beta.mjs`). 50/50 checks pass against the live site with real browsers and no test hooks.
-- Live evidence: two browsers share a room, countdown join, bot fill, movement sync, firing with ammo loss, grenade throw, live cache collection, match completion, replay, reconnect after network loss, mobile landscape layout with touch controls, portrait guard, WSS and no mixed-content or CORS errors.
-- XP persistence proven end to end: results screen `+40 XP`, then profile via public API showed `xp=80`, `matches=2` across a full-length human-only round.
-- Controlled restart: new PID, `/ready` unchanged at `players=71 matches=31`, guest creation still 201, all unrelated services still active.
-- `MATCH_COUNTDOWN_MS=20000` in production. A cold invite-link load takes 15-18 s, so a shorter countdown filled rooms with bots before the invited player arrived.
+- `/` is now the Sector 07 game hub. `/practice?difficulty=...` is the local P1 drill. `/online` is the focused matchmaking lobby.
+- Hub has hero Viber, compact profile, online/practice switch, four difficulties, starter loadout preview, character/profile/rankings/settings/loadout drawers and SVG Sector 07 backdrop.
+- Onboarding captures editable callsign, optional self-declared X handle and leaderboard opt-in. No name uniqueness claim, no X verification claim.
+- Server schema v3 adds `x_handle`, `x_public`, `leaderboard_visible`. `GET /api/leaderboard` is server-derived and opt-in. Guest limit is 30/min.
+- Local practice bots have four real tuning profiles. Practice never touches XP, profiles or leaderboard.
+- Mobile v2 thin HUD, 4-way left pad with thrust, round aim/fire pad, compact grenade/throw/reload/weapon/medkit/pickup, fullscreen via settings, portrait guard, camera zoom `height/680`.
+- Reconnect: `RECONNECT_GRACE_SECONDS` defaults 30. Tab-scoped single-use resume handle + `POST /api/resume`; P4 35/35 and browser reload/expiry verified.
+- P5 41/42 on last run; only feedback close race failed, fixed by 700ms close. Rerun pending.
+- `verify:ux` script added: 49/51 on dev; remaining two were test formula issues (local camera width fields) and headless FPS threshold, both patched.
+- Single global stylesheet: `globals.css` now contains hub/online/touch styles. Do not add a second global CSS import; Turbopack dropped the first sheet.
 
 ## Next
 
-1. Run the 15-20 player beta from `BETA_TESTING.md`.
-2. Physical iOS and Android testing. Mobile evidence so far is browser emulation only.
-3. Watch Neon compute time and the VPS memory ceiling during the first real sessions.
+1. Rerun P5, P1 browser, characters, match, and `verify:ux` on a production build.
+2. Commit/push to `origin/main`.
+3. Deploy backend to `endy-vps` release dir, update env `RECONNECT_GRACE_SECONDS=30`, restart only `vibe-militia.service`.
+4. Deploy frontend (inspect/fix Vercel Git; manual `vercel --prod` fallback).
+5. Run `npm run verify:production`, update docs/state and final report.
 
 ## Known issues
 
-- Mobile evidence is emulated landscape, not a physical device.
-- One game-server process only. Room state is process-local, so a restart returns everyone to the lobby.
-- Invite-link joins can still land after the countdown when the network is slow. That path is safe: the human replaces a bot.
-- The production Neon branch contains synthetic guest profiles from verification, including the beta test guests. No real players yet.
-- Test hooks must stay disabled in production.
-
-## Baseline
-
-- P4 implementation commit: `280871d`.
-- P4 reconnect verification commit: `20348f1`.
-- P5 checkpoint: `0c6f7df`.
-- Loopback binding hardening: `7cb6a76`.
-- Vercel production deployment of `0c6f7df` source: `dpl_EU9ixvPWxfwStJodYeeasZuQ5DfA`.
-- `origin/main` should match the deployment docs commit after this checkpoint.
+- Physical iOS/Android hardware not available. Mobile evidence is emulated Chromium.
+- Practice local P1 has no grenades/medkits/pickups and uses drone bots; online uses full Viber bots and all utilities.
+- Vercel automatic Git deploys need inspection; manual production deploy is available.
+- Headless Chrome FPS is 23-30; use HEADED=1 for the real performance number.

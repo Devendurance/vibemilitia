@@ -163,6 +163,7 @@ export class OnlineScene extends Phaser.Scene {
   private toxicCloudViews = new Map<number, ToxicCloudView>();
   private latestSnapshot: OnlineSnapshot | null = null;
   private snapshotAt = 0;
+  private resizeHandler: (() => void) | null = null;
   private previousPhase: string | null = null;
   private bulletGraphics!: Phaser.GameObjects.Graphics;
   private debugGraphics!: Phaser.GameObjects.Graphics;
@@ -268,6 +269,22 @@ export class OnlineScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(200);
     this.crosshair = this.add.graphics().setDepth(300);
     this.inputController = new InputController(this);
+    const applyCameraScale = () => {
+      const width = this.scale.width;
+      const height = this.scale.height;
+      const compact = height < 600 || width / Math.max(1, height) > 1.95;
+      const zoom = compact
+        ? Math.max(0.5, Math.min(0.86, height / 680))
+        : 1;
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.setDeadzone(
+        compact ? 140 : 240,
+        compact ? 84 : 150,
+      );
+    };
+    applyCameraScale();
+    this.resizeHandler = applyCameraScale;
+    this.scale.on(Phaser.Scale.Events.RESIZE, applyCameraScale);
     this.cameras.main.fadeIn(350, 12, 13, 15);
 
     this.roomSubscriptions.push(
@@ -622,6 +639,7 @@ export class OnlineScene extends Phaser.Scene {
       this.animateGrenades(dtMs);
       this.animateToxicClouds(time);
       this.drawProjectiles();
+      this.clampCameraToArena();
       this.drawCrosshair(frame);
       this.drawDebug();
     }
@@ -1806,6 +1824,20 @@ export class OnlineScene extends Phaser.Scene {
     }
   }
 
+  private clampCameraToArena(): void {
+    const camera = this.cameras.main;
+    const visibleWidth = camera.width / Math.max(0.01, camera.zoom);
+    const visibleHeight = camera.height / Math.max(0.01, camera.zoom);
+    camera.scrollX = Math.max(
+      0,
+      Math.min(camera.scrollX, ARENA.width - visibleWidth),
+    );
+    camera.scrollY = Math.max(
+      0,
+      Math.min(camera.scrollY, ARENA.height - visibleHeight),
+    );
+  }
+
   private drawDebug(): void {
     this.debugGraphics.clear();
     if (!this.debugVisible || !this.latestSnapshot) return;
@@ -1877,6 +1909,10 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    if (this.resizeHandler) {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeHandler);
+      this.resizeHandler = null;
+    }
     audio.setJetpackActive(false);
     for (const unsubscribe of this.roomSubscriptions) unsubscribe();
     this.roomSubscriptions = [];

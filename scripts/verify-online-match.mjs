@@ -104,7 +104,14 @@ await pageB.addInitScript(() => {
 
 const fillers = [];
 try {
+  // Warm the second client so the invite join measures matchmaking, not a cold
+  // asset and font load against a short test countdown.
+  await pageB.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
+  await pageB.waitForTimeout(600);
   await pageA.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
+  const guideA = pageA.locator('[data-testid="onboarding-dismiss"]');
+  if (await guideA.count()) await guideA.first().click();
+  await pageA.waitForTimeout(300);
   await pageA.waitForTimeout(900);
   await pageA.locator('[data-testid="create-room"]').click();
   await waitOnlineReady(pageA);
@@ -126,8 +133,10 @@ try {
     initialA.skinId ?? "none",
   );
 
-  await pageB.goto(roomUrl, { waitUntil: "networkidle" });
-  await pageB.waitForTimeout(500);
+  await pageB.goto(roomUrl, { waitUntil: "domcontentloaded" });
+  await pageB.waitForSelector('[data-testid="join-invite-room"]', {
+    timeout: 15000,
+  });
   await pageB.locator('[data-testid="join-invite-room"]').click();
   await waitOnlineReady(pageB);
   const joinedB = await probe(pageB);

@@ -1,6 +1,6 @@
 # Vibe Militia
 
-A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. The local build is a complete 90-second match against three navigation-capable bot drones. The online build adds server-authoritative rooms for up to eight combatants, a ten-character picker, ten validated official Viber skins and a seven-weapon arsenal. Online bots use the same weapon, movement and PlayerVisuals layers as human players.
+A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. `/` is a full-screen Sector 07 game hub with the selected official Viber, profile, starter loadout, online or practice mode, four bot difficulty levels and functional character, loadout, rankings, profile and settings drawers. `/practice` is the deliberate local drill against three navigation-capable bot drones. `/online` is a focused server-authoritative matchmaking lobby for up to eight combatants, with ten validated official Viber skins and a seven-weapon arsenal. Online bots use the same weapon, movement and PlayerVisuals layers as human players.
 
 P4 adds responsive touch gameplay, original synthesized audio with persistent settings, server-confirmed XP and levels, guest profiles, cosmetic titles, badges, elimination styles and jetpack trails, a configurable reconnect grace period, onboarding and production hosting configuration. P5 adds Neon PostgreSQL persistence, a Mini Militia-inspired twin-stick touch model, full-screen landscape fit for wide phones, a portrait rotation guard, anonymous beta feedback and error capture, and release and beta-readiness documentation.
 
@@ -19,7 +19,7 @@ npm run server:dev
 npm run dev
 ```
 
-Open `http://localhost:3000` for P1 local mode, or `http://localhost:3000/online` for multiplayer.
+Open `http://localhost:3000` for the game hub, `http://localhost:3000/practice?difficulty=normal` for the local drill, or `http://localhost:3000/online` for multiplayer.
 
 For a production check:
 
@@ -33,14 +33,14 @@ The Colyseus server listens on port `2567` by default. Set `PORT` for the server
 
 New rooms use a 10-second pre-match countdown. Override it with `MATCH_COUNTDOWN_MS` on the game server. The value is clamped from 0 to 60000 milliseconds.
 
-Guest profiles use PostgreSQL when `DATABASE_URL` is set and fall back to SQLite at `DATABASE_PATH` when it is absent. Set `ALLOWED_ORIGINS` to the trusted frontend origins in production, and set `RECONNECT_GRACE_SECONDS` to change the reconnect reservation from its 20-second default. See `DEPLOYMENT.md` for Neon, Docker, WSS, backup, restore and migration guidance, and `BETA_TESTING.md` for the 15-20 player beta plan.
+Guest profiles use PostgreSQL when `DATABASE_URL` is set and fall back to SQLite at `DATABASE_PATH` when it is absent. Set `ALLOWED_ORIGINS` to the trusted frontend origins in production, and set `RECONNECT_GRACE_SECONDS` to change the reconnect reservation from its 30-second default. See `DEPLOYMENT.md` for Neon, Docker, WSS, backup, restore and migration guidance, and `BETA_TESTING.md` for the 15-20 player beta plan.
 
 ## Match rules
 
 - Local mode starts with four combatants: VIBER-010 and three bot drones.
 - Online rooms hold eight combatant slots. A new room starts a short countdown. Humans can join during the countdown, and Viber-presented bots fill every empty seat when it expires. If all eight human seats fill, the match starts immediately.
 - Before the countdown ends, combat input is held and the 90-second clock has not started.
-- Humans joining a live room replace a bot without resetting the match. An unexpected disconnect reserves the seat for 20 seconds, keeps the player's score and inventory, and shows a reconnect status. A consented leave or an expired grace period releases the seat and restores bot backfill.
+- Humans joining a live room replace a bot without resetting the match. An unexpected disconnect reserves the seat for 30 seconds, keeps the player's score and inventory, and shows a reconnect status. A browser reload or same-tab navigation can exchange a single-use, identity-bound resume handle for the Colyseus reconnection token and return to the exact human seat. A consented leave or an expired grace period releases the seat and restores bot backfill.
 - Quick Match prefers the most populated open room with a free human seat, then creates another room when the open rooms fill.
 - 90-second match.
 - First to 10 eliminations wins immediately.
@@ -131,17 +131,27 @@ Match settlement runs outside the 60 Hz simulation loop and retries after five s
 
 ## Reconnect
 
-Unexpected disconnects use Colyseus reconnection support. The server calls `allowReconnection` with a configurable grace period, initially 20 seconds. During that period:
+Unexpected disconnects use Colyseus reconnection support. The server calls `allowReconnection` with a configurable grace period, 30 seconds by default. During that period:
 
 - The same session, character, score and authoritative inventory stay reserved.
 - The room still counts the reserved seat toward its eight-human capacity.
 - The disconnected body remains in the arena, stops accepting buffered input, and receives no extra invulnerability.
 - The client shows a reconnect overlay and retries the same room and session.
+- A browser reload or same-tab navigation can call `POST /api/resume` with the guest bearer token and the tab-scoped resume handle. The server checks the guest identity, expiry and single-use status before returning the Colyseus reconnection token for the reserved seat.
+- Resume handles are 32 random bytes, stored only as hashes in a process-local registry, never placed in URLs or logs, and invalidated on redemption, explicit leave, grace expiry or room disposal.
 - Repeated reconnect attempts cannot create a duplicate combatant or duplicate inventory.
 - A reconnect during countdown or live play resumes the same seat.
-- After grace expiry, or a failed recovery, the seat is released, a bot backfills, and the client returns to the lobby.
+- After grace expiry, or a failed recovery, the seat is released, a bot backfills, and the client returns to the lobby with an explicit status message.
 
-Reconnect works across temporary network loss. It does not survive a game-server process restart because match state is in memory. Guest profiles do survive a server restart through PostgreSQL or the SQLite fallback.
+Reconnect works across temporary network loss and same-tab reload or navigation. It does not survive a game-server process restart because the rooms and resume registry are in memory. Guest profiles and leaderboard records do survive a server restart through PostgreSQL or the SQLite fallback.
+
+## Game hub, practice and rankings
+
+The hub is a single fixed viewport at 1280x720 and above, with a compact landscape layout for phones and a useful portrait layout. It never auto-starts a match. Character, loadout, rankings, profile and settings open as drawers over the Sector 07 scene. `PLAY ONLINE` enters the focused `/online` lobby with quick match or create-room intent. `START PRACTICE` enters `/practice?difficulty=easy|normal|hard|merciless`.
+
+Practice uses the local P1 arena. Difficulty tuning changes real bot reaction delay, burst size, fire cadence, aim error, movement speed, standoff distance, strafe timing, repath cadence, projectile speed and damage. Practice never calls the guest profile, match settlement, XP or leaderboard paths.
+
+Guest identity is an editable display name. Names are not unique, reserved or continuously moderated. The optional X handle is self-declared, syntax-validated and never presented as verified. Players opt in or out of the public ALL-TIME XP leaderboard; only completed online matches contribute. `GET /api/leaderboard?limit=25` returns server-derived level, XP, wins and K/D, and only exposes an X handle when that player made it public. Browser-submitted stats are never accepted.
 
 ## Weapons
 
@@ -396,6 +406,7 @@ npm run verify:online:loot
 npm run verify:online:arsenal
 npm run verify:online:p4
 npm run verify:online:p5
+npm run verify:ux
 npm run verify:online:grenade-perf
 npm run verify:online:rooms
 npm run verify:online:perf
@@ -403,7 +414,9 @@ HEADED=1 npm run verify:online:perf
 HEADED=1 npm run verify:online:grenade-perf
 ```
 
-`verify:browser` covers P1 local mode. It verifies cutout transparency, four-combatant boot, all three weapons, movement and jetpack, scoring, bot navigation, player death and respawn, results and replay.
+`verify:browser` covers the local practice route. It verifies cutout transparency, four-combatant boot, all three weapons, movement and jetpack, scoring, bot navigation, player death and respawn, results and replay.
+
+`verify:ux` covers the hub and mobile acceptance matrix. It captures 1280x720, 1366x768, 1440x900, 1920x1080, 844x390, 932x430, 915x412, 780x360, 360x780 and 1024x768, asserts no document scroll and a visible CTA, opens every hub drawer, checks the practice mode and difficulty switch, checks phone practice camera and thumb separation, checks the focused online lobby, reload recovery to the same room and seat, a recovered authoritative input path, a second human join, explicit leave and a measured frame rate. Screenshots and `ux-report.json` are written under `ARTIFACT_DIR`.
 
 `verify:online:countdown` creates one room, checks the countdown HUD and clock, opens a second lobby tab and checks the room card, then waits for bots to fill the seats and verifies the live HUD and lobby card.
 

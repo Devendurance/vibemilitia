@@ -22,7 +22,7 @@ export function BetaFeedback({ compact = false }: { compact?: boolean }) {
         setStatus("idle");
         setMessage("");
         setRating(0);
-      }, 900);
+      }, 700);
     }
   };
 

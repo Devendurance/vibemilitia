@@ -6,6 +6,18 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
+## UX overhaul (current milestone)
+
+- `/` is the game hub: Sector 07 SVG skydeck, selected Viber hero, compact level/XP card, 10-character drawer, preview loadout, online/practice switch, Easy/Normal/Hard/Merciless, primary CTA, rankings/profile/settings/loadout drawers.
+- First-visit onboarding captures an editable, non-unique display name, optional self-declared X handle and leaderboard opt-in. No fake verification. Practice is never ranked.
+- `/practice?difficulty=...` is the deliberate local P1 route. Practice bots use real difficulty profiles for reaction, cadence, burst, aim error, movement, standoff, repath, projectile speed and damage.
+- `/online` is one fixed viewport: callsign, quick match, create room, join code, compact operator rail, rooms, compact profile, invite banner. No long roster/profile/audio document.
+- Global all-time leaderboard: Neon/SQLite schema v3 (`x_handle`, `x_public`, `leaderboard_visible`), `GET /api/leaderboard?limit=25`, server-derived XP/wins/K/D only, opt-in, X handle public only when explicitly enabled.
+- 30-second reconnect default. `POST /api/resume` exchanges a tab-scoped, single-use, identity-bound handle for the Colyseus reconnection token. Reload/navigation recovers the same room and seat; second tabs and grace expiry cannot take the live seat.
+- Touch v2: thin segmented HP/fuel/ammo/time strip, 4-way left pad with up-thrust, round right aim/fire pad, compact grenade/throw/reload/weapon/medkit/pickup, safe areas, pointer cancellation, portrait guard, fullscreen in settings.
+- Mobile camera targets a 680 px world view (`zoom = height / 680`, clamped 0.5 to 0.86) in both online and local practice, with manual arena clamping and hit registration unchanged.
+- One global stylesheet: hub/online/touch CSS is appended to `src/app/globals.css`. A second root-layout CSS import caused Turbopack to drop the first sheet during this milestone.
+
 ## Current build
 
 - One arena: Sector 07, 3600 x 1500, with a ground lane, tiered left route, center bridge, right elevated route, floating perches and fourteen respawn pads.

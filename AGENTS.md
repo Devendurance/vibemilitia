@@ -73,6 +73,10 @@
 - Production requires `ALLOWED_ORIGINS` and a persistent `DATABASE_PATH`. See `DEPLOYMENT.md`.
 - Production runs on the shared `endy-vps` host as systemd user units behind a dedicated Cloudflare Tunnel, on loopback port `2767`. Do not touch the `chog-royale-*`, `hermes-gateway`, `telepi`, `openbot`, `antigravity-telegram` or `opencode-telegram-bot` services, and never publish port `2767`.
 - Live URLs: `https://vibemilitia.vercel.app` (frontend) and `https://vibemilitia-game.endyos.xyz` (game server). Verify a deploy with `npm run verify:production`.
+- Routes: `/` is the game hub, `/practice?difficulty=easy|normal|hard|merciless` is local P1, `/online` is the focused matchmaking lobby and live match. Never auto-start a match from `/`.
+- The frontend has one global stylesheet entry: `src/app/globals.css`. Do not add a second global CSS import to the root layout; Turbopack dropped the first sheet during this milestone. Append new global styles to `globals.css`.
+- `RECONNECT_GRACE_SECONDS=30` is the product default. Reload/navigation recovery uses the tab-scoped resume handle and `POST /api/resume`. Do not move that handle to shared localStorage: a second tab must not redeem a live seat.
+- Public rankings use `GET /api/leaderboard`. Display names are editable and non-unique. X handles are self-declared and must never be rendered as verified.
 
 ## TESTING
 

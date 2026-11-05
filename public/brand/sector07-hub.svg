@@ -1,0 +1,240 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" role="img" aria-label="Sector 07 hangar skydeck">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fc9e8"/>
+      <stop offset=".55" stop-color="#b9e3f4"/>
+      <stop offset="1" stop-color="#e8f6fb"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".22" cy=".18" r=".55">
+      <stop offset="0" stop-color="#fff6ce" stop-opacity=".95"/>
+      <stop offset=".35" stop-color="#ffe9a1" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#ffe9a1" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="deck" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2eee2"/>
+      <stop offset="1" stop-color="#cfc7b6"/>
+    </linearGradient>
+    <linearGradient id="deckSide" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6f6c66"/>
+      <stop offset="1" stop-color="#3b3a38"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3d4148"/>
+      <stop offset="1" stop-color="#191b1f"/>
+    </linearGradient>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e0955b"/>
+      <stop offset=".5" stop-color="#c7692f"/>
+      <stop offset="1" stop-color="#8d431c"/>
+    </linearGradient>
+    <linearGradient id="cream" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f2e3"/>
+      <stop offset="1" stop-color="#c9bfa9"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9f4ff" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#72c3e2" stop-opacity=".45"/>
+    </linearGradient>
+    <pattern id="hazard" width="56" height="28" patternUnits="userSpaceOnUse" patternTransform="skewX(-28)">
+      <rect width="56" height="28" fill="#d7ff2e"/>
+      <rect width="28" height="28" fill="#171a1d"/>
+    </pattern>
+    <pattern id="panelLines" width="160" height="80" patternUnits="userSpaceOnUse">
+      <path d="M0 0H160M0 80H160M0 0V80M160 0V80" fill="none" stroke="#000" stroke-opacity=".08" stroke-width="2"/>
+    </pattern>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <rect width="1920" height="1080" fill="url(#sun)"/>
+
+  <!-- clouds -->
+  <g fill="#ffffff" opacity=".72">
+    <g>
+      <rect x="380" y="170" width="190" height="34" rx="17"/>
+      <rect x="420" y="138" width="108" height="34" rx="17"/>
+      <rect x="486" y="152" width="130" height="30" rx="15"/>
+    </g>
+    <g opacity=".8">
+      <rect x="1320" y="118" width="240" height="36" rx="18"/>
+      <rect x="1372" y="84" width="128" height="36" rx="18"/>
+      <rect x="1460" y="100" width="164" height="30" rx="15"/>
+    </g>
+    <g opacity=".55">
+      <rect x="1010" y="250" width="150" height="26" rx="13"/>
+      <rect x="1052" y="226" width="92" height="26" rx="13"/>
+    </g>
+  </g>
+
+  <!-- distant skyline -->
+  <g opacity=".55">
+    <path d="M0 720h250v-90h70v90h120v-150h110v150h90v-60h130v60h120v-120h120v120h130v-70h150v70h160v-140h120v140h150v-80h210v-70h120v150h108v-70h130v70h120v180H0z" fill="#8fb7bf"/>
+    <path d="M0 770h1920v130H0z" fill="#7fa7af" opacity=".7"/>
+  </g>
+
+  <!-- floating cargo platforms -->
+  <g>
+    <g transform="translate(160 310)">
+      <rect x="0" y="0" width="330" height="26" rx="4" fill="url(#metal)"/>
+      <rect x="18" y="-52" width="92" height="52" rx="5" fill="url(#cream)" stroke="#9d9482" stroke-width="3"/>
+      <rect x="26" y="-42" width="76" height="14" rx="2" fill="#d7ff2e" opacity=".9"/>
+      <rect x="122" y="-78" width="76" height="78" rx="5" fill="url(#copper)" stroke="#8d431c" stroke-width="3"/>
+      <rect x="208" y="-36" width="92" height="36" rx="4" fill="url(#metal)"/>
+      <rect x="228" y="-58" width="22" height="24" fill="#d7ff2e" opacity=".8"/>
+      <circle cx="36" cy="76" r="6" fill="#3d4148"/>
+      <circle cx="292" cy="76" r="6" fill="#3d4148"/>
+      <path d="M36 26v38M292 26v38" stroke="#3d4148" stroke-width="6"/>
+      <path d="M40 70h246" stroke="#d7ff2e" stroke-width="3" opacity=".8"/>
+    </g>
+    <g transform="translate(1470 250)">
+      <rect x="0" y="0" width="360" height="28" rx="4" fill="url(#metal)"/>
+      <rect x="30" y="-46" width="104" height="46" rx="4" fill="url(#cream)" stroke="#9d9482" stroke-width="3"/>
+      <rect x="154" y="-84" width="64" height="84" rx="4" fill="url(#metal)"/>
+      <rect x="166" y="-72" width="40" height="10" fill="#9bd8f2" opacity=".9"/>
+      <rect x="166" y="-52" width="40" height="10" fill="#9bd8f2" opacity=".7"/>
+      <rect x="236" y="-36" width="94" height="36" rx="4" fill="url(#copper)" stroke="#8d431c" stroke-width="3"/>
+      <path d="M50 0v60M316 0v60" stroke="#3d4148" stroke-width="6"/>
+      <path d="M52 58h260" stroke="#d7ff2e" stroke-width="3" opacity=".8"/>
+    </g>
+  </g>
+
+  <!-- hangar frame -->
+  <g>
+    <path d="M0 0h210v470l-70 40V0z" fill="url(#metal)"/>
+    <path d="M1710 0h210v470l70 40V0z" fill="url(#metal)"/>
+    <path d="M0 430l250 120H0z" fill="#25282d"/>
+    <path d="M1920 430l-250 120h250z" fill="#25282d"/>
+    <rect x="0" y="0" width="1920" height="34" fill="#25282d"/>
+    <rect x="0" y="34" width="1920" height="8" fill="#d7ff2e" opacity=".75"/>
+    <g fill="#3d4148">
+      <rect x="60" y="42" width="22" height="360"/>
+      <rect x="150" y="42" width="22" height="330"/>
+      <rect x="1748" y="42" width="22" height="360"/>
+      <rect x="1848" y="42" width="22" height="330"/>
+    </g>
+    <g fill="#d7ff2e" opacity=".7">
+      <rect x="60" y="120" width="22" height="8"/>
+      <rect x="60" y="300" width="22" height="8"/>
+      <rect x="1838" y="140" width="22" height="8"/>
+      <rect x="1748" y="330" width="22" height="8"/>
+    </g>
+    <!-- overhead gantry -->
+    <rect x="210" y="80" width="1500" height="46" fill="#2b2e33" stroke="#141619" stroke-width="3"/>
+    <rect x="210" y="126" width="1500" height="10" fill="url(#hazard)" opacity=".9"/>
+    <g fill="#3d4148">
+      <rect x="300" y="126" width="10" height="80"/>
+      <rect x="1610" y="126" width="10" height="80"/>
+    </g>
+    <g>
+      <rect x="804" y="140" width="312" height="74" rx="6" fill="#1a1c20" stroke="#3d4148" stroke-width="3"/>
+      <text x="960" y="188" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="8" fill="#d7ff2e">SECTOR 07</text>
+    </g>
+  </g>
+
+  <!-- left cargo block -->
+  <g transform="translate(0 560)">
+    <rect x="0" y="140" width="420" height="380" fill="url(#metal)"/>
+    <rect x="18" y="158" width="384" height="300" fill="url(#panelLines)" opacity=".9"/>
+    <g stroke="#0f1113" stroke-width="4">
+      <rect x="34" y="176" width="150" height="120" rx="6" fill="url(#cream)"/>
+      <rect x="204" y="196" width="182" height="100" rx="6" fill="url(#copper)"/>
+      <rect x="52" y="324" width="118" height="118" rx="6" fill="url(#metal)"/>
+      <rect x="190" y="318" width="196" height="124" rx="6" fill="url(#cream)"/>
+    </g>
+    <g fill="#d7ff2e" opacity=".85">
+      <rect x="48" y="196" width="122" height="18" rx="3"/>
+      <rect x="218" y="216" width="154" height="14" rx="3"/>
+      <rect x="206" y="338" width="164" height="16" rx="3"/>
+    </g>
+    <g fill="#c7692f">
+      <rect x="66" y="342" width="90" height="8" rx="2"/>
+      <rect x="66" y="358" width="60" height="8" rx="2"/>
+    </g>
+    <path d="M0 510h420" stroke="#0f1113" stroke-width="10"/>
+    <rect x="0" y="500" width="420" height="20" fill="url(#hazard)"/>
+  </g>
+
+  <!-- right service block -->
+  <g transform="translate(1510 500)">
+    <rect x="0" y="170" width="410" height="440" fill="url(#metal)"/>
+    <rect x="22" y="194" width="366" height="360" fill="#23262b" stroke="#0f1113" stroke-width="4"/>
+    <g>
+      <rect x="48" y="222" width="138" height="120" rx="5" fill="url(#copper)" stroke="#0f1113" stroke-width="4"/>
+      <rect x="206" y="222" width="158" height="120" rx="5" fill="url(#cream)" stroke="#0f1113" stroke-width="4"/>
+      <rect x="48" y="366" width="316" height="72" rx="5" fill="#181a1e" stroke="#0f1113" stroke-width="4"/>
+      <rect x="48" y="462" width="316" height="70" rx="5" fill="#181a1e" stroke="#0f1113" stroke-width="4"/>
+    </g>
+    <g fill="#9bd8f2" opacity=".9">
+      <rect x="66" y="246" width="100" height="14" rx="3"/>
+      <rect x="66" y="272" width="64" height="10" rx="3"/>
+      <rect x="224" y="246" width="122" height="14" rx="3"/>
+      <rect x="224" y="270" width="78" height="10" rx="3"/>
+      <rect x="66" y="388" width="270" height="8" rx="3"/>
+      <rect x="66" y="406" width="180" height="8" rx="3" opacity=".7"/>
+    </g>
+    <g fill="#d7ff2e" opacity=".85">
+      <rect x="66" y="482" width="270" height="8" rx="3"/>
+      <rect x="66" y="500" width="210" height="8" rx="3" opacity=".6"/>
+    </g>
+    <g fill="#9bd8f2">
+      <circle cx="34" cy="232" r="7"/>
+      <circle cx="34" cy="470" r="7"/>
+    </g>
+    <rect x="0" y="600" width="410" height="20" fill="url(#hazard)"/>
+  </g>
+
+  <!-- main deck -->
+  <g>
+    <path d="M300 716h1320l260 200H40z" fill="url(#deckSide)"/>
+    <path d="M330 700h1260l230 170H100z" fill="url(#deck)"/>
+    <path d="M330 700h1260l230 170H100z" fill="url(#panelLines)" opacity=".7"/>
+    <path d="M300 716h1320l260 200H40z" fill="none" stroke="#22252a" stroke-width="8"/>
+    <!-- deck safety lines -->
+    <path d="M220 820h1480l44 30H176z" fill="url(#hazard)" opacity=".85"/>
+    <path d="M140 944h1640l18 18H122z" fill="url(#hazard)" opacity=".55"/>
+    <g stroke="#2c2f35" stroke-width="4" opacity=".8">
+      <path d="M560 710l-70 160M760 710l-40 160M1180 710l40 160M1380 710l70 160"/>
+    </g>
+    <g fill="#9e9686" opacity=".55">
+      <rect x="520" y="760" width="220" height="4"/>
+      <rect x="1150" y="790" width="250" height="4"/>
+      <rect x="720" y="870" width="420" height="4"/>
+    </g>
+    <!-- centre stage ring -->
+    <ellipse cx="960" cy="852" rx="290" ry="54" fill="#b7ae9c" opacity=".55"/>
+    <ellipse cx="960" cy="846" rx="250" ry="44" fill="#f5f3ec" opacity=".38"/>
+    <ellipse cx="960" cy="846" rx="186" ry="30" fill="#d7ff2e" opacity=".18"/>
+    <!-- left foreground crates -->
+    <g transform="translate(80 770)" stroke="#0f1113" stroke-width="4">
+      <rect x="0" y="40" width="150" height="150" rx="5" fill="url(#copper)"/>
+      <rect x="18" y="58" width="114" height="24" fill="#d7ff2e" opacity=".8"/>
+      <rect x="164" y="78" width="96" height="112" rx="5" fill="url(#cream)"/>
+      <rect x="176" y="96" width="72" height="14" fill="#c7692f" opacity=".85"/>
+    </g>
+    <!-- right foreground crate -->
+    <g transform="translate(1640 770)" stroke="#0f1113" stroke-width="4">
+      <rect x="0" y="20" width="190" height="170" rx="5" fill="url(#cream)"/>
+      <rect x="20" y="44" width="150" height="22" fill="#d7ff2e" opacity=".8"/>
+      <rect x="20" y="82" width="86" height="12" fill="#c7692f" opacity=".8"/>
+      <rect x="20" y="102" width="120" height="12" fill="#c7692f" opacity=".55"/>
+    </g>
+  </g>
+
+  <!-- foreground railing -->
+  <g opacity=".9">
+    <rect x="0" y="1010" width="1920" height="14" fill="#1b1e22"/>
+    <g fill="#2c3036">
+      <rect x="60" y="980" width="10" height="70"/>
+      <rect x="320" y="980" width="10" height="70"/>
+      <rect x="580" y="980" width="10" height="70"/>
+      <rect x="1320" y="980" width="10" height="70"/>
+      <rect x="1580" y="980" width="10" height="70"/>
+      <rect x="1840" y="980" width="10" height="70"/>
+    </g>
+  </g>
+
+  <!-- light shafts -->
+  <g opacity=".14" fill="#fff8dd">
+    <path d="M190 40l180 0l220 900H370z"/>
+    <path d="M1500 40h160l-120 900h-190z"/>
+  </g>
+</svg>

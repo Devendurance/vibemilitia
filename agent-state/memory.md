@@ -107,6 +107,24 @@
 - Production config requires `ALLOWED_ORIGINS`, rejects wildcards, limits API bodies to 16 KB, rate-limits `/api` at 120/minute/IP and checks WebSocket upgrade origins.
 - `npm run db:backup` writes a consistent SQLite copy with `VACUUM INTO`.
 
+## UX overhaul facts
+
+- `/` is the hub, not the local match. `/practice?difficulty=easy|normal|hard|merciless` is the local P1 fallback. `/online` is the focused lobby and live match.
+- `RECONNECT_GRACE_SECONDS` defaults to 30 in `server/config.ts`. Production must set it to 30.
+- Reload recovery is tab-scoped: `src/lib/resumeContext.ts` uses `sessionStorage`, never shared `localStorage`. `POST /api/resume` is bearer-authenticated, identity-bound, single-use and expiry-bound. The server keeps only SHA-256 hashes of 32-byte handles in `server/resumeRegistry.ts`.
+- `server/resumeRegistry.ts` is process-local. A server restart loses live rooms and resume handles; guest profiles and leaderboard data persist.
+- Schema v3 adds `players.x_handle`, `players.x_public`, `players.leaderboard_visible` and `idx_players_leaderboard`. Apply automatically on server start.
+- `GET /api/leaderboard?limit=25` is public, read-only, opt-in and server-derived. `server/leaderboard.ts` maps rows to `LeaderboardEntry` with `xVerified: false`.
+- Display names are editable and non-unique. X handles are self-declared and must never be shown as verified.
+- Guest rate limit is 30/min/IP. API limit is still 120/min/IP.
+- `server/loadEnv.ts` preserves shell env values over `.env.local`, so `DATABASE_URL=' ' DATABASE_PATH=...` safely selects SQLite.
+- Practice difficulty lives in `BOT_DIFFICULTIES` in `src/game/config/gameplay.ts` and is consumed by `Drone`.
+- Hub components live in `src/components/hub/`. First-visit onboarding is a modal on `/`; the `/online` first-visit guidance is a non-blocking inline banner.
+- The root layout imports only `src/app/globals.css`. Appending to a second global CSS import caused Turbopack to serve only one sheet. All hub/online/touch CSS is in `globals.css`.
+- Touch v2 classes are `tc-*`; old `.touch-*` CSS remains for any legacy fallback. TouchControls takes `variant`, `onExit` and `modeLabel`.
+- Local practice has no grenades, medkits, advanced weapons or elimination loot. It uses the existing drone bots and supports the selected Viber cutout.
+- `scripts/verify-hub-ux.mjs` (`npm run verify:ux`) captures the 10-size matrix and checks reload recovery. `SKIP_EXPIRY=1` skips the 30-second offline wait.
+
 ## P5 facts
 
 - PostgreSQL is selected when `DATABASE_URL` is non-empty after trimming. SQLite is the fallback. Keep `DATABASE_URL` in the gitignored `.env.local`, never in source or logs.

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Gauge, Home, RotateCw, Settings, ShieldPlus, Swords } from "lucide-react";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { audio } from "@/game/audio/AudioEngine";
 import {
@@ -21,7 +23,7 @@ import {
 } from "@/game/input/touchInput";
 import { getTouchSettings, type TouchSettings } from "@/game/input/touchSettings";
 
-const STICK_RADIUS = 52;
+const STICK_RADIUS = 46;
 
 function stickVector(
   element: HTMLElement,
@@ -39,16 +41,27 @@ function stickVector(
   return { x: rawX * scale, y: rawY * scale, distance };
 }
 
+function formatClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 export function TouchControls({
   bridge,
   onSettings,
   playerName,
   level,
+  variant = "online",
+  onExit,
+  modeLabel,
 }: {
   bridge: GameBridge;
   onSettings: () => void;
   playerName: string;
   level: number;
+  variant?: "online" | "practice";
+  onExit?: () => void;
+  modeLabel?: string;
 }) {
   const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
     bridge.getSnapshot(),
@@ -63,8 +76,6 @@ export function TouchControls({
   const movePointer = useRef<number | null>(null);
   const aimPointer = useRef<number | null>(null);
   const thrustRef = useRef(false);
-  const moveRef = useRef<HTMLDivElement>(null);
-  const aimRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTouchEnabled(true);
@@ -107,11 +118,8 @@ export function TouchControls({
     };
   }, []);
 
-  const applyMoveVector = (
-    vector: { x: number; y: number },
-  ) => {
-    const moveX =
-      Math.abs(vector.x) > settings.leftDeadZone ? vector.x : 0;
+  const applyMoveVector = (vector: { x: number; y: number }) => {
+    const moveX = Math.abs(vector.x) > settings.leftDeadZone ? vector.x : 0;
     setTouchMove(moveX);
     setMoveKnob({
       x: vector.x * STICK_RADIUS,
@@ -157,9 +165,11 @@ export function TouchControls({
     }
   };
 
-  const applyAimVector = (
-    vector: { x: number; y: number; distance: number },
-  ) => {
+  const applyAimVector = (vector: {
+    x: number;
+    y: number;
+    distance: number;
+  }) => {
     if (vector.distance < settings.rightDeadZone) {
       setTouchAimFire(false);
       setAutoFire(false);
@@ -221,34 +231,64 @@ export function TouchControls({
         : snapshot.grenadeStinking;
   const selectedGrenadeLabel = snapshot.grenadeSelected.toUpperCase();
   const activeSlot = snapshot.weaponSlots.find((slot) => slot.active);
+  const healthRatio = Math.max(
+    0,
+    Math.min(1, snapshot.health / Math.max(1, snapshot.maxHealth)),
+  );
+  const fuelRatio = Math.max(
+    0,
+    Math.min(1, snapshot.fuel / Math.max(1, snapshot.maxFuel)),
+  );
+  const online = variant === "online";
 
   return (
     <div className="touch-controls" data-testid="touch-controls">
-      <div className="touch-hud" data-testid="touch-hud">
-        <div className="touch-hud__identity">
-          <strong>{playerName.toUpperCase()}</strong>
-          <span className="mono-label">LVL {level}</span>
+      <div className="tc-hud" data-testid="touch-hud">
+        <div className="tc-vitals" aria-label={`Health ${snapshot.health}, fuel ${snapshot.fuel}`}>
+          <div className={`tc-bar tc-bar--hp${healthRatio <= 0.3 ? " is-danger" : ""}`}>
+            <span style={{ width: `${healthRatio * 100}%` }} />
+            <em>{Math.round(snapshot.health)}</em>
+          </div>
+          <div className="tc-bar tc-bar--fuel">
+            <span style={{ width: `${fuelRatio * 100}%` }} />
+            <em>{Math.round(snapshot.fuel)}</em>
+          </div>
         </div>
-        <div className="touch-hud__stats">
-          <span className={`touch-hud__stat${snapshot.health <= 30 ? " is-danger" : ""}`}>
-            HP {snapshot.health}
-          </span>
-          <span className="touch-hud__stat">FUEL {snapshot.fuel}</span>
-          <span className="touch-hud__stat">
-            {snapshot.weaponShortName} {snapshot.ammo}/{snapshot.magazineSize}
-          </span>
-          <span className="touch-hud__stat">
-            {Math.max(0, Math.ceil(snapshot.matchTimeRemainingMs / 1000))}S
+        <span className="tc-clock" aria-label="Match time">
+          {formatClock(snapshot.matchTimeRemainingMs)}
+        </span>
+        <div className="tc-ammo">
+          <strong>{snapshot.weaponShortName}</strong>
+          <span>
+            {snapshot.ammo}/{snapshot.magazineSize}
           </span>
         </div>
+        {!online && onExit ? (
+          <Link className="tc-top-button" href="/" aria-label="Return to hub">
+            <Home aria-hidden="true" />
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          className="tc-top-button"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            onSettings();
+          }}
+          data-testid="touch-settings"
+          aria-label="Open settings"
+        >
+          <Settings aria-hidden="true" />
+        </button>
       </div>
+      {modeLabel ? <span className="tc-mode-label">{modeLabel}</span> : null}
+
       <div
-        className={`touch-stick touch-stick--move${thrusting ? " is-thrusting" : ""}`}
-        ref={moveRef}
+        className={`tc-pad tc-pad--move${thrusting ? " is-thrusting" : ""}`}
         data-testid="touch-move"
         data-thrusting={thrusting}
         role="group"
-        aria-label="Move and fly joystick"
+        aria-label="Move and fly directional pad"
         onPointerDown={beginMove}
         onPointerMove={updateMove}
         onPointerUp={endMove}
@@ -256,50 +296,156 @@ export function TouchControls({
         onLostPointerCapture={endMove}
         onContextMenu={(event) => event.preventDefault()}
       >
-        <span className="touch-stick__ring" aria-hidden="true" />
+        <span className="tc-pad__directions" aria-hidden="true">
+          <span className="tc-dir tc-dir--up">▲</span>
+          <span className="tc-dir tc-dir--right">▶</span>
+          <span className="tc-dir tc-dir--down">▼</span>
+          <span className="tc-dir tc-dir--left">◀</span>
+        </span>
+        <span className="tc-pad__ring" aria-hidden="true" />
         <span
-          className="touch-stick__knob"
+          className="tc-pad__knob"
           style={{ transform: `translate(${moveKnob.x}px, ${moveKnob.y}px)` }}
           aria-hidden="true"
         />
-        <span className="touch-stick__label mono-label">
-          {thrusting ? "THRUST" : "MOVE"}
+        <span className="tc-pad__label">{thrusting ? "THRUST" : "MOVE"}</span>
+      </div>
+
+      <div
+        className={`tc-pad tc-pad--aim${autoFire ? " is-firing" : ""}`}
+        data-testid="touch-aim"
+        data-auto-fire={autoFire}
+        data-aim-fire-enabled={settings.aimFireEnabled}
+        role="group"
+        aria-label="Aim and optional auto-fire pad"
+        onPointerDown={beginAim}
+        onPointerMove={updateAim}
+        onPointerUp={endAim}
+        onPointerCancel={endAim}
+        onLostPointerCapture={endAim}
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        <span className="tc-pad__crosshair" aria-hidden="true">
+          <span />
+          <span />
+        </span>
+        <span className="tc-pad__ring" aria-hidden="true" />
+        <span
+          className="tc-pad__knob"
+          style={{ transform: `translate(${aimKnob.x}px, ${aimKnob.y}px)` }}
+          aria-hidden="true"
+        />
+        <span className="tc-pad__label">
+          {autoFire ? "FIRING" : settings.aimFireEnabled ? "AIM / FIRE" : "AIM"}
         </span>
       </div>
 
-      <div className="touch-tools">
+      <button
+        type="button"
+        className="tc-action tc-action--fire"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setTouchFireButton(true);
+        }}
+        onPointerUp={(event) => {
+          setTouchFireButton(false);
+          try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          } catch {
+            // Capture may already be released.
+          }
+        }}
+        onPointerCancel={() => setTouchFireButton(false)}
+        onLostPointerCapture={() => setTouchFireButton(false)}
+        data-testid="touch-fire"
+        aria-label="Fire weapon"
+      >
+        <Swords aria-hidden="true" />
+        <span>FIRE</span>
+      </button>
+
+      <button
+        type="button"
+        className="tc-action tc-action--jump"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          queueTouchJump();
+          setTouchJumpHeld(true);
+        }}
+        onPointerUp={(event) => {
+          setTouchJumpHeld(false);
+          try {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+          } catch {
+            // Capture may already be released.
+          }
+        }}
+        onPointerCancel={() => setTouchJumpHeld(false)}
+        onLostPointerCapture={() => setTouchJumpHeld(false)}
+        data-testid="touch-jump"
+        aria-label="Jump and jetpack"
+      >
+        <Gauge aria-hidden="true" />
+        <span>JUMP</span>
+      </button>
+
+      <button
+        type="button"
+        className="tc-action tc-action--reload"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          queueTouchReload();
+          audio.play("uiSelect");
+        }}
+        data-testid="touch-reload"
+        aria-label="Reload weapon"
+      >
+        <RotateCw aria-hidden="true" />
+        <span>RELOAD</span>
+      </button>
+
+      {online ? (
         <button
           type="button"
-          className="touch-button touch-button--small"
+          className="tc-action tc-action--grenade"
           onPointerDown={(event) => {
             event.preventDefault();
-            queueTouchReload();
+            const next = (selectedGrenadeIndex + 1) % 3;
+            bridge.send({ type: "select-grenade", slot: next });
+            queueTouchGrenadeSlot(next);
             audio.play("uiSelect");
           }}
-          data-testid="touch-reload"
-          aria-label="Reload weapon"
+          data-testid="touch-grenade"
+          aria-label={`Select grenade. Current ${selectedGrenadeLabel}`}
         >
-          R
-          <span>RELOAD</span>
+          <span className={`tc-grenade-dot is-${snapshot.grenadeSelected}`} aria-hidden="true" />
+          <span>{selectedGrenadeCount}</span>
         </button>
+      ) : null}
+
+      {online ? (
         <button
           type="button"
-          className="touch-button touch-button--small"
+          className="tc-action tc-action--throw"
           onPointerDown={(event) => {
             event.preventDefault();
-            bridge.send({ type: "swap-weapon" });
-            queueTouchSwap();
-            audio.play("uiSelect");
+            bridge.send({ type: "throw-grenade" });
+            queueTouchGrenadeThrow();
           }}
-          data-testid="touch-swap"
-          aria-label="Swap weapon with nearby loot"
+          data-testid="touch-throw-grenade"
+          aria-label="Throw grenade"
         >
-          E
-          <span>SWAP</span>
+          <span className="tc-throw-mark" aria-hidden="true">G</span>
+          <span>THROW</span>
         </button>
+      ) : null}
+
+      {online ? (
         <button
           type="button"
-          className="touch-button touch-button--small"
+          className="tc-action tc-action--medkit"
           onPointerDown={(event) => {
             event.preventDefault();
             bridge.send({ type: "use-medkit" });
@@ -309,12 +455,30 @@ export function TouchControls({
           data-testid="touch-medkit"
           aria-label="Use medkit"
         >
-          H
-          <span>MEDKIT {snapshot.medkits}</span>
+          <ShieldPlus aria-hidden="true" />
+          <span>{snapshot.medkits}</span>
         </button>
-      </div>
+      ) : null}
 
-      <div className="touch-weapons" aria-label="Weapon slots">
+      {online ? (
+        <button
+          type="button"
+          className="tc-action tc-action--swap"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            bridge.send({ type: "swap-weapon" });
+            queueTouchSwap();
+            audio.play("uiSelect");
+          }}
+          data-testid="touch-swap"
+          aria-label="Pick up or swap nearby loot"
+        >
+          <span className="tc-swap-mark" aria-hidden="true">E</span>
+          <span>PICKUP</span>
+        </button>
+      ) : null}
+
+      <div className="tc-weapons" aria-label="Weapon slots">
         {(snapshot.weaponSlots.length > 0
           ? snapshot.weaponSlots
           : [1, 2, 3].map((slot) => ({
@@ -329,7 +493,7 @@ export function TouchControls({
           <button
             type="button"
             key={slot.slot}
-            className={`touch-weapon${slot.active ? " is-active" : ""}`}
+            className={`tc-weapon${slot.active ? " " : ""}${slot.active ? "is-active" : ""}`}
             data-testid={`touch-weapon-${slot.slot}`}
             aria-label={`Equip ${slot.shortName}`}
             onPointerDown={(event) => {
@@ -339,133 +503,19 @@ export function TouchControls({
             }}
           >
             <strong>{slot.slot}</strong>
-            <span>
-              {slot.owned
-                ? `${slot.ammo}/${slot.magazineSize}`
-                : "EMPTY"}
-            </span>
+            <span>{slot.owned ? `${slot.ammo}` : "—"}</span>
           </button>
         ))}
       </div>
 
-      <div
-        className={`touch-stick touch-stick--aim${autoFire ? " is-firing" : ""}`}
-        ref={aimRef}
-        data-testid="touch-aim"
-        data-auto-fire={autoFire}
-        data-aim-fire-enabled={settings.aimFireEnabled}
-        role="group"
-        aria-label="Aim and optional auto-fire control"
-        onPointerDown={beginAim}
-        onPointerMove={updateAim}
-        onPointerUp={endAim}
-        onPointerCancel={endAim}
-        onLostPointerCapture={endAim}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <span className="touch-stick__ring" aria-hidden="true" />
-        <span
-          className="touch-stick__knob"
-          style={{ transform: `translate(${aimKnob.x}px, ${aimKnob.y}px)` }}
-          aria-hidden="true"
-        />
-        <span className="touch-stick__label mono-label">
-          {autoFire ? "FIRING" : "AIM"}
-        </span>
-      </div>
-
-      <button
-        type="button"
-        className="touch-button touch-button--settings touch-settings-button"
-        onPointerDown={(event) => {
-          event.preventDefault();
-          onSettings();
-        }}
-        data-testid="touch-settings"
-        aria-label="Open settings"
-      >
-        SETTINGS
-      </button>
-
-      <div className="touch-actions">
-        <button
-          type="button"
-          className="touch-button touch-button--grenade"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            const next = (selectedGrenadeIndex + 1) % 3;
-            bridge.send({ type: "select-grenade", slot: next });
-            queueTouchGrenadeSlot(next);
-            audio.play("uiSelect");
-          }}
-          data-testid="touch-grenade"
-          aria-label={`Select grenade. Current ${selectedGrenadeLabel}`}
-        >
-          {selectedGrenadeLabel}
-          <span>{selectedGrenadeCount}</span>
-        </button>
-        <button
-          type="button"
-          className="touch-button touch-button--throw"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            bridge.send({ type: "throw-grenade" });
-            queueTouchGrenadeThrow();
-          }}
-          data-testid="touch-throw-grenade"
-          aria-label="Throw grenade"
-        >
-          G
-        </button>
-        <button
-          type="button"
-          className="touch-button touch-button--jump"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            queueTouchJump();
-            setTouchJumpHeld(true);
-          }}
-          onPointerUp={(event) => {
-            setTouchJumpHeld(false);
-            try {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            } catch {
-              // Capture may already be released.
-            }
-          }}
-          onPointerCancel={() => setTouchJumpHeld(false)}
-          onLostPointerCapture={() => setTouchJumpHeld(false)}
-          data-testid="touch-jump"
-          aria-label="Jump and jetpack"
-        >
-          JUMP
-        </button>
-        <button
-          type="button"
-          className="touch-button touch-button--fire"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            setTouchFireButton(true);
-          }}
-          onPointerUp={(event) => {
-            setTouchFireButton(false);
-            try {
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            } catch {
-              // Capture may already be released.
-            }
-          }}
-          onPointerCancel={() => setTouchFireButton(false)}
-          onLostPointerCapture={() => setTouchFireButton(false)}
-          data-testid="touch-fire"
-          aria-label="Fire weapon"
-        >
-          FIRE
-          <span>{activeSlot?.shortName ?? "READY"}</span>
-        </button>
-      </div>
+      <span className="tc-hidden-identity" aria-hidden="true">
+        {playerName} LVL {level}
+      </span>
+      <span className="sr-only">
+        Touch controls active. Left pad moves and pushes up to fly. Right pad
+        aims, auto-fire depends on settings. Active weapon{" "}
+        {activeSlot?.shortName ?? snapshot.weaponShortName}.
+      </span>
     </div>
   );
 }

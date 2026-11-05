@@ -3,11 +3,12 @@ import { ARENA, type ArenaSpawnPoint } from "@/game/arena/arena";
 import { buildArena, type ArenaBuildResult } from "@/game/arena/ArenaBuilder";
 import { buildNavigationGrid, type NavGrid } from "@/game/ai/navigation";
 import {
-  DRONE_WEAPON,
   JETPACK_CONFIG,
   MATCH_CONFIG,
   PLAYER_CONFIG,
   PLAYER_WEAPONS,
+  getPracticeDifficulty,
+  type PracticeDifficulty,
 } from "@/game/config/gameplay";
 import type {
   DebugProbe,
@@ -32,6 +33,7 @@ import {
 import { selectSpawnPoint, type SpawnThreat } from "@/game/core/spawn";
 import { reloadProgress } from "@/game/core/weapon";
 import { Drone, type BotTarget, type BotWorld } from "@/game/entities/Drone";
+import { getCharacterSkin } from "@/game/characters/roster";
 import { Player } from "@/game/entities/Player";
 import { audio } from "@/game/audio/AudioEngine";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
@@ -41,6 +43,9 @@ import { createGameTextures } from "@/game/systems/TextureFactory";
 
 export class ArenaScene extends Phaser.Scene {
   private bridge: GameBridge;
+  private difficulty: PracticeDifficulty;
+  private skinId: string;
+  private resizeHandler: (() => void) | null = null;
   private arenaBuild!: ArenaBuildResult;
   private navGrid!: NavGrid;
   private inputController!: InputController;
@@ -71,13 +76,20 @@ export class ArenaScene extends Phaser.Scene {
     send: (command: GameCommand) => void;
   } | null = null;
 
-  constructor(bridge: GameBridge) {
+  constructor(
+    bridge: GameBridge,
+    difficulty: PracticeDifficulty = "normal",
+    skinId = "viber-010",
+  ) {
     super("ArenaScene");
     this.bridge = bridge;
+    this.difficulty = getPracticeDifficulty(difficulty);
+    this.skinId = getCharacterSkin(skinId).skinId;
   }
 
   preload(): void {
-    this.load.image("player-viber", "/sprites/viber-010/viber-010-cutout.png");
+    const skin = getCharacterSkin(this.skinId);
+    this.load.image("player-viber", skin.cutoutPath);
   }
 
   create(): void {
@@ -118,7 +130,22 @@ export class ArenaScene extends Phaser.Scene {
     this.physics.add.collider(this.player.sprite, this.arenaBuild.collisionObjects);
 
     this.cameras.main.startFollow(this.player.sprite, true, 0.075, 0.075);
-    this.cameras.main.setDeadzone(240, 150);
+    const applyCameraScale = () => {
+      const width = this.scale.width;
+      const height = this.scale.height;
+      const compact = height < 600 || width / Math.max(1, height) > 1.95;
+      const zoom = compact
+        ? Math.max(0.5, Math.min(0.86, height / 680))
+        : 1;
+      this.cameras.main.setZoom(zoom);
+      this.cameras.main.setDeadzone(
+        compact ? 150 : 240,
+        compact ? 90 : 150,
+      );
+    };
+    applyCameraScale();
+    this.resizeHandler = applyCameraScale;
+    this.scale.on(Phaser.Scale.Events.RESIZE, applyCameraScale);
     this.cameras.main.fadeIn(450, 12, 13, 15);
 
     const botWorld: BotWorld = {
@@ -129,10 +156,16 @@ export class ArenaScene extends Phaser.Scene {
     };
     this.drones = ARENA.droneSpawns.map(
       (spawn) =>
-        new Drone(this, spawn, botWorld, {
-          onFire: (source) => this.onDroneFire(source),
-          onDestroyed: (source) => this.onDroneDestroyed(source),
-        }),
+        new Drone(
+          this,
+          spawn,
+          botWorld,
+          {
+            onFire: (source) => this.onDroneFire(source),
+            onDestroyed: (source) => this.onDroneDestroyed(source),
+          },
+          { difficulty: this.difficulty },
+        ),
     );
     for (const drone of this.drones) {
       this.physics.add.collider(drone.sprite, this.arenaBuild.collisionObjects);
@@ -276,6 +309,7 @@ export class ArenaScene extends Phaser.Scene {
     }
 
     this.projectiles.update(this.elapsedMs, ARENA.width, ARENA.height);
+    this.clampCameraToArena();
     this.drawCrosshair(input.aimWorld);
     this.drawDebug();
 
@@ -283,6 +317,20 @@ export class ArenaScene extends Phaser.Scene {
       this.hudTimerMs = 0;
       this.publishHud(false);
     }
+  }
+
+  private clampCameraToArena(): void {
+    const camera = this.cameras.main;
+    const visibleWidth = camera.width / Math.max(0.01, camera.zoom);
+    const visibleHeight = camera.height / Math.max(0.01, camera.zoom);
+    camera.scrollX = Math.max(
+      0,
+      Math.min(camera.scrollX, ARENA.width - visibleWidth),
+    );
+    camera.scrollY = Math.max(
+      0,
+      Math.min(camera.scrollY, ARENA.height - visibleHeight),
+    );
   }
 
   private buildBotTargets(): BotTarget[] {
@@ -412,9 +460,9 @@ export class ArenaScene extends Phaser.Scene {
       muzzle.x,
       muzzle.y,
       drone.aimAngle,
-      DRONE_WEAPON.spreadRadians,
-      DRONE_WEAPON.damage,
-      DRONE_WEAPON.projectileSpeed,
+      drone.projectileSpread,
+      drone.projectileDamage,
+      drone.projectileSpeed,
       this.elapsedMs,
     );
     this.effects.muzzle(muzzle.x, muzzle.y, true);
@@ -875,6 +923,8 @@ export class ArenaScene extends Phaser.Scene {
         scrollX: this.cameras.main.scrollX,
         scrollY: this.cameras.main.scrollY,
         zoom: this.cameras.main.zoom,
+        width: this.cameras.main.width,
+        height: this.cameras.main.height,
       },
       match: {
         phase: this.matchTimer.phase,
@@ -897,6 +947,10 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    if (this.resizeHandler) {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeHandler);
+      this.resizeHandler = null;
+    }
     this.commandUnsubscribe?.();
     this.commandUnsubscribe = null;
     if (this.testApi && window.__VIBE_MILITIA__ === this.testApi) {

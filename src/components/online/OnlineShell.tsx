@@ -21,16 +21,25 @@ import type { OnlineRoomMetadata } from "@/game/multiplayer/protocol";
 import { audio } from "@/game/audio/AudioEngine";
 import {
   ensureGuestProfile,
+  gameServerHttpUrl,
   guestToken,
   readCachedProfile,
+  redeemResume,
   updateGuestProfile,
 } from "@/lib/guestProfile";
+import {
+  clearResumeContext,
+  readResumeContext,
+  writeResumeContext,
+} from "@/lib/resumeContext";
 import type { MatchReward, PlayerProfile } from "@/game/progression/profile";
 import {
   DEFAULT_EQUIPPED,
   type EquippedCosmetics,
 } from "@/game/progression/cosmetics";
 import { installClientErrorCapture } from "@/lib/betaTelemetry";
+import { usePlayerIdentity } from "@/components/hub/usePlayerIdentity";
+import { ArrowLeft, Globe2, Settings, Trophy, Users } from "lucide-react";
 
 type OnlineRoom = Room;
 type OnlineClient = Client;
@@ -45,6 +54,13 @@ const SKIN_STORAGE_KEY = "vibe-militia-skin";
 interface LobbyRoomLike extends AvailableRoom {
   roomId: string;
   metadata?: OnlineRoomMetadata;
+}
+
+interface ResumeReadyMessage {
+  handle: string;
+  roomId: string;
+  expiresAt: number;
+  graceSeconds: number;
 }
 
 function randomGuestName(): string {
@@ -101,9 +117,9 @@ function OnlineGameSession({
   const [tickMs, setTickMs] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
   const [portrait, setPortrait] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const gameFrameRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -112,7 +128,6 @@ function OnlineGameSession({
       delete (window as unknown as { __HUD_BRIDGE__?: GameBridge }).__HUD_BRIDGE__;
     };
   }, [bridge]);
-  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -182,15 +197,6 @@ function OnlineGameSession({
     }
   };
 
-  const closeGuide = () => {
-    setShowGuide(false);
-    try {
-      window.localStorage.setItem("vibe-militia-onboarded", "1");
-    } catch {
-      // Guidance still closes for this session.
-    }
-  };
-
   const inviteUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/online?room=${room.roomId}`
@@ -199,10 +205,8 @@ function OnlineGameSession({
   const copyInvite = async () => {
     try {
       await navigator.clipboard.writeText(inviteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
     } catch {
-      setCopied(false);
+      // Clipboard can be blocked.
     }
   };
 
@@ -230,6 +234,7 @@ function OnlineGameSession({
             onSettings={() => setSettingsOpen(true)}
             playerName={playerName}
             level={profile?.level ?? 1}
+            variant="online"
           />
         ) : null}
         {reconnecting ? (
@@ -239,7 +244,8 @@ function OnlineGameSession({
               <strong className="display">RECONNECTING</strong>
               <p>
                 Your seat, loadout and score are reserved for{" "}
-                {reconnectGraceSeconds} seconds. Keep this tab open.
+                {reconnectGraceSeconds} seconds. A page reload in this window
+                returns to the same room and human seat.
               </p>
               <span className="reconnect-card__bar" aria-hidden="true" />
             </div>
@@ -315,9 +321,9 @@ function OnlineGameSession({
                   medkit, E swap.
                 </p>
                 <p>
-                  Touch: left stick moves, push it up to fly, right stick aims
-                  and can auto-fire, FIRE and JUMP remain available. The online
-                  match keeps running while this panel is open.
+                  Touch: left D-pad moves, push up to fly, right pad aims and
+                  fires. Compact grenade, reload, weapon, medkit and pickup
+                  controls sit in the thumb zones.
                 </p>
               </div>
               {touchMode ? <BetaFeedback /> : null}
@@ -329,6 +335,7 @@ function OnlineGameSession({
                     setSettingsOpen(false);
                     onLeave();
                   }}
+                  data-testid="leave-online-settings"
                 >
                   LEAVE MATCH
                 </button>
@@ -372,34 +379,41 @@ function OnlineGameSession({
               <ol className="onboarding-steps">
                 <li>
                   <strong>MOVE</strong>
-                  <span>WASD or the left stick. Space or JUMP lifts you.</span>
+                  <span>WASD or the left D-pad. Space or push up lifts you.</span>
                 </li>
                 <li>
                   <strong>AIM AND FIRE</strong>
                   <span>
-                    Mouse or the right stick. Push the right stick past the
-                    threshold to auto-fire, or use the FIRE button.
+                    Mouse or the right pad. Push past the threshold to auto-fire,
+                    or use FIRE.
                   </span>
                 </li>
                 <li>
                   <strong>LOOT THE SECTOR</strong>
                   <span>
                     Pick up medkits, grenades and seven weapons. A full loadout
-                    uses E or SWAP to replace the equipped gun.
+                    uses E or PICKUP to replace the equipped gun.
                   </span>
                 </li>
                 <li>
                   <strong>WATCH THE CLOCK</strong>
                   <span>
-                    Most eliminations wins. Progress to the next level with
-                    server-confirmed match XP.
+                    Most eliminations wins. Online XP is server-confirmed.
+                    Practice is never ranked.
                   </span>
                 </li>
               </ol>
               <button
                 type="button"
                 className="online-primary"
-                onClick={closeGuide}
+                onClick={() => {
+                  setShowGuide(false);
+                  try {
+                    window.localStorage.setItem("vibe-militia-onboarded", "1");
+                  } catch {
+                    // Guidance still closes for this session.
+                  }
+                }}
                 data-testid="onboarding-dismiss"
               >
                 ENTER THE ARENA
@@ -421,10 +435,10 @@ function OnlineGameSession({
           <button
             type="button"
             className="hud-button"
-            onClick={copyInvite}
+            onClick={() => void copyInvite()}
             data-testid="copy-invite"
           >
-            {copied ? "COPIED" : "INVITE"}
+            INVITE
           </button>
           <button
             type="button"
@@ -450,12 +464,13 @@ function OnlineGameSession({
 }
 
 export function OnlineShell() {
+  const identity = usePlayerIdentity();
   const [name, setName] = useState("VIBER-GUEST");
-  const [skinId, setSkinId] = useState(HUMAN_DEFAULT_SKIN_ID);
   const [rooms, setRooms] = useState<LobbyRoomLike[]>([]);
   const [connected, setConnected] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [joinedRoom, setJoinedRoom] = useState<OnlineRoom | null>(null);
   const [inviteRoomId, setInviteRoomId] = useState<string | null>(null);
   const [copiedRoom, setCopiedRoom] = useState<string | null>(null);
@@ -463,29 +478,50 @@ export function OnlineShell() {
   const [equipped, setEquipped] = useState<EquippedCosmetics>(DEFAULT_EQUIPPED);
   const [lastReward, setLastReward] = useState<MatchReward | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
-  const [reconnectGraceSeconds, setReconnectGraceSeconds] = useState(20);
-  const reconnectGraceRef = useRef(20);
+  const [reconnectGraceSeconds, setReconnectGraceSeconds] = useState(30);
   const [profileBusy, setProfileBusy] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [showLobbyGuide, setShowLobbyGuide] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [resuming, setResuming] = useState(false);
   const clientRef = useRef<OnlineClient | null>(null);
   const lobbyRef = useRef<OnlineRoom | null>(null);
   const joinedRef = useRef<OnlineRoom | null>(null);
   const leavingRef = useRef(false);
   const mountedRef = useRef(true);
+  const nameRef = useRef("VIBER-GUEST");
+  const skinRef = useRef(HUMAN_DEFAULT_SKIN_ID);
+  const reconnectGraceRef = useRef(30);
+
+  useEffect(() => {
+    nameRef.current = name;
+  }, [name]);
+  useEffect(() => {
+    skinRef.current = identity.skinId;
+  }, [identity.skinId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setName(identity.name);
+      nameRef.current = identity.name;
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [identity.name]);
+
+  useEffect(() => {
+    const nextProfile = identity.profile;
+    if (!nextProfile) return;
+    const timer = window.setTimeout(() => {
+      setProfile(nextProfile);
+      setEquipped(nextProfile.equipped);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [identity.profile]);
 
   useEffect(() => {
     mountedRef.current = true;
     const uninstallErrorCapture = installClientErrorCapture();
     const timer = window.setTimeout(() => {
-      const saved = window.localStorage.getItem("vibe-militia-guest");
-      const initialName = saved || randomGuestName();
-      setName(initialName);
-      const savedSkin = window.localStorage.getItem(SKIN_STORAGE_KEY);
-      const restoredSkin = getCharacterSkin(savedSkin).skinId;
-      setSkinId(restoredSkin);
-      if (!savedSkin || savedSkin !== restoredSkin) {
-        window.localStorage.setItem(SKIN_STORAGE_KEY, restoredSkin);
-      }
       const roomParam = new URLSearchParams(window.location.search).get("room");
       if (roomParam) setInviteRoomId(roomParam);
       let onboarded = false;
@@ -496,6 +532,11 @@ export function OnlineShell() {
         onboarded = false;
       }
       if (!onboarded) setShowLobbyGuide(true);
+      const cached = readCachedProfile();
+      if (cached) {
+        setProfile(cached);
+        setEquipped(cached.equipped);
+      }
       void fetch(`${SERVER_URL.replace(/\/$/, "")}/api/config`, {
         cache: "no-store",
       })
@@ -504,49 +545,30 @@ export function OnlineShell() {
           if (!mountedRef.current) return;
           const seconds = Math.max(
             1,
-            Math.min(120, Number(config?.reconnectGraceSeconds) || 20),
+            Math.min(120, Number(config?.reconnectGraceSeconds) || 30),
           );
           reconnectGraceRef.current = seconds;
           setReconnectGraceSeconds(seconds);
         })
         .catch(() => undefined);
-      const cached = readCachedProfile();
-      if (cached) {
-        setProfile(cached);
-        setEquipped(cached.equipped);
-      }
-      void ensureGuestProfile(initialName, restoredSkin).then((loaded) => {
-        if (!mountedRef.current || !loaded) return;
-        setProfile(loaded);
-        setEquipped(loaded.equipped);
-      });
     }, 0);
     return () => {
       window.clearTimeout(timer);
       uninstallErrorCapture();
       mountedRef.current = false;
+      // Deliberately do not leave the match on page unload. Colyseus keeps the
+      // seat reserved for the reconnect grace window.
     };
+    // Connection is established once. Resume uses the same client below.
   }, []);
 
   const selectedSkin = useMemo(
-    () => getCharacterSkin(skinId),
-    [skinId],
+    () => getCharacterSkin(identity.skinId),
+    [identity.skinId],
   );
 
-  const chooseSkin = useCallback((nextSkinId: string) => {
-    const validSkinId = getCharacterSkin(nextSkinId).skinId;
-    setSkinId(validSkinId);
-    try {
-      window.localStorage.setItem(SKIN_STORAGE_KEY, validSkinId);
-    } catch {
-      // Selection still applies for this session when storage is unavailable.
-    }
-    if (profile) {
-      void updateGuestProfile({ skinId: validSkinId }).then((result) => {
-        if (result) setProfile(result.player);
-      });
-    }
-  }, [profile]);
+  const chooseSkin = identity.chooseSkin;
+  const refreshProfile = identity.refreshProfile;
 
   const equipCosmetic = useCallback(
     async (slot: keyof EquippedCosmetics, id: string) => {
@@ -567,10 +589,100 @@ export function OnlineShell() {
     [equipped, profile],
   );
 
+  const attachRoomHandlers = useCallback((room: OnlineRoom) => {
+    room.reconnection.minUptime = 0;
+    room.reconnection.maxRetries = 40;
+    room.reconnection.delay = 250;
+    room.reconnection.maxDelay = 3000;
+    const armDrop = () => {
+      let expiryTimer: number | null = null;
+      room.onDrop.once(() => {
+        if (leavingRef.current) return;
+        if (mountedRef.current) setReconnecting(true);
+        expiryTimer = window.setTimeout(() => {
+          if (!room.reconnection.isReconnecting) return;
+          void room.leave().catch(() => undefined);
+        }, reconnectGraceRef.current * 1000 + 2500);
+        room.onReconnect.once(() => {
+          if (expiryTimer !== null) window.clearTimeout(expiryTimer);
+          expiryTimer = null;
+          if (mountedRef.current) {
+            setReconnecting(false);
+            setNotice("SEAT RESTORED // Score, loadout and XP kept.");
+          }
+          armDrop();
+        });
+      });
+    };
+    armDrop();
+    room.onMessage("resume-ready", (message: ResumeReadyMessage) => {
+      if (!message?.handle || !message.roomId) return;
+      writeResumeContext({
+        handle: message.handle,
+        roomId: message.roomId,
+        expiresAt: message.expiresAt,
+        name: nameRef.current,
+        skinId: skinRef.current,
+      });
+      if (mountedRef.current) {
+        setReconnectGraceSeconds(
+          Math.max(1, Math.min(120, Number(message.graceSeconds) || 30)),
+        );
+        reconnectGraceRef.current = Math.max(
+          1,
+          Math.min(120, Number(message.graceSeconds) || 30),
+        );
+      }
+    });
+    room.onLeave.once((code, reason) => {
+      if (mountedRef.current) setReconnecting(false);
+      if (leavingRef.current) return;
+      clearResumeContext();
+      joinedRef.current = null;
+      if (!mountedRef.current) return;
+      setJoinedRoom(null);
+      setNotice(
+        reason ||
+          (code === 1000
+            ? "ROOM CLOSED // Returned to matchmaking."
+            : "RECONNECT WINDOW EXPIRED // Your seat was released. Guest XP is preserved."),
+      );
+    });
+    room.onError.once((_code, message) => {
+      if (!mountedRef.current) return;
+      setError(message ?? "Room connection error");
+    });
+    room.onMessage("profile-update", (reward: MatchReward) => {
+      if (!mountedRef.current) return;
+      setProfile(reward.profile);
+      setEquipped(reward.profile.equipped);
+      if (reward.xpEarned > 0 || reward.levelUp) setLastReward(reward);
+      refreshProfile().catch(() => undefined);
+    });
+  }, [refreshProfile]);
+
+  const adoptRoom = useCallback(
+    async (room: OnlineRoom) => {
+      if (!mountedRef.current) {
+        await room.leave();
+        return;
+      }
+      leavingRef.current = false;
+      joinedRef.current = room;
+      attachRoomHandlers(room);
+      setJoinedRoom(room);
+      window.history.replaceState(null, "", `/online?room=${room.roomId}`);
+      setInviteRoomId(room.roomId);
+      room.send("request-resume");
+    },
+    [attachRoomHandlers],
+  );
+
   useEffect(() => {
     let cancelled = false;
     let localClient: OnlineClient | null = null;
     let localLobby: OnlineRoom | null = null;
+    let resumeTried = false;
 
     const connect = async () => {
       try {
@@ -613,6 +725,41 @@ export function OnlineShell() {
             setError(message ?? "Lobby connection failed");
           }
         });
+
+        if (!resumeTried) {
+          resumeTried = true;
+          const resume = readResumeContext();
+          if (resume) {
+            setResuming(true);
+            const redeemed = await redeemResume(resume.handle, resume.roomId);
+            if (cancelled) return;
+            if (redeemed) {
+              try {
+                setName(resume.name);
+                nameRef.current = resume.name;
+                skinRef.current = resume.skinId;
+                const room = await localClient.reconnect(
+                  `${redeemed.roomId}:${redeemed.reconnectionToken}`,
+                );
+                await adoptRoom(room);
+                setNotice("MATCH RESTORED // Same room and human seat.");
+                setResuming(false);
+                return;
+              } catch {
+                clearResumeContext();
+                setNotice(
+                  "MATCH ENDED OR SERVER RESTARTED // Guest XP is preserved.",
+                );
+              }
+            } else {
+              clearResumeContext();
+              setNotice(
+                "RECONNECT WINDOW EXPIRED // Your seat was released. Guest XP is preserved.",
+              );
+            }
+            setResuming(false);
+          }
+        }
       } catch (connectError) {
         if (!cancelled) {
           setError(
@@ -628,77 +775,31 @@ export function OnlineShell() {
     return () => {
       cancelled = true;
       if (localLobby) void localLobby.leave();
-      if (joinedRef.current && !leavingRef.current) {
+      if (joinedRef.current && leavingRef.current) {
         void joinedRef.current.leave();
       }
       joinedRef.current = null;
       lobbyRef.current = null;
       clientRef.current = null;
     };
-  }, []);
+  }, [adoptRoom]);
 
-  const attachRoomHandlers = useCallback((room: OnlineRoom) => {
-    room.reconnection.minUptime = 0;
-    room.reconnection.maxRetries = 30;
-    room.reconnection.delay = 250;
-    room.reconnection.maxDelay = 3000;
-    const armDrop = () => {
-      let expiryTimer: number | null = null;
-      room.onDrop.once(() => {
-        if (leavingRef.current) return;
-        if (mountedRef.current) setReconnecting(true);
-        expiryTimer = window.setTimeout(() => {
-          if (!room.reconnection.isReconnecting) return;
-          void room.leave().catch(() => undefined);
-        }, reconnectGraceRef.current * 1000 + 2500);
-        room.onReconnect.once(() => {
-          if (expiryTimer !== null) window.clearTimeout(expiryTimer);
-          expiryTimer = null;
-          if (mountedRef.current) setReconnecting(false);
-          armDrop();
-        });
-      });
-    };
-    armDrop();
-    room.onLeave.once((code, reason) => {
-      if (mountedRef.current) setReconnecting(false);
-      if (leavingRef.current) return;
-      joinedRef.current = null;
-      if (!mountedRef.current) return;
-      setJoinedRoom(null);
-      setError(
-        reason ||
-          (code === 1000
-            ? "Room closed"
-            : `Disconnected from the match (${code})`),
-      );
-    });
-    room.onError.once((_code, message) => {
-      if (!mountedRef.current) return;
-      setError(message ?? "Room connection error");
-    });
-    room.onMessage("profile-update", (reward: MatchReward) => {
-      if (!mountedRef.current) return;
-      setProfile(reward.profile);
-      setEquipped(reward.profile.equipped);
-      if (reward.xpEarned > 0 || reward.levelUp) setLastReward(reward);
-    });
-  }, []);
-
-  const adoptRoom = useCallback(
-    async (room: OnlineRoom) => {
-      if (!mountedRef.current) {
-        await room.leave();
-        return;
+  const persistIdentity = useCallback(
+    async (guest: string) => {
+      window.localStorage.setItem("vibe-militia-guest", guest);
+      window.localStorage.setItem("vibe-militia-profile-setup", "1");
+      setName(guest);
+      nameRef.current = guest;
+      window.localStorage.setItem(SKIN_STORAGE_KEY, identity.skinId);
+      const ensured =
+        profile ?? (await ensureGuestProfile(guest, identity.skinId));
+      if (ensured) {
+        setProfile(ensured);
+        setEquipped(ensured.equipped);
       }
-      leavingRef.current = false;
-      joinedRef.current = room;
-      attachRoomHandlers(room);
-      setJoinedRoom(room);
-      window.history.replaceState(null, "", `/online?room=${room.roomId}`);
-      setInviteRoomId(room.roomId);
+      await updateGuestProfile({ name: guest, skinId: identity.skinId });
     },
-    [attachRoomHandlers],
+    [identity.skinId, profile],
   );
 
   const joinRoom = useCallback(
@@ -706,27 +807,21 @@ export function OnlineShell() {
       const client = clientRef.current;
       if (!client || joining) return;
       const guest = name.trim() || randomGuestName();
-      window.localStorage.setItem("vibe-militia-guest", guest);
-      setName(guest);
       setError(null);
+      setNotice(null);
       setJoining(true);
-      const ensured = profile ?? (await ensureGuestProfile(guest, skinId));
-      if (ensured) {
-        setProfile(ensured);
-        setEquipped(ensured.equipped);
-        await updateGuestProfile({ name: guest, skinId });
-      }
+      await persistIdentity(guest);
       try {
         const room = roomId
           ? await client.joinById(roomId, {
               name: guest,
-              skinId,
+              skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
             })
           : await client.create("ffa", {
               name: guest,
               roomName: "SECTOR 07",
-              skinId,
+              skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
             });
         await adoptRoom(room);
@@ -744,23 +839,17 @@ export function OnlineShell() {
         if (mountedRef.current) setJoining(false);
       }
     },
-    [adoptRoom, joining, name, profile, skinId],
+    [adoptRoom, identity.skinId, joining, name, persistIdentity],
   );
 
   const quickMatch = useCallback(async () => {
     const client = clientRef.current;
     if (!client || joining) return;
     const guest = name.trim() || randomGuestName();
-    window.localStorage.setItem("vibe-militia-guest", guest);
-    setName(guest);
     setError(null);
+    setNotice(null);
     setJoining(true);
-    const ensured = profile ?? (await ensureGuestProfile(guest, skinId));
-    if (ensured) {
-      setProfile(ensured);
-      setEquipped(ensured.equipped);
-      await updateGuestProfile({ name: guest, skinId });
-    }
+    await persistIdentity(guest);
     try {
       let room: OnlineRoom | null = null;
       for (let attempt = 0; attempt < 4 && !room; attempt += 1) {
@@ -768,7 +857,7 @@ export function OnlineShell() {
           room = await client.joinOrCreate("ffa", {
             name: guest,
             roomName: "SECTOR 07",
-            skinId,
+            skinId: identity.skinId,
             open: true,
             guestToken: guestToken() ?? undefined,
           });
@@ -788,7 +877,7 @@ export function OnlineShell() {
         room = await client.create("ffa", {
           name: guest,
           roomName: "SECTOR 07",
-          skinId,
+          skinId: identity.skinId,
           guestToken: guestToken() ?? undefined,
         });
       }
@@ -806,16 +895,18 @@ export function OnlineShell() {
     } finally {
       if (mountedRef.current) setJoining(false);
     }
-  }, [adoptRoom, joining, name, profile, skinId]);
+  }, [adoptRoom, identity.skinId, joining, name, persistIdentity]);
 
   const leaveRoom = useCallback(async () => {
     const room = joinedRef.current;
     leavingRef.current = true;
+    clearResumeContext();
     joinedRef.current = null;
     setJoinedRoom(null);
     window.history.replaceState(null, "", "/online");
     if (room) await room.leave();
     leavingRef.current = false;
+    setNotice("LEFT MATCH // Your seat was released. Guest XP is preserved.");
   }, []);
 
   const copyRoomInvite = async (roomId: string) => {
@@ -830,12 +921,43 @@ export function OnlineShell() {
     }
   };
 
+  const intentHandled = useRef(false);
+  useEffect(() => {
+    if (
+      intentHandled.current ||
+      !connected ||
+      resuming ||
+      joining ||
+      joinedRoom
+    ) {
+      return;
+    }
+    const intent = new URLSearchParams(window.location.search).get("intent");
+    if (intent !== "quick" && intent !== "create") return;
+    intentHandled.current = true;
+    if (intent === "quick") void quickMatch();
+    else void joinRoom();
+  }, [connected, joining, joinedRoom, quickMatch, joinRoom, resuming]);
+
+  const submitJoinCode = () => {
+    const cleaned = joinCode
+      .trim()
+      .replace(/^.*[?&]room=/, "")
+      .replace(/[^\w-]/g, "");
+    if (!cleaned) {
+      setError("Enter a room code or paste an invite link.");
+      return;
+    }
+    setJoinCode("");
+    void joinRoom(cleaned);
+  };
+
   if (joinedRoom) {
     return (
       <OnlineGameSession
         room={joinedRoom}
         playerName={name}
-        skinId={skinId}
+        skinId={identity.skinId}
         reconnecting={reconnecting}
         reconnectGraceSeconds={reconnectGraceSeconds}
         profile={profile}
@@ -847,189 +969,124 @@ export function OnlineShell() {
   }
 
   return (
-    <main className="online-page">
+    <main className="online-page online-page--focused">
       <div className="militia-page__grid" aria-hidden="true" />
       <div className="militia-page__glow" aria-hidden="true" />
-      <div className="online-shell">
-        <header className="online-header">
-          <div>
-            <span className="hud-brand">VIBE MILITIA // ONLINE</span>
-            <h1 className="display online-title">FREE FOR ALL</h1>
-            <p className="online-lead">
-              Server-authoritative matches. Eight combatant slots, a short
-              pre-match countdown, bot backfill, and a ninety second clock.
+      <div className="online-lobby">
+        <header className="online-lobby__top">
+          <Link className="online-lobby__back" href="/">
+            <ArrowLeft aria-hidden="true" /> HUB
+          </Link>
+          <div className="online-lobby__title">
+            <h1 className="display">ONLINE FFA</h1>
+            <p>
+              Server-authoritative. Eight seats, bot backfill, ninety-second
+              clock. Practice is not part of this queue.
             </p>
           </div>
-          <Link className="online-back" href="/">
-            BACK TO LOCAL
-          </Link>
+          <div className="online-lobby__status">
+            <span
+              className={`hub-pill${connected ? " is-live" : ""}`}
+              data-testid="online-connection"
+            >
+              <Globe2 aria-hidden="true" style={{ width: 11, height: 11 }} />
+              {connected ? "SERVER LINKED" : "CONNECTING"}
+            </span>
+            <button
+              type="button"
+              className="hub-icon-button"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Open online settings"
+              data-testid="online-settings"
+            >
+              <Settings aria-hidden="true" />
+            </button>
+          </div>
         </header>
 
-        {showLobbyGuide ? (
-          <section
-            className="onboarding-banner"
-            aria-labelledby="onboarding-banner-title"
-            data-testid="onboarding-banner"
-          >
-            <div className="onboarding-banner__copy">
-              <span className="mono-label">FIRST DROP // CONTROLS</span>
-              <h2 id="onboarding-banner-title" className="display">
-                KNOW THE SECTOR
-              </h2>
-              <p>
-                WASD or left stick moves. Push the left stick up to fly. Mouse
-                or right stick aims, and the right stick can auto-fire past the
-                configured threshold. Reload with R, swap weapons with 1 to 3,
-                grenades with 4 to 6 and G, medkits with H, loot swaps with E.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="online-secondary online-secondary--small"
-              onClick={() => {
-                setShowLobbyGuide(false);
-                try {
-                  window.localStorage.setItem("vibe-militia-onboarded", "1");
-                } catch {
-                  // Guidance still closes for this session.
-                }
-              }}
-              data-testid="onboarding-dismiss"
-            >
-              GOT IT
-            </button>
-          </section>
-        ) : null}
-
-        {inviteRoomId ? (
-          <div className="online-invite">
-            <div>
-              <span className="mono-label">INVITE RECEIVED</span>
-              <strong>ROOM {inviteRoomId.slice(0, 8)}</strong>
-            </div>
-            <button
-              type="button"
-              className="online-primary"
-              onClick={() => void joinRoom(inviteRoomId)}
-              disabled={joining || !connected}
-              data-testid="join-invite-room"
-            >
-              {joining ? "JOINING..." : "JOIN ROOM"}
-            </button>
-          </div>
-        ) : null}
-
-        <section
-          className="skin-select"
-          aria-labelledby="skin-select-title"
-          data-testid="skin-selection"
-        >
-          <div className="skin-select__spotlight">
-            <div className="skin-select__heading">
-              <span className="mono-label">OPERATOR BAY // 10 AVAILABLE</span>
-              <h2 id="skin-select-title" className="display">
-                CHOOSE YOUR VIBER
-              </h2>
-              <p>
-                Every official Viber is unlocked. Pick a character before you
-                join. Your selection is saved on this device and never changes
-                during a live match.
-              </p>
-            </div>
-            <div className="skin-preview" data-testid="skin-preview">
-              <div className="skin-preview__stage">
-                <Image
-                  src={selectedSkin.cutoutPath}
-                  alt={`${selectedSkin.displayName} character preview`}
-                  fill
-                  sizes="(max-width: 900px) 50vw, 260px"
-                  className="skin-preview__image"
-                />
-                <span className="skin-preview__scan" aria-hidden="true" />
-              </div>
-              <div className="skin-preview__meta">
-                <span className="mono-label">SELECTED OPERATOR</span>
-                <strong
-                  className="display"
-                  data-testid="selected-skin-name"
-                  aria-live="polite"
+        <div className="online-lobby__grid">
+          <section className="online-main-card">
+            {showLobbyGuide ? (
+              <div
+                className="online-guide-banner"
+                role="status"
+                data-testid="onboarding-overlay"
+              >
+                <div>
+                  <span className="mono-label">ONLINE FFA // FIRST DROP</span>
+                  <strong>QUICK MATCH, CREATE ROOM OR JOIN BY CODE</strong>
+                  <p>
+                    Empty seats fill with bots at countdown. Humans replace bots.
+                    A dropped seat is held for {reconnectGraceSeconds} seconds,
+                    and a reload in this tab recovers the same human seat.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="online-secondary online-secondary--small"
+                  onClick={() => {
+                    setShowLobbyGuide(false);
+                    try {
+                      window.localStorage.setItem("vibe-militia-onboarded", "1");
+                    } catch {
+                      // Guidance still closes for this session.
+                    }
+                  }}
+                  data-testid="onboarding-dismiss"
                 >
-                  {selectedSkin.displayName}
-                </strong>
-                <span className="mono-label">
-                  {`${selectedSkin.skinId} // COSMETIC ONLY`}
-                </span>
+                  GOT IT
+                </button>
               </div>
-            </div>
-          </div>
+            ) : null}
+            {resuming ? (
+              <div className="online-invite" role="status">
+                <div>
+                  <span className="mono-label">RESUME CONTEXT FOUND</span>
+                  <strong>RECONNECTING TO YOUR MATCH</strong>
+                </div>
+                <span className="hub-spinner" aria-hidden="true" />
+              </div>
+            ) : null}
+            {notice ? (
+              <div className="online-invite" role="status" data-testid="online-notice">
+                <div>
+                  <span className="mono-label">MATCH STATUS</span>
+                  <strong>{notice}</strong>
+                </div>
+              </div>
+            ) : null}
+            {inviteRoomId ? (
+              <div className="online-invite" data-testid="invite-banner">
+                <div>
+                  <span className="mono-label">INVITE RECEIVED</span>
+                  <strong>ROOM {inviteRoomId.slice(0, 8)}</strong>
+                </div>
+                <button
+                  type="button"
+                  className="online-primary online-primary--small"
+                  onClick={() => void joinRoom(inviteRoomId)}
+                  disabled={joining || !connected}
+                  data-testid="join-invite-room"
+                >
+                  {joining ? "JOINING..." : "JOIN ROOM"}
+                </button>
+              </div>
+            ) : null}
 
-          <fieldset className="skin-select__roster">
-            <legend className="mono-label skin-select__legend">
-              OFFICIAL VIBER ROSTER
-            </legend>
-            <div className="skin-grid">
-              {CHARACTER_ROSTER.map((skin) => {
-                const selected = skin.skinId === selectedSkin.skinId;
-                return (
-                  <label
-                    className={`skin-card${selected ? " is-selected" : ""}`}
-                    key={skin.skinId}
-                    data-testid={`skin-card-${skin.skinId}`}
-                    data-skin-id={skin.skinId}
-                    data-selected={selected}
-                  >
-                    <input
-                      className="skin-card__input"
-                      type="radio"
-                      name="online-skin"
-                      value={skin.skinId}
-                      checked={selected}
-                      onChange={() => chooseSkin(skin.skinId)}
-                      aria-label={`Select ${skin.displayName}`}
-                    />
-                    <span className="skin-card__art">
-                      <Image
-                        src={skin.avatarPath}
-                        alt=""
-                        fill
-                        sizes="140px"
-                        className="skin-card__image"
-                      />
-                      <span className="skin-card__check" aria-hidden="true">
-                        SELECTED
-                      </span>
-                    </span>
-                    <span className="skin-card__name">
-                      {skin.displayName}
-                    </span>
-                    <span className="skin-card__id">{skin.skinId}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <span className="mono-label skin-select__hint">
-              ARROW KEYS TO BROWSE // SELECTION SAVED LOCALLY
-            </span>
-          </fieldset>
-        </section>
-
-        <div className="online-layout">
-          <section className="online-main">
-            <div className="online-actions-panel">
-              <div className="online-field">
-                <label className="mono-label" htmlFor="guest-name">
-                  GUEST CALLSIGN
-                </label>
+            <div className="online-entry">
+              <label className="online-entry__name">
+                <span className="mono-label">CALLSIGN // EDITABLE DISPLAY NAME</span>
                 <input
                   id="guest-name"
-                  className="online-input"
                   value={name}
                   maxLength={18}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="VIBER-000"
+                  autoComplete="nickname"
+                  data-testid="guest-name"
                 />
-              </div>
-              <div className="online-actions">
+              </label>
+              <div className="online-entry__buttons">
                 <button
                   type="button"
                   className="online-primary"
@@ -1049,19 +1106,72 @@ export function OnlineShell() {
                   CREATE ROOM
                 </button>
               </div>
-              <span className="mono-label online-connection">
-                {connected
-                  ? `SERVER LINKED // ${SERVER_URL}`
-                  : "CONNECTING TO GAME SERVER..."}
-              </span>
-              {error ? (
-                <div className="online-error" role="alert">
-                  {error}
-                </div>
-              ) : null}
             </div>
 
-            <div className="online-room-head">
+            <div className="online-operator" data-testid="skin-selection">
+              <div className="online-operator__art" data-testid="skin-preview">
+                <Image
+                  src={selectedSkin.cutoutPath}
+                  alt={`${selectedSkin.displayName} selected Viber`}
+                  fill
+                  sizes="52px"
+                />
+              </div>
+              <div className="online-operator__copy">
+                <span className="mono-label">SELECTED OPERATOR</span>
+                <strong data-testid="selected-skin-name">
+                  {selectedSkin.displayName}
+                </strong>
+                <span className="mono-label">
+                  {`${selectedSkin.skinId} // TAP TO BROWSE`}
+                </span>
+              </div>
+              <fieldset className="online-roster-field">
+                <legend className="sr-only">Official Viber roster</legend>
+                <div className="online-roster skin-grid">
+                  {CHARACTER_ROSTER.map((skin) => {
+                    const selected = skin.skinId === selectedSkin.skinId;
+                    return (
+                      <label
+                        className={`skin-card${selected ? " is-selected" : ""}`}
+                        key={skin.skinId}
+                        data-testid={`skin-card-${skin.skinId}`}
+                        data-skin-id={skin.skinId}
+                        data-selected={selected}
+                      >
+                        <input
+                          className="skin-card__input"
+                          type="radio"
+                          name="online-skin"
+                          value={skin.skinId}
+                          checked={selected}
+                          onChange={() => chooseSkin(skin.skinId)}
+                          aria-label={`Select ${skin.displayName}`}
+                        />
+                        <span className="skin-card__art">
+                          <Image
+                            src={skin.avatarPath}
+                            alt=""
+                            fill
+                            sizes="44px"
+                            className="skin-card__image"
+                          />
+                          <span className="skin-card__check" aria-hidden="true">
+                            SELECTED
+                          </span>
+                        </span>
+                        <span className="skin-card__name">
+                          {skin.displayName}
+                        </span>
+                        <span className="skin-card__id">{skin.skinId}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            </div>
+
+            <div className="online-rooms-head">
               <span className="mono-label">JOINABLE ROOMS</span>
               <span className="mono-label">{rooms.length} VISIBLE</span>
             </div>
@@ -1069,7 +1179,21 @@ export function OnlineShell() {
               {rooms.length === 0 ? (
                 <div className="online-empty">
                   <strong className="display">NO OPEN ROOMS</strong>
-                  <p>Create one and share the invite link, or start a quick match.</p>
+                  <p>
+                    Create one and share the invite link, or start a quick
+                    match.
+                  </p>
+                  <div className="online-empty__steps">
+                    <span>
+                      <b>01</b> QUICK MATCH FINDS THE FULLEST OPEN ROOM
+                    </span>
+                    <span>
+                      <b>02</b> EMPTY SEATS FILL WITH BOTS AT COUNTDOWN
+                    </span>
+                    <span>
+                      <b>03</b> HUMANS REPLACE BOTS WITHOUT RESETTING THE CLOCK
+                    </span>
+                  </div>
                 </div>
               ) : (
                 rooms.map((room) => {
@@ -1138,6 +1262,11 @@ export function OnlineShell() {
                 })
               )}
             </div>
+            {error ? (
+              <div className="online-error" role="alert">
+                {error}
+              </div>
+            ) : null}
           </section>
 
           <aside className="online-side">
@@ -1146,42 +1275,130 @@ export function OnlineShell() {
               equipped={equipped}
               busy={profileBusy}
               onEquip={(slot, id) => void equipCosmetic(slot, id)}
+              compact
             />
             <div className="online-side-card">
-              <AudioSettings compact />
+              <span className="mono-label">JOIN WITH INVITE CODE</span>
+              <div className="online-join-code">
+                <input
+                  value={joinCode}
+                  onChange={(event) => setJoinCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") submitJoinCode();
+                  }}
+                  placeholder="ROOM ID"
+                  aria-label="Room code"
+                  data-testid="join-code"
+                />
+                <button
+                  type="button"
+                  className="online-secondary online-secondary--small"
+                  onClick={submitJoinCode}
+                  data-testid="join-code-button"
+                >
+                  JOIN
+                </button>
+              </div>
+            </div>
+            <div className="online-side-card online-side-links">
+              <Link href="/?panel=profile">
+                <span>EDIT PROFILE & COSMETICS</span>
+                <span>HUB</span>
+              </Link>
+              <Link href="/?panel=rankings">
+                <span>
+                  <Trophy
+                    aria-hidden="true"
+                    style={{ width: 11, height: 11, marginRight: 5 }}
+                  />
+                  GLOBAL RANKINGS
+                </span>
+                <span>SERVER</span>
+              </Link>
+              <button type="button" onClick={() => setSettingsOpen(true)}>
+                <span>AUDIO & TOUCH SETTINGS</span>
+                <span>OPEN</span>
+              </button>
             </div>
             <div className="online-side-card">
-              <span className="mono-label">MATCH RULES</span>
-              <ul>
-                <li>90 second free-for-all</li>
-                <li>First to 10 eliminations</li>
-                <li>8 combatant slots per room</li>
-                <li>Countdown fills empty seats with bots</li>
-                <li>Humans replace bots on join</li>
-                <li>Disconnects reserve the seat for 20 seconds</li>
-              </ul>
-            </div>
-            <div className="online-side-card">
-              <span className="mono-label">SERVER AUTHORITY</span>
-              <p>
-                Movement, weapons, damage, respawns, eliminations and the match
-                clock are processed by the Node server. The browser renders the
-                result.
-              </p>
-            </div>
-            <div className="online-side-card online-side-card--accent">
-              <span className="mono-label">SHARE THE ARENA</span>
-              <p>
-                Copy an invite link from a room card. Opening it preloads the
-                room join action on this page.
+              <span className="mono-label">FAIR PLAY</span>
+              <p className="online-connection" style={{ margin: "5px 0 0", lineHeight: 1.45 }}>
+                <Users
+                  aria-hidden="true"
+                  style={{ width: 10, height: 10, marginRight: 4 }}
+                />
+                Online matches write XP and rankings. Practice never does. The
+                server owns movement, damage, ammo, loot and results.
               </p>
             </div>
           </aside>
         </div>
+
         <footer className="online-footer mono-label">
-          P4 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . NO WALLET REQUIRED
+          <span>
+            {connected
+              ? `PROFILE SERVICE ${gameServerHttpUrl()}`
+              : "STARTING LOBBY CLIENT"}
+          </span>
+          <span>
+            {reconnectGraceSeconds}S RECONNECT GRACE // SERVER AUTHORITATIVE //
+            NO FAKE STANDINGS
+          </span>
         </footer>
       </div>
+
+      {settingsOpen ? (
+        <div
+          className="settings-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Online lobby settings"
+          data-testid="settings-overlay"
+        >
+          <div className="settings-card">
+            <div className="settings-card__head">
+              <span className="mono-label">ONLINE SETTINGS</span>
+              <button
+                type="button"
+                className="hud-button"
+                onClick={() => setSettingsOpen(false)}
+                data-testid="settings-close"
+              >
+                CLOSE
+              </button>
+            </div>
+            <AudioSettings />
+            <TouchSettingsPanel />
+            <div className="settings-card__controls">
+              <span className="mono-label">MATCH RULES</span>
+              <p>
+                90-second free-for-all. First to 10 eliminations. Eight
+                combatant slots. Empty seats fill with bots at countdown.
+                Disconnects reserve the human seat for{" "}
+                {reconnectGraceSeconds} seconds.
+              </p>
+            </div>
+            <div className="settings-card__actions">
+              <Link href="/" className="online-secondary online-secondary--small">
+                BACK TO HUB
+              </Link>
+              <button
+                type="button"
+                className="online-primary online-primary--small"
+                onClick={() => setSettingsOpen(false)}
+              >
+                DONE
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <span className="sr-only" aria-live="polite">
+        {resuming
+          ? "Reconnecting to your previous match."
+          : notice ?? (connected ? "Online lobby connected." : "Connecting to lobby.")}
+      </span>
     </main>
   );
 }

@@ -37,7 +37,7 @@ DATABASE_SSL=1
 DATABASE_POOL_MAX=8
 ALLOWED_ORIGINS=https://play.example.com
 PUBLIC_GAME_SERVER_URL=https://game.example.com
-RECONNECT_GRACE_SECONDS=20
+RECONNECT_GRACE_SECONDS=30
 MATCH_COUNTDOWN_MS=10000
 XP_MIN_PARTICIPATION_MS=45000
 TRUST_PROXY=1
@@ -80,6 +80,8 @@ The game server exposes:
 - `GET /ready`: database backend, readiness, player count and match count.
 - `GET /api/config`: reconnect grace, countdown and persistence backend.
 - `POST /api/guest`: create a device-bound guest and opaque token.
+- `GET /api/leaderboard?limit=25`: server-derived ALL-TIME online XP standings. Unauthenticated, read-only and limited to players who opted in. Self-declared X handles appear only when the player made them public and are always labelled unverified.
+- `POST /api/resume`: exchange a single-use resume handle and the guest bearer token for a Colyseus reconnection token. The handle expires with `RECONNECT_GRACE_SECONDS`, is identity-bound and is deleted after one redemption.
 - `GET /api/profile`: read the authenticated guest profile.
 - `PATCH /api/profile`: update callsign, skin, equipped cosmetics or claim pending awards.
 - `POST /api/client-error`: anonymous client error capture, rate-limited by session client ID.
@@ -226,13 +228,13 @@ Do not reuse or overwrite unrelated reverse-proxy or systemd configuration. Do n
 - Health check: `/ready`, every 30 seconds.
 - Logs: one JSON object per line on stdout/stderr with `at`, `level`, `service`, `message` and safe fields. Guest tokens and connection strings are never logged.
 - Input rate limit: 45 messages per second per client.
-- API rate limit: 120 requests per minute per IP, guest creation 10 per minute per IP, client events 20 per minute per session client ID.
+- API rate limit: 120 requests per minute per IP, guest creation 30 per minute per IP, client events 20 per minute per session client ID.
 - Match capacity: eight humans per room. Disconnected seats stay reserved for `RECONNECT_GRACE_SECONDS`, then a bot backfills.
 - WebSocket message size and API body size: API bodies are capped at 16 KB. Client inputs are validated and clamped on the server.
 
 ## Scaling limits
 
-- In-memory room and seat state is lost on a game-server restart. Reconnect works across network drops, not across process restarts.
+- In-memory room and seat state is lost on a game-server restart. Reconnect and reload recovery work across network drops, page reloads and same-tab navigation within the grace window, not across process restarts. The resume registry is process-local and intentionally holds no database credentials or long-lived secrets.
 - PostgreSQL removes the single-SQLite-file constraint, but Colyseus rooms are still process-local. Multiple game-server replicas need a shared room directory or sticky matchmaking before they can share players.
 - Guest identities are device-bound. Clearing browser storage loses access until account linking exists.
 - The frontend and game server can live on different hosts. Both must use HTTPS/WSS in production.
@@ -297,7 +299,7 @@ DATABASE_POOL_MAX=5
 DATABASE_PATH=/home/endy/apps/vibe-militia-data/vibe-militia.sqlite
 ALLOWED_ORIGINS=https://vibemilitia.vercel.app
 PUBLIC_GAME_SERVER_URL=https://vibemilitia-game.endyos.xyz
-RECONNECT_GRACE_SECONDS=20
+RECONNECT_GRACE_SECONDS=30
 MATCH_COUNTDOWN_MS=20000
 XP_MIN_PARTICIPATION_MS=45000
 TRUST_PROXY=1

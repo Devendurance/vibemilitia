@@ -54,6 +54,14 @@ const newPage = async () => {
   return page;
 };
 
+const dismissGuide = async (page) => {
+  const guide = page.locator('[data-testid="onboarding-dismiss"]');
+  if (await guide.count()) {
+    await guide.first().click().catch(() => undefined);
+    await page.waitForTimeout(250);
+  }
+};
+
 const waitForLobby = async (page) => {
   await page.waitForSelector('[data-testid="skin-selection"]', { timeout: 30000 });
   await page.waitForFunction(
@@ -168,6 +176,7 @@ try {
   const pageA = await newPage();
   await pageA.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await waitForLobby(pageA);
+  await dismissGuide(pageA);
   const initialSelection = await selectedSkin(pageA);
   console.log("SELECTION INITIAL", initialSelection);
   check("all ten character cards render", initialSelection.cards === 10);
@@ -222,15 +231,19 @@ try {
     width: window.innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
     cards: document.querySelectorAll(".skin-card").length,
-    columns: getComputedStyle(
+    rosterDisplay: getComputedStyle(
       document.querySelector(".skin-grid"),
-    ).gridTemplateColumns.split(" ").length,
+    ).display,
+    selected: document
+      .querySelector('.skin-card[data-selected="true"]')
+      ?.getAttribute("data-skin-id"),
   }));
   console.log("MOBILE", mobileLayout);
   check(
-    "mobile layout keeps all cards visible without horizontal overflow",
+    "portrait lobby keeps roster state without horizontal overflow",
     mobileLayout.cards === 10 &&
-      mobileLayout.columns === 2 &&
+      ["none", "flex"].includes(mobileLayout.rosterDisplay) &&
+      mobileLayout.selected === "viber-006" &&
       mobileLayout.scrollWidth <= mobileLayout.width + 1,
   );
   if (artifactDir) {
@@ -256,6 +269,8 @@ try {
 
   await pageA.evaluate(() => {
     window.localStorage.setItem("vibe-militia-skin", "not-a-real-skin");
+    window.localStorage.removeItem("vibe-militia-guest-profile");
+    window.localStorage.removeItem("vibe-militia-guest-token");
   });
   await pageA.reload({ waitUntil: "networkidle" });
   await waitForLobby(pageA);
@@ -302,6 +317,8 @@ try {
 
   const pageB = await newPage();
   await pageB.goto(pageA.url(), { waitUntil: "networkidle" });
+  await pageB.waitForTimeout(900);
+  await dismissGuide(pageB);
   await waitForLobby(pageB);
   await selectSkin(pageB, "viber-123");
   await pageB.locator("#guest-name").fill("BRAVO-SKIN");
@@ -380,6 +397,8 @@ try {
   const quickSkin = unusedQuickSkins[0];
   const pageC = await newPage();
   await pageC.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
+  await pageC.waitForTimeout(900);
+  await dismissGuide(pageC);
   await waitForLobby(pageC);
   await selectSkin(pageC, quickSkin);
   await pageC.locator("#guest-name").fill("CHARLIE-SKIN");
@@ -475,6 +494,8 @@ try {
   // A dedicated room makes the death/respawn presentation deterministic.
   const pageD = await newPage();
   await pageD.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
+  await pageD.waitForTimeout(900);
+  await dismissGuide(pageD);
   await waitForLobby(pageD);
   await selectSkin(pageD, "viber-141");
   await pageD.locator("#guest-name").fill("DEATH-SKIN");

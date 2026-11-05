@@ -141,6 +141,7 @@ try {
   trackErrors("desktop", page);
   await page.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1600);
+  await dismissGuide(page);
 
   const initialProfile = await fetchProfile(page);
   check(
@@ -155,6 +156,8 @@ try {
       (await page.locator('[data-testid="profile-level"]').innerText()).includes("LEVEL"),
   );
 
+  await page.locator('[data-testid="online-settings"]').click();
+  await page.waitForTimeout(250);
   const masterSlider = page
     .locator('[data-testid="audio-settings"] input[type="range"]')
     .first();
@@ -177,13 +180,17 @@ try {
     Math.abs(storedAudio.master - 0.4) < 0.02 && storedAudio.muted === true,
     JSON.stringify(storedAudio),
   );
+  await page.locator('[data-testid="settings-close"]').click();
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForTimeout(900);
+  await page.locator('[data-testid="online-settings"]').click();
+  await page.waitForTimeout(250);
   check(
     "audio preferences survive a reload",
     (await page.locator('[data-testid="audio-mute"]').innerText()).includes("MUTED"),
   );
   await page.locator('[data-testid="audio-mute"]').click();
+  await page.locator('[data-testid="settings-close"]').click();
   await page.waitForTimeout(200);
 
   await page.locator('[data-testid="create-room"]').click();
@@ -200,7 +207,7 @@ try {
 
   await waitLive(page);
   await dismissGuide(page);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(3000);
   const live = await probe(page);
   check(
     "the live HUD exposes the guest level and equipped cosmetics",
@@ -537,6 +544,7 @@ try {
   trackErrors("mobile", mobile);
   await mobile.goto(`${baseUrl}/online?touch=1`, { waitUntil: "networkidle" });
   await mobile.waitForTimeout(1200);
+  await dismissGuide(mobile);
   await mobile.locator('[data-testid="create-room"]').click();
   await waitLive(mobile);
   await mobile.evaluate(() => {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DRONE_CONFIG, MATCH_CONFIG, PLAYER_WEAPONS } from "./gameplay";
+import {
+  BOT_DIFFICULTIES,
+  DRONE_CONFIG,
+  MATCH_CONFIG,
+  PLAYER_WEAPONS,
+  getPracticeDifficulty,
+} from "./gameplay";
 
 describe("P1 combat tuning", () => {
   it("ships three distinct weapon slots", () => {
@@ -42,5 +48,24 @@ describe("P1 combat tuning", () => {
     expect(MATCH_CONFIG.durationMs).toBe(90_000);
     expect(MATCH_CONFIG.scoreLimit).toBe(10);
     expect(DRONE_CONFIG.maxHealth).toBe(100);
+  });
+
+  it("gives every practice difficulty measurably different bot behavior", () => {
+    const easy = BOT_DIFFICULTIES.easy;
+    const normal = BOT_DIFFICULTIES.normal;
+    const hard = BOT_DIFFICULTIES.hard;
+    const merciless = BOT_DIFFICULTIES.merciless;
+    expect(easy.reactionMs).toBeGreaterThan(normal.reactionMs);
+    expect(normal.reactionMs).toBeGreaterThan(hard.reactionMs);
+    expect(hard.reactionMs).toBeGreaterThan(merciless.reactionMs);
+    expect(easy.fireIntervalMs).toBeGreaterThan(normal.fireIntervalMs);
+    expect(normal.fireIntervalMs).toBeGreaterThan(hard.fireIntervalMs);
+    expect(hard.fireIntervalMs).toBeGreaterThan(merciless.fireIntervalMs);
+    expect(easy.aimErrorRadians).toBeGreaterThan(normal.aimErrorRadians);
+    expect(normal.aimErrorRadians).toBeGreaterThan(hard.aimErrorRadians);
+    expect(hard.aimErrorRadians).toBeGreaterThan(merciless.aimErrorRadians);
+    expect(easy.burstCount).toBeLessThan(merciless.burstCount);
+    expect(getPracticeDifficulty("merciless")).toBe("merciless");
+    expect(getPracticeDifficulty("nonsense")).toBe("normal");
   });
 });

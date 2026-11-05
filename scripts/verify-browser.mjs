@@ -67,7 +67,7 @@ const findVisibleTarget = (snapshot) =>
     )[0] ?? null;
 
 try {
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/practice?difficulty=normal`, { waitUntil: "networkidle" });
   await page.waitForFunction(() => Boolean(window.__VIBE_MILITIA__), null, { timeout: 30000 });
   await page.waitForFunction(
     () => document.querySelector(".boot-overlay")?.classList.contains("is-hidden"),
@@ -136,7 +136,7 @@ try {
 
   const x0 = initial.player.x;
   await page.keyboard.down("KeyD");
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(380);
   await page.keyboard.up("KeyD");
   await page.waitForTimeout(220);
   const moved = await probe();
@@ -271,7 +271,18 @@ try {
       continue;
     }
 
-    const target = findVisibleTarget(snapshot);
+    const preferred = snapshot.drones.find(
+      (drone) => drone.id === lastTargetId && drone.alive && drone.sight,
+    );
+    const target = preferred
+      ? {
+          ...preferred,
+          screenX:
+            (preferred.x - snapshot.camera.scrollX) * snapshot.camera.zoom,
+          screenY:
+            (preferred.y - snapshot.camera.scrollY) * snapshot.camera.zoom,
+        }
+      : findVisibleTarget(snapshot);
     if (!target) {
       await page.waitForTimeout(250);
       continue;

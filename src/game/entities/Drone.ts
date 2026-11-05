@@ -1,7 +1,13 @@
 import Phaser from "phaser";
 import { ARENA, type DroneSpawn } from "@/game/arena/arena";
 import { segmentIntersectsRect, type Rect } from "@/game/arena/collision";
-import { DRONE_CONFIG } from "@/game/config/gameplay";
+import {
+  BOT_DIFFICULTIES,
+  DRONE_CONFIG,
+  getPracticeDifficulty,
+  type BotDifficultyProfile,
+  type PracticeDifficulty,
+} from "@/game/config/gameplay";
 import { applyDamage, clamp } from "@/game/core/combat";
 import {
   findPath,
@@ -34,6 +40,10 @@ export interface DroneEvents {
   onDestroyed: (drone: Drone) => void;
 }
 
+export interface DroneOptions {
+  difficulty?: PracticeDifficulty;
+}
+
 function approach(current: number, target: number, maxDelta: number): number {
   if (current < target) return Math.min(target, current + maxDelta);
   if (current > target) return Math.max(target, current - maxDelta);
@@ -58,6 +68,8 @@ export class Drone {
   eliminations = 0;
   deaths = 0;
 
+  private readonly difficulty: BotDifficultyProfile;
+  private targetSeenMs = 0;
   private scene: Phaser.Scene;
   private spawn: DroneSpawn;
   private world: BotWorld;
@@ -89,16 +101,22 @@ export class Drone {
     spawn: DroneSpawn,
     world: BotWorld,
     events: DroneEvents,
+    options: DroneOptions = {},
   ) {
     this.scene = scene;
     this.spawn = spawn;
     this.world = world;
     this.events = events;
+    this.difficulty =
+      BOT_DIFFICULTIES[getPracticeDifficulty(options.difficulty)];
     this.id = spawn.id;
     this.name = spawn.name;
     this.phase = Math.random() * Math.PI * 2;
     this.strafeSign = Math.random() < 0.5 ? -1 : 1;
-    this.strafeTimerMs = Phaser.Math.Between(900, 2200);
+    this.strafeTimerMs = Phaser.Math.Between(
+      this.difficulty.strafeMinMs,
+      this.difficulty.strafeMaxMs,
+    );
     this.lastX = spawn.x;
     this.lastY = spawn.y;
 
@@ -163,7 +181,26 @@ export class Drone {
       })
       .setDepth(18);
 
-    this.fireCooldownMs = Phaser.Math.Between(900, 1800);
+    this.fireCooldownMs = Phaser.Math.Between(
+      Math.round(this.difficulty.fireIntervalMs * 0.55),
+      Math.round(this.difficulty.fireIntervalMs * 1.15),
+    );
+  }
+
+  get difficultyLabel(): string {
+    return this.difficulty.label;
+  }
+
+  get projectileSpread(): number {
+    return this.difficulty.aimErrorRadians;
+  }
+
+  get projectileSpeed(): number {
+    return this.difficulty.projectileSpeed;
+  }
+
+  get projectileDamage(): number {
+    return this.difficulty.projectileDamage;
   }
 
   get x(): number {
@@ -206,6 +243,12 @@ export class Drone {
     const target = this.chooseTarget(targets);
     if (target && target.id !== previousTargetId) {
       this.repathTimerMs = 0;
+      this.targetSeenMs = 0;
+    }
+    if (target) {
+      this.targetSeenMs += dtMs;
+    } else {
+      this.targetSeenMs = 0;
     }
     if (target) {
       this.aimAngle = Math.atan2(
@@ -299,16 +342,19 @@ export class Drone {
     this.strafeTimerMs -= dtMs;
     if (this.strafeTimerMs <= 0) {
       this.strafeSign *= -1;
-      this.strafeTimerMs = Phaser.Math.Between(1200, 2400);
+      this.strafeTimerMs = Phaser.Math.Between(
+        this.difficulty.strafeMinMs,
+        this.difficulty.strafeMaxMs,
+      );
     }
 
-    const inCombatBand = distance < 520 && distance > 140;
+    const inCombatBand = distance < 560 && distance > 130;
     let goal: NavPoint | null = null;
     let direct = false;
 
     if (lineOfSight && inCombatBand) {
       const desired = {
-        x: target.x + this.strafeSign * DRONE_CONFIG.standoffDistance,
+        x: target.x + this.strafeSign * this.difficulty.standoffDistance,
         y: target.aimY - 120 + Math.sin(now * 0.002 + this.phase) * 28,
       };
       if (lineClear({ x: this.x, y: this.y }, desired, this.world.navGrid.obstacles)) {
@@ -339,7 +385,7 @@ export class Drone {
       ) ?? [];
       this.pathIndex = 0;
       this.lastGoal = navGoal;
-      this.repathTimerMs = DRONE_CONFIG.repathMs;
+      this.repathTimerMs = this.difficulty.repathMs;
       this.pathLength = this.path.length;
     }
 
@@ -361,7 +407,9 @@ export class Drone {
     const dx = desiredX - this.x;
     const dy = desiredY - this.y;
     const length = Math.max(1, Math.hypot(dx, dy));
-    const speed = direct ? DRONE_CONFIG.hoverSpeed : DRONE_CONFIG.hoverSpeed * 1.05;
+    const speed = direct
+      ? this.difficulty.hoverSpeed
+      : this.difficulty.hoverSpeed * 1.05;
     const desiredVX = (dx / length) * speed;
     const desiredVY = (dy / length) * speed;
     const acceleration = (this.body.blocked.left || this.body.blocked.right ? 620 : 380) * dt;
@@ -374,7 +422,11 @@ export class Drone {
       this.body.velocity.y = Math.min(this.body.velocity.y, -95);
     }
 
-    if (lineOfSight && distance < DRONE_CONFIG.aggroRange) {
+    if (
+      lineOfSight &&
+      distance < DRONE_CONFIG.aggroRange &&
+      this.targetSeenMs >= this.difficulty.reactionMs
+    ) {
       this.stepFire(dtMs);
     } else {
       this.burstRemaining = 0;
@@ -427,9 +479,9 @@ export class Drone {
         this.events.onFire(this);
         this.shotsFired += 1;
         this.burstRemaining -= 1;
-        this.burstTimerMs = DRONE_CONFIG.burstSpacingMs;
+        this.burstTimerMs = this.difficulty.burstSpacingMs;
         if (this.burstRemaining <= 0) {
-          this.fireCooldownMs = DRONE_CONFIG.fireIntervalMs;
+          this.fireCooldownMs = this.difficulty.fireIntervalMs;
         }
       }
       return;
@@ -437,7 +489,7 @@ export class Drone {
 
     this.fireCooldownMs = Math.max(0, this.fireCooldownMs - dtMs);
     if (this.fireCooldownMs <= 0) {
-      this.burstRemaining = DRONE_CONFIG.burstCount;
+      this.burstRemaining = this.difficulty.burstCount;
       this.burstTimerMs = 70;
     }
   }
@@ -478,7 +530,11 @@ export class Drone {
     this.hitFlashMs = 0;
     this.healthBarMs = 0;
     this.invulnerableRemainingMs = DRONE_CONFIG.invulnerabilityMs;
-    this.fireCooldownMs = Phaser.Math.Between(700, 1300);
+    this.targetSeenMs = 0;
+    this.fireCooldownMs = Phaser.Math.Between(
+      400,
+      Math.max(500, Math.round(this.difficulty.fireIntervalMs * 0.9)),
+    );
     this.burstRemaining = 0;
     this.path = [];
     this.pathIndex = 0;

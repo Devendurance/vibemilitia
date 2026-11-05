@@ -27,15 +27,20 @@ export function ProfilePanel({
   equipped,
   busy,
   onEquip,
+  compact = false,
 }: {
   profile: PlayerProfile | null;
   equipped: EquippedCosmetics;
   busy: boolean;
   onEquip: (slot: keyof EquippedCosmetics, id: string) => void;
+  compact?: boolean;
 }) {
   if (!profile) {
     return (
-      <div className="online-side-card profile-panel" data-testid="profile-panel">
+      <div
+        className={`online-side-card profile-panel${compact ? " profile-panel--compact" : ""}`}
+        data-testid="profile-panel"
+      >
         <span className="mono-label">GUEST PROFILE</span>
         <p>
           Connecting to the profile service. You can still play without a saved
@@ -54,10 +59,15 @@ export function ProfilePanel({
       : profile.eliminations.toFixed(2);
 
   return (
-    <div className="online-side-card profile-panel" data-testid="profile-panel">
+    <div
+      className={`online-side-card profile-panel${compact ? " profile-panel--compact" : ""}`}
+      data-testid="profile-panel"
+    >
       <div className="profile-panel__head">
         <div>
-          <span className="mono-label">GUEST PROFILE // DEVICE BOUND</span>
+          <span className="mono-label">
+            {compact ? "GUEST PROFILE" : "GUEST PROFILE // DEVICE BOUND"}
+          </span>
           <strong className="display" data-testid="profile-level">
             LEVEL {profile.level}
           </strong>
