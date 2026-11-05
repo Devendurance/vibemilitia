@@ -33,5 +33,6 @@ P4 is complete: mobile touch, original audio, XP and levels, guest SQLite profil
 
 ## Baseline
 
-- P4 working tree is uncommitted at the time of writing.
+- P4 implementation commit: `280871d`.
 - Last verified checkpoint before P4: `7dfb28b`.
+- `origin/main` matches the P4 implementation commit.
