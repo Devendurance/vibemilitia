@@ -34,4 +34,6 @@ P3C is complete: elimination loot, real online weapon ownership, four advanced w
 
 ## Baseline
 
+- P3C arsenal commit: `76a463f`.
 - Last pre-P3C checkpoint: `b8f8641` (P3C-A). P3C-A baseline: `4c06103`.
+- `origin/main` matches the P3C arsenal commit.
