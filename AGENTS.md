@@ -71,6 +71,8 @@
 - The Colyseus server must run as a persistent Node.js process behind WSS. Never deploy it as a serverless function.
 - Never enable `VIBE_MILITIA_TEST_HOOKS` in production.
 - Production requires `ALLOWED_ORIGINS` and a persistent `DATABASE_PATH`. See `DEPLOYMENT.md`.
+- Production runs on the shared `endy-vps` host as systemd user units behind a dedicated Cloudflare Tunnel, on loopback port `2767`. Do not touch the `chog-royale-*`, `hermes-gateway`, `telepi`, `openbot`, `antigravity-telegram` or `opencode-telegram-bot` services, and never publish port `2767`.
+- Live URLs: `https://vibemilitia.vercel.app` (frontend) and `https://vibemilitia-game.endyos.xyz` (game server). Verify a deploy with `npm run verify:production`.
 
 ## TESTING
 

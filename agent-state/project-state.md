@@ -30,6 +30,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Beta feedback: anonymous `client_events` capture for client errors and 1-5 feedback, rate-limited by a session client ID, with no IP, user agent or personal data stored.
 - Reconnect: Colyseus `allowReconnection` with a 20-second configurable grace. Seat, score, character and inventory stay reserved. Buffered input is cleared, no extra invulnerability is granted, and the client shows a reconnect overlay. Grace expiry returns the player to the lobby and restores bot backfill.
 - Deployment: validated environment config, strict production `ALLOWED_ORIGINS`, WebSocket upgrade origin checks, HTTP CORS, `/health`, `/ready` with database backend reporting, structured JSON logs, API and input rate limits, Dockerfile, Docker Compose, SQLite backup command, Neon PostgreSQL guidance and `DEPLOYMENT.md`.
+- Public beta: frontend on Vercel at `https://vibemilitia.vercel.app`, game server on the shared `endy-vps` host at `https://vibemilitia-game.endyos.xyz` behind a dedicated Cloudflare Tunnel, Neon PostgreSQL production branch behind it. `HOST` config allows loopback binding.
 - Room lifecycle: countdown, lobby, server-side quick match, create room, realtime room browser, invite links, full-room and ended-room errors, replay in the same room and auto-dispose when empty.
 - HUD: identity, health, jetpack, medkit count and use feedback, contact/frag/stinking grenade selection and counts, throw cooldown, supply pickup feedback, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
 - Browser test APIs: `window.__VIBE_MILITIA__` for local, `window.__VIBE_MILITIA_ONLINE__` for online.
@@ -136,6 +137,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 
 ## Verification
 
+- `npm run verify:production`: 50/50 checks against the live public beta with real browsers and no test hooks
 - `npm run typecheck`: pass
 - `npm test`: 182 tests pass across 23 files, including 7 PostgreSQL tests when `TEST_DATABASE_URL` is set
 - `npm run lint`: pass
@@ -202,6 +204,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Audio uses original synthesis only. No music, voice acting, 3D mix or dynamic soundtrack.
 - Mobile was verified with Chromium emulation and CDP multi-touch at four landscape shapes, not physical iOS or Android hardware. Portrait intentionally shows a rotation guard.
 - No gamepad support or keyboard remapping. Touch controls are online-only.
-- Deployment configuration is verified locally. Neon PostgreSQL is provisioned and migrated. No public frontend or game-server deployment was performed because no persistent game-server host was explicitly authorized.
-- Anonymous feedback and client errors are stored in `client_events`. There is no analytics dashboard or session replay.
+- Deployment configuration is verified locally. Neon PostgreSQL is provisioned and migrated. The public frontend and game server are deployed and live verified.
+- Mobile evidence is browser emulation, not physical hardware.
+- `MATCH_COUNTDOWN_MS=20000` in production because a cold invite-link load takes 15-18 seconds.
 - The real-player beta has not started. `BETA_TESTING.md` is the runbook.

@@ -240,11 +240,96 @@ Do not reuse or overwrite unrelated reverse-proxy or systemd configuration. Do n
 ## Deployment status
 
 - Code complete: yes.
-- Locally verified production build: yes.
 - Neon PostgreSQL provisioned and migrated: yes, including a validated SQLite-to-PostgreSQL fixture migration.
-- Public deployment: no. No persistent game-server host was explicitly authorized in this environment.
-- Live URL: none claimed.
-- Physical iOS/Android testing: pending.
-- Real-player beta: pending.
+- Public deployment: live. See the section below.
+- Physical iOS/Android testing: pending. Mobile evidence is browser emulation only.
+- Real-player beta: ready to start.
 
 See `BETA_TESTING.md` for the 15-20 player beta plan and pass criteria.
+
+## Live public beta
+
+| Piece | Value |
+| --- | --- |
+| Frontend | `https://vibemilitia.vercel.app` |
+| Vercel project | `vibemilitia` in team `endy-s-winning-szn`, root directory `.`, production branch `main` |
+| Game server | `https://vibemilitia-game.endyos.xyz` |
+| Host | `endy-vps` (`hermes.endyos.xyz`), shared Ubuntu 24.04 VPS |
+| Game service | systemd user unit `vibe-militia.service`, `Restart=always`, linger enabled |
+| Tunnel service | systemd user unit `vibe-militia-tunnel.service` for the Cloudflare named tunnel `vibe-militia-game` |
+| Listen address | `127.0.0.1:2767`, never published directly |
+| Persistence | Neon PostgreSQL project `vibe-militia`, branch `main`, database `vibe_militia` |
+
+### Host layout
+
+The game server follows the same isolation pattern as the other Colyseus service on this box:
+
+```text
+~/apps/vibe-militia             symlink to the active release
+~/apps/vibe-militia-releases/   one directory per deployed commit
+~/apps/vibe-militia.env         0600 runtime environment
+~/apps/vibe-militia-data/       SQLite fallback directory
+~/.config/vibe-militia/         cloudflared config (0600)
+~/.config/systemd/user/         vibe-militia*.service units
+```
+
+`endy-vps` does not expose inbound 80/443 and has no passwordless sudo. Public ingress is a dedicated Cloudflare Tunnel connector that dials out, so no shared proxy configuration is edited and no global firewall rule changes. Do not expose port 2767.
+
+`PORT=2767` is deliberate because `2567` belongs to another Colyseus service on the same host. `HOST=127.0.0.1` keeps the listener on loopback.
+
+### Production environment
+
+Frontend build variable, set on the Vercel project for Production only:
+
+```text
+NEXT_PUBLIC_GAME_SERVER_URL=https://vibemilitia-game.endyos.xyz
+```
+
+Game server variables, in `~/apps/vibe-militia.env`:
+
+```text
+NODE_ENV=production
+PORT=2767
+HOST=127.0.0.1
+DATABASE_URL=<Neon pooled production connection string>
+DATABASE_SSL=1
+DATABASE_POOL_MAX=5
+DATABASE_PATH=/home/endy/apps/vibe-militia-data/vibe-militia.sqlite
+ALLOWED_ORIGINS=https://vibemilitia.vercel.app
+PUBLIC_GAME_SERVER_URL=https://vibemilitia-game.endyos.xyz
+RECONNECT_GRACE_SECONDS=20
+MATCH_COUNTDOWN_MS=20000
+XP_MIN_PARTICIPATION_MS=45000
+TRUST_PROXY=1
+```
+
+Preview deployments deliberately have no `NEXT_PUBLIC_GAME_SERVER_URL`. They fall back to `http://localhost:2567`, so an untrusted preview cannot reach the production game server. Only the production origin is allowed by `ALLOWED_ORIGINS`.
+
+`MATCH_COUNTDOWN_MS=20000` is production tuning, not a code change. A cold invite-link load over the public internet takes 15-18 seconds, so a shorter countdown fills the room with bots before the invited player arrives. Humans joining after the countdown still replace bots.
+
+`VIBE_MILITIA_TEST_HOOKS` is unset in production.
+
+### Deploying a new commit
+
+```bash
+# 1. Build a release tarball from the exact commit.
+git archive --format=tar.gz --prefix=vibe-militia/ -o vm.tar.gz HEAD
+# 2. Ship and install it on the host.
+scp vm.tar.gz endy-vps:/tmp/
+ssh endy-vps 'REL=$HOME/apps/vibe-militia-releases/<sha>; mkdir -p $REL && tar -xzf /tmp/vm.tar.gz -C $REL --strip-components=1 && cd $REL && npm ci --omit=dev && ln -sfn $REL $HOME/apps/vibe-militia && systemctl --user restart vibe-militia.service'
+# 3. Redeploy the frontend when NEXT_PUBLIC_* values changed.
+vercel --prod
+```
+
+Keep the previous release directory so a rollback is a symlink swap plus a service restart.
+
+### Verification
+
+```bash
+BASE_URL=https://vibemilitia.vercel.app \
+COLYSEUS_URL=https://vibemilitia-game.endyos.xyz \
+npm run verify:production
+```
+
+The suite uses real Chromium sessions and no test hooks. It covers HTTPS endpoints, PostgreSQL readiness, guest creation, the character picker, countdown join, bot fill, movement sync between two browsers, firing, grenades, cache collection, match completion, replay, reconnect, mobile landscape layout and WSS handling. XP needs a full-length round, so the suite plays a second human-only match to clear the 45 second participation floor.
+

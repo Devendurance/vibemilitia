@@ -28,6 +28,7 @@
     "verify:online:perf": "node scripts/verify-online-perf.mjs",
     "verify:online:p4": "node scripts/verify-online-p4.mjs",
     "verify:online:p5": "node scripts/verify-online-p5.mjs",
+    "verify:production": "node scripts/verify-production-beta.mjs",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
     "server:check": "tsc --noEmit",

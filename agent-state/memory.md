@@ -208,6 +208,21 @@
 - `MATCH_COUNTDOWN_MS=2500 npm run server:start` for a short countdown test
 - `npm run prepare:character` for one source image
 - `npm run prepare:roster` to regenerate and validate the full roster and manifest
+- `npm run verify:production` for the live beta (`BASE_URL` and `COLYSEUS_URL` default to the production URLs)
+
+## Production facts
+
+- Frontend: `https://vibemilitia.vercel.app`, Vercel project `vibemilitia`, team `endy-s-winning-szn`, framework Next.js, Node 24.x, production branch `main`.
+- Game server: `https://vibemilitia-game.endyos.xyz` on host `endy-vps` (`hermes.endyos.xyz`), user `endy`.
+- systemd user units: `vibe-militia.service` (loopback `127.0.0.1:2767`) and `vibe-militia-tunnel.service` (Cloudflare named tunnel `vibe-militia-game`). Linger is enabled.
+- Release layout: `~/apps/vibe-militia` symlink to `~/apps/vibe-militia-releases/<sha>`, env at `~/apps/vibe-militia.env` (0600), tunnel config at `~/.config/vibe-militia/tunnel.yml`.
+- Port `2567` on that host belongs to another Colyseus service. Vibe Militia uses `2767` and never publishes it.
+- `endy-vps` has no inbound 80/443 and no passwordless sudo. Public ingress is Cloudflare Tunnel only. Do not edit the shared cloudflared instance, the `chog-royale-*` units, or any Telegram and OpenBot services.
+- Neon production branch `main` (`br-late-frog-behgzxyy`) is the only durable store. `p5-test` is disposable.
+- `NEXT_PUBLIC_GAME_SERVER_URL` is set for Production only. Preview deployments fall back to `localhost` on purpose so they cannot reach the production backend.
+- `MATCH_COUNTDOWN_MS=20000` in production because cold invite-link loads take 15-18 seconds.
+- Desktop Playwright pages pause Phaser when hidden. Call `page.bringToFront()` before reading the online probe in a multi-page suite.
+- Keyboard input reaches Phaser reliably only for the active page. `bringToFront` before movement assertions.
 
 ## Repo conventions
 
