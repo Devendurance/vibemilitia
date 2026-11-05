@@ -380,7 +380,7 @@ server
   .enableRealtimeListing();
 
 async function main(): Promise<void> {
-  await server.listen(config.port);
+  await server.listen(config.port, config.hostname);
   log.info("server.ready", {
     port: config.port,
     origins: allowedOrigins.join(","),

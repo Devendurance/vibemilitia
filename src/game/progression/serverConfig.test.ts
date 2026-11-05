@@ -42,6 +42,12 @@ describe("server config", () => {
     expect(config.matchCountdownMs).toBe(60_000);
   });
 
+  it("binds the loopback host when HOST is set", () => {
+    expect(loadServerConfig({}).hostname).toBeUndefined();
+    expect(loadServerConfig({ HOST: "  " }).hostname).toBeUndefined();
+    expect(loadServerConfig({ HOST: " 127.0.0.1 " }).hostname).toBe("127.0.0.1");
+  });
+
   it("rejects an invalid public URL", () => {
     expect(() =>
       loadServerConfig({ PUBLIC_GAME_SERVER_URL: "not-a-url" }),

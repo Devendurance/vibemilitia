@@ -2,6 +2,7 @@ import path from "node:path";
 
 export interface ServerConfig {
   port: number;
+  hostname: string | undefined;
   databasePath: string;
   databaseUrl: string | null;
   databasePoolMax: number;
@@ -81,8 +82,10 @@ export function loadServerConfig(
       throw new Error("DATABASE_URL must use the postgres protocol.");
     }
   }
+  const hostname = env.HOST?.trim() || undefined;
   return {
     port: parseInteger(env.PORT, 2567),
+    hostname,
     databasePath:
       env.DATABASE_PATH?.trim() ||
       path.join(process.cwd(), "data", "vibe-militia.sqlite"),
