@@ -227,6 +227,23 @@ const sendMoveInput = (
 };
 
 const moveFillerToward = async (page, sessionId, target, maxMs = 12000) => {
+  const filler = fillers.find(
+    (entry) => entry.room.sessionId === sessionId,
+  );
+  if (filler) {
+    filler.room.send("debug-teleport", {
+      x: target.x + 40,
+      y: target.y,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const state = await probe(page);
+    const self = state.participants.find(
+      (participant) => participant.id === sessionId,
+    );
+    if (self?.alive && Math.hypot(self.x - target.x, self.y - target.y) < 80) {
+      return true;
+    }
+  }
   const startedAt = Date.now();
   let seq = 10;
   let lastX = null;
@@ -237,14 +254,14 @@ const moveFillerToward = async (page, sessionId, target, maxMs = 12000) => {
       (participant) => participant.id === sessionId,
     );
     if (!self?.alive) return false;
-    const filler = fillers.find(
+    const activeFiller = fillers.find(
       (entry) => entry.room.sessionId === sessionId,
     );
-    if (!filler) return false;
+    if (!activeFiller) return false;
     const dx = target.x - self.x;
     const dy = target.y - self.y;
     if (Math.hypot(dx, dy) < 50) {
-      sendMoveInput(filler.room, seq, 0, false, false);
+      sendMoveInput(activeFiller.room, seq, 0, false, false);
       seq += 1;
       await new Promise((resolve) => setTimeout(resolve, 150));
       return true;
@@ -260,7 +277,7 @@ const moveFillerToward = async (page, sessionId, target, maxMs = 12000) => {
     const needsHop = rise || stuckMs > 450;
     const jumpHeld = needsHop;
     const jump = needsHop && seq % 5 === 0;
-    sendMoveInput(filler.room, seq, moveX, jump, jumpHeld);
+    sendMoveInput(activeFiller.room, seq, moveX, jump, jumpHeld);
     seq += 1;
     await new Promise((resolve) => setTimeout(resolve, 90));
   }
@@ -595,26 +612,32 @@ try {
     null,
     { timeout: 30000 },
   );
+  await pageC.evaluate(() =>
+    window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard(),
+  );
   await selectStinking(pageC);
   const lateHost = await probe(pageC);
+  const pageD = await contextA.newPage();
+  pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
+  await pageD.goto(`${baseUrl}/online?room=${lateHost.roomId}`, {
+    waitUntil: "networkidle",
+  });
+  await pageD.waitForTimeout(500);
   await throwAtWorld(
     pageC,
     lateHost.local.x + 5,
     lateHost.local.y + 80,
   );
-  await pageC.waitForTimeout(1200);
-  const lateCloud = await probe(pageC);
+  let lateCloud = await probe(pageC);
+  for (let attempt = 0; attempt < 20 && lateCloud.clouds.length === 0; attempt += 1) {
+    await pageC.waitForTimeout(150);
+    lateCloud = await probe(pageC);
+  }
   check(
     "late-join room has an active cloud",
     lateCloud.clouds.length === 1,
     `clouds=${lateCloud.clouds.length}`,
   );
-  const pageD = await contextA.newPage();
-  pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
-  await pageD.goto(`${baseUrl}/online?room=${lateCloud.roomId}`, {
-    waitUntil: "networkidle",
-  });
-  await pageD.waitForTimeout(500);
   await pageD.locator('[data-testid="join-invite-room"]').click();
   await waitOnlineReady(pageD);
   const lateJoin = await probe(pageD);

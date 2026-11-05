@@ -118,6 +118,11 @@ const probe = (page) =>
       participantIds: (snapshot?.participants ?? []).map(
         (participant) => participant.id,
       ),
+      participants: (snapshot?.participants ?? []).map((participant) => ({
+        id: participant.id,
+        connected: participant.connected,
+        kind: participant.kind,
+      })),
       loot: loot.map((item) => ({
         id: item.id,
         kind: item.kind,
@@ -553,12 +558,19 @@ try {
   await contextC.close();
   const afterLateLeave = await poll(
     pageA,
-    (state) => !state.participantIds.includes(lateSession),
-    4000,
+    (state) =>
+      state.participants.some(
+        (participant) =>
+          participant.id === lateSession && participant.connected === false,
+      ),
+    6000,
   );
   check(
-    "a disconnected late joiner leaves the authoritative participant list",
-    !afterLateLeave.participantIds.includes(lateSession),
+    "a disconnected late joiner keeps a reserved authoritative seat",
+    afterLateLeave.participants.some(
+      (participant) =>
+        participant.id === lateSession && participant.connected === false,
+    ),
     `participants=${afterLateLeave.participantIds.length}`,
   );
 

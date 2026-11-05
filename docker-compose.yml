@@ -1,0 +1,30 @@
+services:
+  game-server:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 2567
+      DATABASE_PATH: /data/vibe-militia.sqlite
+      TRUST_PROXY: "1"
+    ports:
+      - "2567:2567"
+    volumes:
+      - vibe-militia-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:2567/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  vibe-militia-data:

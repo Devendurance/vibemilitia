@@ -2,6 +2,8 @@
 
 A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. The local build is a complete 90-second match against three navigation-capable bot drones. The online build adds server-authoritative rooms for up to eight combatants, a ten-character picker, ten validated official Viber skins and a seven-weapon arsenal. Online bots use the same weapon, movement and PlayerVisuals layers as human players.
 
+P4 adds responsive touch gameplay, original synthesized audio with persistent settings, server-confirmed XP and levels, guest profiles in SQLite, cosmetic titles, badges, elimination styles and jetpack trails, a 20-second reconnect grace period, onboarding, accessibility polish and production hosting configuration.
+
 The operator is VIBER-010, prepared from the original Vibe Vibers NFT artwork.
 
 ## Quick start
@@ -27,16 +29,18 @@ npm run server:start
 npm start
 ```
 
-The Colyseus server listens on port `2567` by default. Set `PORT` for the server and `NEXT_PUBLIC_COLYSEUS_URL` at build time when the client and server do not share the default local URL.
+The Colyseus server listens on port `2567` by default. Set `PORT` for the server and `NEXT_PUBLIC_GAME_SERVER_URL` at build time when the client and server do not share the default local URL. The same URL serves the guest profile API and WebSockets. `NEXT_PUBLIC_COLYSEUS_URL` remains a fallback.
 
 New rooms use a 10-second pre-match countdown. Override it with `MATCH_COUNTDOWN_MS` on the game server. The value is clamped from 0 to 60000 milliseconds.
+
+Guest profiles use SQLite at `DATABASE_PATH`. Set `ALLOWED_ORIGINS` to the trusted frontend origins in production, and set `RECONNECT_GRACE_SECONDS` to change the reconnect reservation from its 20-second default. See `DEPLOYMENT.md` for Docker, WSS, backup and migration guidance.
 
 ## Match rules
 
 - Local mode starts with four combatants: VIBER-010 and three bot drones.
 - Online rooms hold eight combatant slots. A new room starts a short countdown. Humans can join during the countdown, and Viber-presented bots fill every empty seat when it expires. If all eight human seats fill, the match starts immediately.
 - Before the countdown ends, combat input is held and the 90-second clock has not started.
-- Humans joining a live room replace a bot without resetting the match. A disconnect returns a bot to the empty seat.
+- Humans joining a live room replace a bot without resetting the match. An unexpected disconnect reserves the seat for 20 seconds, keeps the player's score and inventory, and shows a reconnect status. A consented leave or an expired grace period releases the seat and restores bot backfill.
 - Quick Match prefers the most populated open room with a free human seat, then creates another room when the open rooms fill.
 - 90-second match.
 - First to 10 eliminations wins immediately.
@@ -65,7 +69,72 @@ Bots fight each other as well as the player. A match can be won or lost while th
 | `F1` | Toggle physics, navigation and collision debug |
 | `Enter` | Replay after the results screen |
 
-The input layer samples a plain `ControlFrame` object. A future virtual joystick can write the same fields without changing movement, weapons or rendering.
+The input layer samples a plain `ControlFrame` object. Touch controls write the same fields as keyboard and mouse, so movement, weapons, grenades and prediction share one validated path.
+
+### Touch controls
+
+Landscape mobile play shows a left movement stick, a right aim stick, a fire button, jump and jetpack hold, reload, three weapon slots, grenade selection and throw, medkit, swap and settings. Controls respect safe-area insets, use pointer capture per control, support simultaneous movement, aiming, firing and thrust, reset on touch cancellation, blur or orientation change, and apply a 0.18 joystick dead zone. On coarse-pointer devices the desktop HUD panels are replaced by a compact health, fuel, weapon and clock strip so the controls do not cover critical information. Desktop controls are unchanged.
+
+## Audio
+
+All sounds are original Web Audio synthesis. No commercial game audio or music is included. The layered oscillator and noise recipes cover rifle, scatter, lance, akimbo, SMG, heavy cannon, rocket launch and impact, contact and frag explosions, stinking activation, toxic ticks, jetpack thrust, damage, elimination, weapon and medkit pickups, medkit use, countdown, victory, defeat, UI selection and confirmation.
+
+- Master and effects volume are independent, persist in `vibe-militia-audio`, and support a mute toggle.
+- The audio context initializes only after a user gesture. A blocked context never blocks gameplay.
+- A 14-voice ceiling bounds simultaneous sound instances. Jetpack audio is one looping voice with a smoothed gain.
+- Sounds are driven by one-shot server events, not by repeated snapshots, so a snapshot refresh cannot double-play an elimination or pickup.
+- Settings are available in the online lobby, the in-match settings panel and the local P1 settings drawer.
+
+## Progression and cosmetics
+
+Progression is cosmetic only. It never changes health, damage, jetpack capacity, movement speed or weapon stats. All ten official Viber skins stay freely selectable.
+
+Server-confirmed XP rules:
+
+| Event | XP |
+| --- | --- |
+| Match completion | 30 |
+| Human elimination | 10 |
+| Bot elimination | 5 |
+| First place | 25 |
+| Second place | 15 |
+| Third place | 10 |
+
+The match needs at least 45 seconds of connected participation and 20 valid inputs. Human elimination XP caps at 80, bot elimination XP caps at 40, and a match caps at 200. The rules live in `src/game/progression/progression.ts` and can be overridden with `XP_MIN_PARTICIPATION_MS` on the server.
+
+The level curve is easy to tune. Level 1 starts at 0 XP. Each level requires `100 + (level - 1) * 50` XP, and levels cap at 50. The HUD shows level and equipped title and badge. The lobby and results screen show current XP, next-level progress, XP earned, per-match breakdown and a level-up celebration.
+
+Cosmetic rewards unlock from level: player titles, profile badges, elimination burst variants and jetpack trail variants. They render as separate layers around the untouched official character cutouts. Titles and badges appear in the identity HUD and profile. Elimination variants change the voxel ring and burst palette. Jetpack trails tint the exhaust particles.
+
+## Guest profiles and persistence
+
+A guest identity is issued by `POST /api/guest`. The server returns an opaque `vm_guest_...` bearer token once and stores only its SHA-256 hash. The browser keeps the token in local storage. Clearing browser storage loses access to the profile. Account linking does not exist yet.
+
+Profiles are device-bound and server-authoritative. SQLite stores:
+
+- Player ID, token hash, callsign, selected skin and equipped cosmetics.
+- Total XP, level, matches, wins, losses, eliminations and deaths.
+- Per-weapon shots, hits and eliminations.
+- Recent completed matches with placement, stats, XP and outcome.
+- Unlocked cosmetics.
+
+Match records use `(match_id, player_id)` as a primary key. The server awards XP once per match, regardless of duplicate match-end events, reconnect attempts, replay requests or client messages. The server never accepts client-submitted XP, placement or elimination totals.
+
+SQLite runs in WAL mode with foreign keys and a five-second busy timeout. `schema_migrations` records the schema version. `npm run db:backup` uses `VACUUM INTO` for a consistent copy. See `DEPLOYMENT.md` for startup, backup, restore and migration guidance.
+
+## Reconnect
+
+Unexpected disconnects use Colyseus reconnection support. The server calls `allowReconnection` with a configurable grace period, initially 20 seconds. During that period:
+
+- The same session, character, score and authoritative inventory stay reserved.
+- The room still counts the reserved seat toward its eight-human capacity.
+- The disconnected body remains in the arena, stops accepting buffered input, and receives no extra invulnerability.
+- The client shows a reconnect overlay and retries the same room and session.
+- Repeated reconnect attempts cannot create a duplicate combatant or duplicate inventory.
+- A reconnect during countdown or live play resumes the same seat.
+- After grace expiry, or a failed recovery, the seat is released, a bot backfills, and the client returns to the lobby.
+
+Reconnect works across temporary network loss. It does not survive a game-server process restart because match state is in memory. Guest profiles do survive a server restart through SQLite.
 
 ## Weapons
 
@@ -259,25 +328,35 @@ The art is generated from primitives at runtime and baked into static textures s
 ```text
 src/
   app/                     Next.js routes for local and online modes
-  components/game/         React HUD, results, boot state, canvas mount
-  components/online/       Lobby, room browser, invite join, online session
+  components/game/         React HUD, touch controls, audio settings, results
+  components/online/       Lobby, profile panel, room browser, invite join
   game/
     ai/                    navigation grid and A* pathfinding
     arena/                 arena data, renderer, 2D collision helpers
+    audio/                 original Web Audio synthesis and persistent settings
     characters/            validated roster manifest and texture lookup
     config/                movement, jetpack, weapons, bots, match tuning
     core/                  pure rules: jetpack, weapon, combat, match, spawn
     entities/              player, shared player visuals, local bot drone
+    input/                 shared touch input state
     multiplayer/           protocol, shared movement, authoritative simulation
     online/                online Phaser scene and combatant views
+    progression/           XP curve, cosmetics, profile types, pure tests
     scenes/                local Phaser arena scene and match flow
     systems/               input, projectiles, effects, textures
     bridge.ts              typed HUD snapshot and command bridge
     GameApp.ts             local Phaser 4 configuration
+  lib/guestProfile.ts      browser guest token and profile API client
 server/
-  index.ts                 Colyseus bootstrap, lobby, matchmaking order, health route
-  FFARoom.ts               countdown, input limits, bot seats, live metadata
+  config.ts                environment validation and production guards
+  index.ts                 Colyseus bootstrap, guest/profile API, health and readiness
+  FFARoom.ts               countdown, reconnect grace, XP settlement, metadata
+  log.ts                   structured JSON logging
+  persistence/             SQLite schema, migrations, profiles, matches, backups
 scripts/                   asset preparation and browser verification
+Dockerfile                 persistent game-server image
+docker-compose.yml         single-host persistent deployment
+DEPLOYMENT.md              environment, WSS, backup, migration and scaling notes
 ```
 
 Game rules and pathfinding are free of Phaser imports. The local scene owns presentation and Arcade Physics. Online matches use the shared headless simulation in `src/game/multiplayer/GameSimulation.ts`, which runs in Node and uses the same arena, weapon definitions, movement model, bot navigation and match rules as local mode.
@@ -307,6 +386,7 @@ npm run verify:online:grenades
 npm run verify:online:stinking
 npm run verify:online:loot
 npm run verify:online:arsenal
+npm run verify:online:p4
 npm run verify:online:grenade-perf
 npm run verify:online:rooms
 npm run verify:online:perf
@@ -332,9 +412,11 @@ HEADED=1 npm run verify:online:grenade-perf
 
 `verify:online:stinking` fills a room with eight humans so self-exposure is deterministic, selects the stinking grenade with `6`, verifies the canister and cloud snapshots on both clients, confirms 6 HP toxic ticks, self-elimination without kill credit, the configured respawn loadout, a late join seeing an active cloud, and an SDK opponent receiving toxic damage and a correctly attributed toxic elimination. It also checks the green cache artwork and a second room's independent pickup state.
 
-`verify:online:loot` joins two real browser clients to one live room and checks the starter loadout and empty third slot, a hostile bot elimination producing one weapon, medkit and grenade from the victim's actual equipped weapon, matching loot ids and Phaser views on both clients, authoritative ammo on pickup, the full-loadout `E` swap prompt and a Vibe Lance swap, duplicate-free replacement, a late joiner receiving remaining loot, a two-client medkit contest awarding one item, server-clock expiry, a human death dropping the actual equipped weapon, starter loadout restoration after respawn, match-end cleanup and replay reset. It requires `VIBE_MILITIA_TEST_HOOKS=1` and `MATCH_COUNTDOWN_MS=0` for deterministic placement.
+`verify:online:loot` joins two real browser clients to one live room and checks the starter loadout and empty third slot, a hostile bot elimination producing one weapon, medkit and grenade from the victim's actual equipped weapon, matching loot ids and Phaser views on both clients, authoritative ammo on pickup, the full-loadout `E` swap prompt and a Vibe Lance swap, duplicate-free replacement, a late joiner receiving remaining loot, a two-client medkit contest awarding one item, server-clock expiry, a human death dropping the actual equipped weapon, starter loadout restoration after respawn, match-end cleanup and replay reset. It requires `VIBE_MILITIA_TEST_HOOKS=1` for deterministic placement.
 
-`verify:online:arsenal` joins two real browser clients to one live room and verifies all four advanced weapons through authored caches and full-loadout swaps, the Akimbo dual-layer presentation and server barrel alternation, SMG high-rate fire and reload, the Heavy Cannon 60-damage direct hit and impact, rocket flight, explosion and single falloff damage, advanced elimination loot, authoritative ammo and respawn reset. A gated elimination hook creates an eight-combatant mixed-weapon lineup for visual and HUD verification. It also requires `VIBE_MILITIA_TEST_HOOKS=1` and `MATCH_COUNTDOWN_MS=0`.
+`verify:online:arsenal` joins two real browser clients to one live room and verifies all four advanced weapons through authored caches and full-loadout swaps, the Akimbo dual-layer presentation and server barrel alternation, SMG high-rate fire and reload, the Heavy Cannon 60-damage direct hit and impact, rocket flight, explosion and single falloff damage, advanced elimination loot, authoritative ammo and respawn reset. A gated elimination hook creates an eight-combatant mixed-weapon lineup for visual and HUD verification. It requires `VIBE_MILITIA_TEST_HOOKS=1`.
+
+`verify:online:p4` covers the complete P4 journey. It creates a guest profile, checks audio persistence, completes three real server-awarded matches, verifies XP, level-up, duplicate prevention and replay records, reconnects during combat, countdown and after grace expiry, fills a room to test reserved-seat capacity, runs multi-touch movement, aim, fire and jetpack simultaneously, and exercises touch reload, weapon selection, grenade throw and cache swap. Run it against a disposable database with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=4000 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`.
 
 `verify:online:grenade-perf` measures one human with seven bots, then fills the room with seven SDK humans, arms them with all four advanced weapons, holds fire, throws all three grenade types and creates dynamic loot while a second room stays live. It reports client FPS, average/p95/max server tick, active grenade and cloud counts, maximum cloud overlap, pickup and peak loot counts, advanced weapon counts and snapshot byte size. Use `HEADED=1` for the client frame-rate number.
 
@@ -345,12 +427,12 @@ HEADED=1 npm run verify:online:grenade-perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 147 tests pass
+- `npm test`: 174 tests pass across 22 files
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass
 - `npm run verify:online:countdown`: 16/16 checks pass, including HUD and lobby card synchronization
-- `npm run verify:online:matchmaking`: 11/11 checks pass
+- `npm run verify:online:matchmaking`: 11/11 checks pass on a clean server
 - `npm run verify:online:characters`: 35/35 checks pass against the production build
 - `npm run verify:online:bots`: 32/32 checks pass against the production build, including valid advanced bot weapons and loss/respawn presentation.
 - All ten character cards render, every card is selectable, keyboard arrows change selection, mobile shows two readable columns, and refresh plus corrupt-storage fallback behave correctly.
@@ -363,19 +445,22 @@ Last verification against the production build:
 - `verify:online:pickups`: 29/29 checks pass. Two clients saw the same 31 supply caches, a collected medkit disappeared for both, a late join saw no duplicated inventory, a second room kept independent pickup state, the respawn cycle completed, `H` healed without exceeding the cap, the HUD showed the heal amount, and a duplicate use consumed no extra medkit.
 - `verify:online:grenades`: 28/28 checks pass. Both clients saw the same contact, frag and stinking caches and distinct artworks, key selection and the throw control worked, the frag detonated after about 5 seconds of server simulation time, a contact grenade eliminated a bot with correct kill-feed credit, self-damage did not award an opponent a kill, medkits still healed, and a second room had independent grenade and pickup state.
 - `verify:online:stinking`: 25/25 checks pass. The cloud activated at 160 px for 6 seconds, applied 6 HP toxic ticks, eliminated the player without granting a kill, restored the one-of-each loadout on respawn, damaged and eliminated an idle opponent with owner credit, appeared to a late joiner, and left a second room's pickups independent.
-- `verify:online:loot`: 41/41 checks pass against the production build. Two clients agreed on 31 static caches, the starter rifle/scatter/empty loadout, three-item hostile elimination bundles, one weapon/medkit/grenade Phaser view per item in both sessions, authoritative ammo on pickup, the full-loadout `E` swap, duplicate-free replacement, a late joiner with remaining loot, a one-winner medkit contest, 12-second server-clock expiry, a human death dropping the actual equipped weapon, starter loadout restoration, match-end cleanup and replay reset.
-- `verify:online:arsenal`: 26/26 checks pass against the production build. Akimbo dual barrels and server alternation, SMG cadence/reload, Heavy Cannon 60-damage direct impact, rocket flight/explosion/single falloff hit, advanced elimination loot, authoritative ammo, respawn reset and an eight-human mixed-weapon lineup all render correctly. Screenshots are in `artifacts/p3c/`.
+- `verify:online:loot`: 41/41 checks pass against the production build. Two clients agreed on 31 static caches, the starter rifle/scatter/empty loadout, three-item hostile elimination bundles, one weapon/medkit/grenade Phaser view per item in both sessions, authoritative ammo on pickup, the full-loadout `E` swap, duplicate-free replacement, a late joiner with remaining loot, a one-winner medkit contest, 12-second server-clock expiry, a human death dropping the actual equipped weapon, starter loadout restoration, match-end cleanup, replay reset, and a reserved seat for a disconnected late joiner.
+- `verify:online:arsenal`: 26/26 checks pass against the production build. Akimbo dual barrels and server alternation, SMG cadence/reload, Heavy Cannon 60-damage direct impact, rocket flight/explosion/single falloff hit, advanced elimination loot, authoritative ammo, respawn reset and an eight-human mixed-weapon lineup all render correctly.
+- `verify:online:p4`: 33/33 checks pass against the production build. Guest profile bootstrap, audio persistence, three real server-awarded match records, XP and level-up, duplicate XP prevention, replay match ids, reconnect during combat and countdown, reserved-seat capacity, grace-expiry lobby return, simultaneous multi-touch movement/aim/fire/jetpack, touch reload, weapon selection, grenade throw and cache swap all pass.
 - `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors.
 - P3B-C baseline `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server.
-- P3C-A standard `HEADED=1 npm run verify:online:perf`: 57 fps, 0.28 ms average, 0.67 ms p95.
 - P3C standard `HEADED=1 npm run verify:online:perf`: 58 to 59 fps, 0.22 ms average server tick, 0.77 ms p95, 6/6 checks.
-- `HEADED=1 npm run verify:online:grenade-perf`: 15/15 checks pass with 8 humans, all four advanced weapons firing, 31 advanced shots, 7 peak grenades, 7 active toxic clouds, 2 overlapping clouds, 60 fps, 0.06 ms average tick, 0.15 ms p95, 10 peak dynamic loot entities, 31 pickups, a 16,319-byte snapshot and a second concurrent room. The 60 fps stress result matches the 60 fps P3B-C stress baseline while adding advanced weapons and loot.
+- P4 standard `HEADED=1 npm run verify:online:perf`: 60 fps, 0.245 ms average server tick, 0.547 ms p95, 6/6 checks with audio active.
+- P4 `HEADED=1 npm run verify:online:grenade-perf`: 15/15 checks pass with 8 humans, a second room, all four advanced weapons firing, 31 advanced shots, 8 peak grenades, 8 active toxic clouds, up to 8 overlapping clouds, 60 fps, 0.041 ms average tick, 0.128 ms p95, 16 peak dynamic loot entities, 31 pickups and a 17,600-byte snapshot. The snapshot grew about 8 percent from the P3C baseline because combatants now carry profile, level, badge, title, elimination and trail fields.
+- Mobile verification used Chromium mobile emulation at 844 x 390 with `hasTouch`, real CDP multi-touch events, safe-area CSS and all touch controls. Physical iOS and Android hardware were not available in this environment.
 - Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
 
-- Reconnect and mid-match resume are not implemented. A disconnect returns the player to the lobby while the server backfills the seat with a bot.
+- Reconnect survives network loss and brief socket drops inside the same page. It does not survive a full page reload or a game-server process restart. A reload returns the player to the lobby.
 - The client predicts local movement and renders remote interpolation, but there is no historical lag compensation for hit registration. High-latency shots can feel inconsistent.
+- A disconnected body stays in the arena and can be damaged. It receives no extra invulnerability, which avoids a disconnect exploit but makes a long disconnect risky.
 - Ended rooms stay ended until a current occupant starts a replay. New players need to join or create another room.
 - Room discovery uses the Colyseus lobby and in-memory room metadata. It is not a persistent matchmaking service and does not survive a server restart.
 - Combat input is frozen during the pre-match countdown. Players can aim but cannot move, fire, use the jetpack or use a medkit until the clock starts.
@@ -402,28 +487,32 @@ Last verification against the production build:
 - Bot navigation still uses the compact movement body while damage uses the character-sized hitbox. This preserves A* traversal, but a character can visually overlap tight cover more than the navigation body does.
 - If the validated roster ever drops below the number of combatants, bot skin assignment safely reuses entries rather than inventing assets.
 - The character body is static because the NFT is a 3/4 portrait. Weapon and effects are separate layers.
-- There is no audio yet.
+- Guest profiles are device-bound. Clearing browser storage loses access until account linking exists, and there is no email, wallet or password recovery.
+- SQLite is designed for one persistent game-server process. Running multiple game-server replicas against one SQLite file is unsupported.
+- XP, levels, titles, badges, elimination variants and jetpack trails are cosmetic only. There is no ranked mode, matchmaking skill rating or paid content.
+- The audio system uses original synthesis. There is no licensed music, voice acting, 3D positional mix or dynamic soundtrack.
+- Mobile controls were verified with Chromium mobile emulation, CDP multi-touch and real touch event handling. Physical iOS and Android hardware were not available in this environment.
+- There is no gamepad support or full keyboard remapping.
+- Touch controls are part of the online match UI. Local P1 mode remains keyboard and mouse.
 - The arena uses runtime-baked primitive art, not a final authored tileset.
-- Guest names and room membership are temporary. There are no accounts, wallets, XP or persistent stats.
 
-## Out of scope for P4
+## Out of scope for P5
 
-- New maps, modes or non-official characters.
+- New maps, game modes or non-official characters.
 - Accounts, wallets and blockchain integration.
-- XP, progression, unlocks or ranked matchmaking.
-- Reconnect tokens or lag-compensation redesigns.
-- Audio implementation.
-- Spectator tools, voice chat or tournaments.
+- Ranked matchmaking, skill ratings or paid progression.
+- Voice chat, spectator tools or tournaments.
 - Final character animation. The source NFT perspective does not support it without new authored art.
 
 ## Next steps
 
-1. P3C is complete. Wait for a P4 instruction before starting mode or progression work.
-2. Add reconnection tokens and mid-match resume.
-3. Add server-side lag compensation and a configurable latency test harness.
-4. Add audio and richer hit confirmation through the existing effects layer.
-5. Add deployment configuration for separate client and game-server hosts.
-6. Replace runtime-baked arena primitives with authored tilesets once the level design is locked.
+1. P4 is complete. Wait for a P5 instruction before starting new modes or platform work.
+2. Add account linking so guest profiles can move between devices.
+3. Move progression to a shared database before running multiple game-server replicas.
+4. Add server-side lag compensation and a configurable latency test harness.
+5. Add licensed or original music, voice and a richer audio mix.
+6. Add gamepad support and remapping.
+7. Replace runtime-baked arena primitives with authored tilesets once the level design is locked.
 
 ## Credits
 

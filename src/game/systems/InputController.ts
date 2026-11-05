@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { consumeTouchFrame } from "@/game/input/touchInput";
 
 /**
  * The one frame-shaped input contract the simulation consumes. Keyboard and
@@ -146,25 +147,35 @@ export class InputController {
   }
 
   sample(camera: Phaser.Cameras.Scene2D.Camera, fallbackX: number, fallbackY: number): ControlFrame {
-    const moveX =
+    const touch = consumeTouchFrame();
+    const keyboardMoveX =
       (this.keys.right.isDown || this.keys.rightArrow.isDown ? 1 : 0) -
       (this.keys.left.isDown || this.keys.leftArrow.isDown ? 1 : 0);
+    const moveX = keyboardMoveX !== 0 ? keyboardMoveX : touch?.moveX ?? 0;
 
     const pointer = this.scene.input.activePointer;
-    if (this.hasPointer) {
+    if (touch?.aimAngle !== null && touch?.aimAngle !== undefined) {
+      this.aim.set(
+        fallbackX + Math.cos(touch.aimAngle) * 240,
+        fallbackY - 56 + Math.sin(touch.aimAngle) * 240,
+      );
+    } else if (this.hasPointer) {
       camera.getWorldPoint(this.lastPointer.x, this.lastPointer.y, this.cameraPoint);
       this.aim.copy(this.cameraPoint);
     } else {
       this.aim.set(fallbackX + 200, fallbackY - 56);
     }
 
-    const jumpPressed = this.bufferedJump;
-    const reloadPressed = this.bufferedReload;
-    const weaponSlotPressed = this.bufferedWeaponSlot;
-    const medkitPressed = this.bufferedMedkit;
-    const grenadeSlotPressed = this.bufferedGrenadeSlot;
-    const grenadeThrowPressed = this.bufferedGrenadeThrow;
-    const swapPressed = this.bufferedSwap;
+    const jumpPressed = this.bufferedJump || Boolean(touch?.jumpPressed);
+    const reloadPressed = this.bufferedReload || Boolean(touch?.reloadPressed);
+    const weaponSlotPressed =
+      this.bufferedWeaponSlot ?? touch?.weaponSlotPressed ?? null;
+    const medkitPressed = this.bufferedMedkit || Boolean(touch?.medkitPressed);
+    const grenadeSlotPressed =
+      this.bufferedGrenadeSlot ?? touch?.grenadeSlotPressed ?? null;
+    const grenadeThrowPressed =
+      this.bufferedGrenadeThrow || Boolean(touch?.grenadeThrowPressed);
+    const swapPressed = this.bufferedSwap || Boolean(touch?.swapPressed);
     this.bufferedJump = false;
     this.bufferedReload = false;
     this.bufferedWeaponSlot = null;
@@ -176,8 +187,8 @@ export class InputController {
     return {
       moveX,
       jumpPressed,
-      jumpHeld: this.keys.space.isDown,
-      fire: pointer.primaryDown,
+      jumpHeld: this.keys.space.isDown || Boolean(touch?.jumpHeld),
+      fire: pointer.primaryDown || Boolean(touch?.fire),
       reloadPressed,
       weaponSlotPressed,
       medkitPressed,

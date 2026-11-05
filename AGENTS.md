@@ -63,6 +63,14 @@
 
 - Whenever you make changes to the database schema, ALWAYS run `db:generate` then `db:migrate`.
 - NEVER run drizzle push.
+- Guest progression uses `server/persistence/ProfileStore.ts` with `node:sqlite`. Schema versions live in `schema_migrations`. Add an additive migration for every schema change and run `npm run db:backup` before applying it.
+- Do not point multiple game-server processes at one SQLite database.
+
+## DEPLOYMENT
+
+- The Colyseus server must run as a persistent Node.js process behind WSS. Never deploy it as a serverless function.
+- Never enable `VIBE_MILITIA_TEST_HOOKS` in production.
+- Production requires `ALLOWED_ORIGINS` and a persistent `DATABASE_PATH`. See `DEPLOYMENT.md`.
 
 ## TESTING
 

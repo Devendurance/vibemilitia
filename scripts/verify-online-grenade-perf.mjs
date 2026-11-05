@@ -71,6 +71,12 @@ const probe = (page) =>
       clouds: snapshot?.toxicClouds ?? [],
       pickups: snapshot?.pickups ?? [],
       loot: snapshot?.loot ?? [],
+      participants: (snapshot?.participants ?? []).map((participant) => ({
+        id: participant.id,
+        kind: participant.kind,
+        alive: participant.alive,
+        weaponId: participant.weaponId,
+      })),
       advancedWeaponIds: (snapshot?.participants ?? [])
         .map((participant) => participant.weaponId)
         .filter((weaponId) =>
@@ -335,8 +341,13 @@ try {
     `humans=${filled.humans} bots=${filled.bots}`,
   );
 
-  await browserArsenal(page);
+  const armed = await browserArsenal(page);
   await page.waitForTimeout(350);
+  await page.evaluate((ids) => {
+    const hooks = window.__VIBE_MILITIA_ONLINE__?.getProbe().testHooks;
+    if (!hooks) return;
+    for (const id of ids) hooks.guardTarget(id);
+  }, armed.map((entry) => entry.id));
   await page.evaluate(() => {
     const value = window.__VIBE_MILITIA_ONLINE__;
     value?.getProbe().testHooks.setAim(1200, 1280);
@@ -349,7 +360,7 @@ try {
     );
   }
   await page.mouse.down();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1200);
 
   const stressVictims = await browserEliminate(page, 2);
   await page.waitForTimeout(500);
@@ -359,6 +370,15 @@ try {
     lootState.loot.length >= 3,
     `victims=${stressVictims} loot=${lootState.loot.length}`,
   );
+  for (let attempt = 0; attempt < 25; attempt += 1) {
+    const state = await probe(page);
+    const aliveHumans =
+      state.participants?.filter(
+        (participant) => participant.kind === "human" && participant.alive,
+      ).length ?? 0;
+    if (aliveHumans === 8) break;
+    await page.waitForTimeout(200);
+  }
 
   // Browser player: one of each grenade, with contact and frag near the feet.
   await page.keyboard.press("Digit6");
@@ -373,12 +393,27 @@ try {
   await page.waitForTimeout(120);
   await page.keyboard.press("KeyG");
 
-  await browserArsenal(page);
+  const rearmed = await browserArsenal(page);
+  await page.evaluate((ids) => {
+    const hooks = window.__VIBE_MILITIA_ONLINE__?.getProbe().testHooks;
+    if (!hooks) return;
+    for (const id of ids) hooks.guardTarget(id);
+  }, rearmed.map((entry) => entry.id));
   await page.waitForTimeout(220);
   for (let index = 0; index < fillers.length; index += 1) {
     holdFireInput(fillers[index], 700 + index, Math.PI);
   }
 
+  const stinkAnchor = (await probe(page)).local;
+  if (stinkAnchor) {
+    for (const filler of fillers) {
+      filler.room.send("debug-teleport", {
+        x: stinkAnchor.x + 24,
+        y: stinkAnchor.y,
+      });
+    }
+    await page.waitForTimeout(350);
+  }
   for (const filler of fillers) {
     if (!filler.snapshot) {
       filler.snapshot = await new Promise((resolve) => {

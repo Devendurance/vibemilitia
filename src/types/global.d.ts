@@ -15,6 +15,13 @@ declare global {
         ready: boolean;
         snapshot: OnlineSnapshot | null;
         hud: import("@/game/bridge").HudSnapshot;
+        audio: {
+          contextState: string;
+          muted: boolean;
+          master: number;
+          effects: number;
+          voices: number;
+        };
         views: Array<{
           id: string;
           name: string;
@@ -34,6 +41,7 @@ declare global {
           id: string;
           kind: string;
           weaponId: string | null;
+          eliminationId: number;
           x: number;
           y: number;
           visible: boolean;

@@ -132,20 +132,29 @@ export class EffectsSystem {
     x: number,
     y: number,
     kind: "impact" | "toxic" = "impact",
+    style: "lime" | "copper" | "toxic" = kind === "toxic" ? "toxic" : "lime",
   ): void {
     this.voxelLime.explode(11, x, y);
     this.voxelCopper.explode(9, x, y);
     this.voxelSky.explode(8, x, y);
     this.voxelCream.explode(6, x, y);
-    if (kind === "toxic") {
+    if (kind === "toxic" || style === "toxic") {
       this.voxelRed.explode(8, x, y);
       this.mint.explode(9, x, y);
+    } else if (style === "copper") {
+      this.voxelCopper.explode(12, x, y);
+      this.voxelRed.explode(7, x, y);
+      this.smoke.explode(8, x, y);
     } else {
       this.voxelRed.explode(6, x, y);
       this.lime.explode(8, x, y);
     }
     this.smoke.explode(7, x, y);
-    this.ring(x, y, kind === "toxic" ? 0x9bff5a : 0xd7ff2e);
+    this.ring(
+      x,
+      y,
+      style === "copper" ? 0xc7692f : style === "toxic" ? 0x9bff5a : 0xd7ff2e,
+    );
     this.ring(x, y, 0x9bd8f2);
   }
 

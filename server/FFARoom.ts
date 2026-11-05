@@ -1,4 +1,4 @@
-import { Client, Room } from "colyseus";
+import { Client, CloseCode, Room } from "colyseus";
 import { getCharacterSkin } from "../src/game/characters/roster";
 import { GameSimulation } from "../src/game/multiplayer/GameSimulation";
 import {
@@ -10,6 +10,10 @@ import {
   type OnlineInputPayload,
   type OnlineRoomMetadata,
 } from "../src/game/multiplayer/protocol";
+import type { MatchReward } from "../src/game/progression/profile";
+import { getProfileStore } from "./persistence";
+import { getServerConfig } from "./persistence";
+import { log } from "./log";
 
 interface RateBucket {
   windowStart: number;
@@ -20,6 +24,14 @@ interface AuthenticatedJoinOptions extends JoinOptions {
   name: string;
   roomName: string;
   skinId: string;
+  playerId: string | null;
+  level: number;
+  equipped: {
+    titleId: string;
+    badgeId: string;
+    eliminationId: string;
+    trailId: string;
+  };
 }
 
 export class FFARoom extends Room {
@@ -32,11 +44,16 @@ export class FFARoom extends Room {
   private countdownMs = DEFAULT_MATCH_COUNTDOWN_MS;
   private lastPhase: string | null = null;
   private metadataChain: Promise<void> = Promise.resolve();
+  private lastRecordedMatchId: string | null = null;
+  private rewardsByPlayer = new Map<string, MatchReward>();
+  private reservations = new Set<string>();
 
   async onCreate(options: JoinOptions & { roomName?: string }): Promise<void> {
     this.maxClients = MAX_COMBATANTS;
     this.autoDispose = true;
-    const configured = Number(process.env.MATCH_COUNTDOWN_MS);
+    const configured =
+      getServerConfig().matchCountdownMs ??
+      Number(process.env.MATCH_COUNTDOWN_MS);
     this.countdownMs = Number.isFinite(configured)
       ? Math.max(0, Math.min(60_000, configured))
       : DEFAULT_MATCH_COUNTDOWN_MS;
@@ -135,13 +152,38 @@ export class FFARoom extends Room {
     if (this.simulation && this.simulation.phase === "ended") {
       throw new Error("MATCH_ENDED");
     }
-    if (this.clients.length >= MAX_COMBATANTS) {
+    const humanSeats = this.simulation?.humanSeats ?? 0;
+    if (humanSeats + this.reservations.size >= MAX_COMBATANTS) {
       throw new Error("ROOM_FULL");
+    }
+    let playerId: string | null = null;
+    let level = 1;
+    let equipped = {
+      titleId: "title-rookie",
+      badgeId: "badge-lime-recruit",
+      eliminationId: "elimination-lime",
+      trailId: "trail-lime",
+    };
+    if (options?.guestToken) {
+      const profile = getProfileStore().getProfileByToken(options.guestToken);
+      if (!profile) {
+        throw new Error("GUEST_TOKEN_INVALID");
+      }
+      playerId = profile.id;
+      level = profile.level;
+      equipped = { ...profile.equipped };
+      if (this.simulation?.hasHumanPlayer(playerId)) {
+        throw new Error("ALREADY_IN_ROOM");
+      }
+      this.reservations.add(playerId);
     }
     return {
       name: sanitizeGuestName(options?.name ?? ""),
       roomName: this.matchName,
       skinId: getCharacterSkin(options?.skinId).skinId,
+      playerId,
+      level,
+      equipped,
     };
   }
 
@@ -165,25 +207,96 @@ export class FFARoom extends Room {
       client.sessionId,
       name,
       skinId,
+      {
+        playerId: auth?.playerId ?? null,
+        cosmetics: auth
+          ? { level: auth.level, equipped: auth.equipped }
+          : null,
+      },
     );
     if (!result.ok) {
+      if (auth?.playerId) this.reservations.delete(auth.playerId);
       throw new Error(result.error ?? "JOIN_REJECTED");
     }
+    if (auth?.playerId) this.reservations.delete(auth.playerId);
     this.lastPhase = this.simulation.phase;
     client.send("snapshot", this.simulation.snapshot());
     client.send("events", this.simulation.drainEvents());
+    if (auth?.playerId) {
+      const reward = this.rewardsByPlayer.get(auth.playerId);
+      if (reward) client.send("profile-update", reward);
+    }
     this.queueMetadataUpdate();
   }
 
-  onLeave(client: Client): void {
+  onDrop(client: Client, code?: number): void {
+    if (code === CloseCode.CONSENTED) return;
     this.rateBuckets.delete(client.sessionId);
-    this.simulation?.removeHuman(client.sessionId);
+    this.simulation?.setHumanConnected(client.sessionId, false);
+    const graceSeconds = getServerConfig().reconnectGraceSeconds;
+    log.info("human.drop", {
+      roomId: this.roomId,
+      sessionId: client.sessionId,
+      graceSeconds,
+    });
+    void this.allowReconnection(client, graceSeconds)
+      .then((reconnected) => {
+        this.simulation?.setHumanConnected(reconnected.sessionId, true);
+        reconnected.send("snapshot", this.simulation?.snapshot() ?? null);
+        const profileId =
+          this.simulation
+            ?.matchResults()
+            .find((entry) => entry.id === reconnected.sessionId)?.playerId ??
+          null;
+        const reward = profileId
+          ? this.rewardsByPlayer.get(profileId)
+          : undefined;
+        if (reward) {
+          reconnected.send("profile-update", reward);
+          getProfileStore().markAwardDelivered(profileId!, reward.matchId);
+        }
+        log.info("human.reconnected", {
+          roomId: this.roomId,
+          sessionId: reconnected.sessionId,
+        });
+      })
+      .catch(() => {
+        this.releaseClient(client.sessionId);
+      });
+  }
+
+  onLeave(client: Client, code?: number): void {
+    if (code !== CloseCode.CONSENTED) {
+      // onDrop owns the grace period and calls releaseClient on timeout.
+      // Colyseus also calls onLeave after a rejected reconnection, and
+      // releaseClient is idempotent.
+      this.releaseClient(client.sessionId);
+      return;
+    }
+    this.releaseClient(client.sessionId);
+  }
+
+  private releaseClient(sessionId: string): void {
+    this.rateBuckets.delete(sessionId);
+    if (!this.simulation) return;
+    const human = this.simulation
+      .matchResults()
+      .find((entry) => entry.id === sessionId);
+    if (!human) return;
+    this.simulation.removeHuman(sessionId);
     this.queueMetadataUpdate();
+    log.info("human.left", {
+      roomId: this.roomId,
+      sessionId,
+      playerId: human.playerId,
+    });
   }
 
   onDispose(): void {
     this.simulation = null;
     this.rateBuckets.clear();
+    this.reservations.clear();
+    this.rewardsByPlayer.clear();
   }
 
   private gameLoop(deltaMs: number): void {
@@ -204,6 +317,7 @@ export class FFARoom extends Room {
     const phase = this.simulation.phase;
     if (phase !== this.lastPhase) {
       this.lastPhase = phase;
+      if (phase === "ended") this.recordCompletedMatch();
       this.queueMetadataUpdate();
     }
 
@@ -215,6 +329,51 @@ export class FFARoom extends Room {
     if (now - this.lastMetadataAt >= 1000) {
       this.lastMetadataAt = now;
       this.queueMetadataUpdate();
+    }
+  }
+
+  private recordCompletedMatch(): void {
+    const simulation = this.simulation;
+    if (!simulation || simulation.phase !== "ended") return;
+    const matchId = simulation.matchId;
+    if (this.lastRecordedMatchId === matchId) return;
+    this.lastRecordedMatchId = matchId;
+    const store = getProfileStore();
+    for (const result of simulation.matchResults()) {
+      if (!result.playerId) continue;
+      const recorded = store.recordMatch({
+        matchId,
+        playerId: result.playerId,
+        placement: result.placement,
+        eliminations: result.eliminations,
+        deaths: result.deaths,
+        humanEliminations: result.humanEliminations,
+        botEliminations: result.botEliminations,
+        participationMs: result.participationMs,
+        inputsReceived: result.inputsReceived,
+        completed: true,
+        skinId: result.skinId,
+        weaponShots: result.weaponShots,
+        weaponHits: result.weaponHits,
+        weaponEliminations: result.weaponEliminations,
+      });
+      if (!recorded) continue;
+      this.rewardsByPlayer.set(result.playerId, recorded.reward);
+      if (recorded.duplicate) continue;
+      const client = this.clients.find(
+        (entry) => entry.sessionId === result.id,
+      );
+      if (client) {
+        client.send("profile-update", recorded.reward);
+        store.markAwardDelivered(result.playerId, matchId);
+      }
+      log.info("match.recorded", {
+        roomId: this.roomId,
+        matchId,
+        playerId: result.playerId,
+        xp: recorded.reward.xpEarned,
+        level: recorded.reward.levelAfter,
+      });
     }
   }
 

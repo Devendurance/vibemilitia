@@ -26,9 +26,12 @@
     "verify:online:countdown": "node scripts/verify-online-countdown.mjs",
     "verify:online:rooms": "node scripts/verify-online-rooms.mjs",
     "verify:online:perf": "node scripts/verify-online-perf.mjs",
+    "verify:online:p4": "node scripts/verify-online-p4.mjs",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
-    "server:check": "tsc --noEmit"
+    "server:check": "tsc --noEmit",
+    "db:backup": "tsx server/db-backup.ts",
+    "db:check": "tsx -e \"import { ProfileStore } from './server/persistence/ProfileStore'; const s = new ProfileStore(process.env.DATABASE_PATH ?? 'data/vibe-militia.sqlite'); console.log(s.health()); s.close();\""
   },
   "dependencies": {
     "@colyseus/schema": "^5.0.43",

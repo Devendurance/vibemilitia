@@ -98,11 +98,26 @@ import type {
   OnlineSnapshot,
   OnlineStanding,
   OnlineWeaponSnapshot,
+  OnlineHumanMatchResult,
 } from "@/game/multiplayer/protocol";
 import {
   DEFAULT_MATCH_COUNTDOWN_MS,
   MAX_COMBATANTS,
 } from "@/game/multiplayer/protocol";
+import {
+  DEFAULT_EQUIPPED,
+  type EquippedCosmetics,
+} from "@/game/progression/cosmetics";
+
+interface HumanCosmetics {
+  level: number;
+  equipped: EquippedCosmetics;
+}
+
+interface AddHumanOptions {
+  playerId?: string | null;
+  cosmetics?: HumanCosmetics | null;
+}
 
 const BOT_WEAPON: PlayerWeapon = {
   ...PLAYER_WEAPONS[0],
@@ -238,6 +253,16 @@ interface ToxicCloudRuntime {
 interface HumanRuntime {
   kind: "human";
   id: string;
+  playerId: string | null;
+  cosmetics: HumanCosmetics;
+  connected: boolean;
+  connectedMs: number;
+  inputsReceived: number;
+  humanEliminations: number;
+  botEliminations: number;
+  weaponShots: Record<string, number>;
+  weaponHits: Record<string, number>;
+  weaponEliminations: Record<string, number>;
   name: string;
   skinId: string;
   kin: HumanKinematics;
@@ -423,6 +448,7 @@ function botWeaponOrigin(bot: BotRuntime): { x: number; y: number } {
 export class GameSimulation {
   readonly roomId: string;
   readonly roomName: string;
+  private matchNumber = 1;
   private humans = new Map<string, HumanRuntime>();
   private bots = new Map<string, BotRuntime>();
   private projectiles = new Map<number, ProjectileRuntime>();
@@ -506,6 +532,21 @@ export class GameSimulation {
     );
   }
 
+  get matchId(): string {
+    return `${this.roomId}:${this.matchNumber}`;
+  }
+
+  get humanSeats(): number {
+    return this.humans.size;
+  }
+
+  hasHumanPlayer(playerId: string): boolean {
+    for (const human of this.humans.values()) {
+      if (human.playerId === playerId) return true;
+    }
+    return false;
+  }
+
   get allHumansGone(): boolean {
     return this.humans.size === 0;
   }
@@ -514,6 +555,7 @@ export class GameSimulation {
     id: string,
     requestedName: string,
     requestedSkinId?: string,
+    options: AddHumanOptions = {},
   ): { ok: boolean; error?: string } {
     if (this.timer.phase === "ended") {
       return { ok: false, error: "MATCH_ENDED" };
@@ -528,7 +570,7 @@ export class GameSimulation {
     const firstHuman = this.humans.size === 0;
     const name = requestedName.slice(0, 18) || `VIBER-${id.slice(0, 4)}`;
     const skinId = getCharacterSkin(requestedSkinId).skinId;
-    const human = this.createHuman(id, name, skinId);
+    const human = this.createHuman(id, name, skinId, options);
     this.humans.set(id, human);
 
     if (firstHuman) {
@@ -590,9 +632,65 @@ export class GameSimulation {
     }
   }
 
+  setHumanConnected(id: string, connected: boolean): boolean {
+    const human = this.humans.get(id);
+    if (!human) return false;
+    human.connected = connected;
+    if (!connected) {
+      human.input = null;
+      human.queuedJump = false;
+      human.queuedReload = false;
+      human.queuedWeapon = null;
+      human.queuedMedkit = false;
+      human.queuedGrenadeThrow = false;
+      human.queuedGrenadeSlot = null;
+      human.queuedSwapWeapon = false;
+      human.throwRequestHeld = false;
+      human.swapRequestHeld = false;
+    }
+    return true;
+  }
+
+  reconnectHuman(oldId: string, newId: string): boolean {
+    if (oldId === newId) return this.setHumanConnected(newId, true);
+    const human = this.humans.get(oldId);
+    if (!human || this.humans.has(newId)) return false;
+    this.humans.delete(oldId);
+    human.id = newId;
+    human.connected = true;
+    human.input = null;
+    this.humans.set(newId, human);
+    return true;
+  }
+
+  matchResults(): OnlineHumanMatchResult[] {
+    const ranked = this.getRanked();
+    const placementById = new Map(
+      ranked.map((entry) => [entry.id, entry.placement]),
+    );
+    return [...this.humans.values()].map((human) => ({
+      id: human.id,
+      playerId: human.playerId,
+      name: human.name,
+      skinId: human.skinId,
+      placement: placementById.get(human.id) ?? 1,
+      eliminations: human.eliminations,
+      deaths: human.deaths,
+      humanEliminations: human.humanEliminations,
+      botEliminations: human.botEliminations,
+      participationMs: Math.round(human.connectedMs),
+      inputsReceived: human.inputsReceived,
+      weaponShots: { ...human.weaponShots },
+      weaponHits: { ...human.weaponHits },
+      weaponEliminations: { ...human.weaponEliminations },
+    }));
+  }
+
   applyInput(id: string, payload: OnlineInputPayload): void {
     const human = this.humans.get(id);
-    if (!human || !human.alive || this.phase !== "live") return;
+    if (!human || !human.connected || !human.alive || this.phase !== "live") {
+      return;
+    }
     if (
       !Number.isFinite(payload.seq) ||
       !Number.isFinite(payload.moveX) ||
@@ -602,6 +700,8 @@ export class GameSimulation {
     }
     const seq = Math.floor(payload.seq);
     if (seq <= human.lastInputSeq || seq > human.lastInputSeq + 600) return;
+
+    human.inputsReceived += 1;
 
     human.input = {
       seq,
@@ -645,6 +745,7 @@ export class GameSimulation {
     if (this.timer.phase !== "ended") return { ok: false, error: "MATCH_NOT_ENDED" };
     if (this.humans.size === 0) return { ok: false, error: "NO_HUMANS" };
 
+    this.matchNumber += 1;
     this.timer = createMatchTimer(MATCH_CONFIG.durationMs);
     this.countdown = false;
     this.started = true;
@@ -668,6 +769,13 @@ export class GameSimulation {
       human.deaths = 0;
       human.shotsFired = 0;
       human.shotsHit = 0;
+      human.humanEliminations = 0;
+      human.botEliminations = 0;
+      human.connectedMs = 0;
+      human.inputsReceived = 0;
+      human.weaponShots = {};
+      human.weaponHits = {};
+      human.weaponEliminations = {};
       human.lastKillerName = null;
       human.input = null;
       this.resetHumanForRespawn(human);
@@ -711,6 +819,12 @@ export class GameSimulation {
     }
 
     for (const human of this.humans.values()) {
+      if (human.connected) {
+        human.connectedMs = Math.min(
+          MATCH_CONFIG.durationMs,
+          human.connectedMs + dtMs,
+        );
+      }
       this.stepHuman(human, dtMs);
     }
     for (const bot of this.bots.values()) {
@@ -787,6 +901,8 @@ export class GameSimulation {
     return {
       tick: this.tickCount,
       serverTime: Date.now(),
+      matchId: this.matchId,
+      matchNumber: this.matchNumber,
       elapsedMs: this.elapsedMs,
       phase: this.phase,
       endReason: this.endReason,
@@ -881,11 +997,29 @@ export class GameSimulation {
     return events;
   }
 
-  private createHuman(id: string, name: string, skinId: string): HumanRuntime {
+  private createHuman(
+    id: string,
+    name: string,
+    skinId: string,
+    options: AddHumanOptions = {},
+  ): HumanRuntime {
     const weaponIds = createStarterWeaponLoadout();
     return {
       kind: "human",
       id,
+      playerId: options.playerId ?? null,
+      cosmetics: options.cosmetics ?? {
+        level: 1,
+        equipped: { ...DEFAULT_EQUIPPED },
+      },
+      connected: true,
+      connectedMs: 0,
+      inputsReceived: 0,
+      humanEliminations: 0,
+      botEliminations: 0,
+      weaponShots: {},
+      weaponHits: {},
+      weaponEliminations: {},
       name,
       skinId,
       kin: createHumanKinematics(ARENA.playerSpawn.x, ARENA.playerSpawn.y),
@@ -1189,6 +1323,8 @@ export class GameSimulation {
       human.weapons[human.equippedIndex] = weapon.state;
       if (weapon.fired) {
         human.shotsFired += definition.pellets;
+        human.weaponShots[definition.id] =
+          (human.weaponShots[definition.id] ?? 0) + definition.pellets;
         const barrel: 0 | 1 =
           definition.mechanic === "akimbo" ? human.akimboBarrel : 0;
         this.fireWeapon(
@@ -2390,6 +2526,10 @@ export class GameSimulation {
     const attacker = this.findCombatant(attackerId);
     if (attacker?.kind === "human" && trackAccuracy) {
       attacker.shotsHit += 1;
+      if (weaponId) {
+        attacker.weaponHits[weaponId] =
+          (attacker.weaponHits[weaponId] ?? 0) + 1;
+      }
     }
 
     victim.health = applyDamage(victim.health, amount);
@@ -2426,6 +2566,7 @@ export class GameSimulation {
         victim,
         weaponName,
         attackerName,
+        weaponId,
       );
     }
   }
@@ -2435,6 +2576,7 @@ export class GameSimulation {
     victim: AnyCombatant,
     weaponName: string,
     killerNameOverride?: string,
+    weaponId?: string,
   ): void {
     if (this.timer.phase !== "live") return;
     if (victim.deathRecorded) return;
@@ -2477,6 +2619,17 @@ export class GameSimulation {
     if (!killer && !killerNameOverride) return;
     const killerName = killer?.name ?? killerNameOverride!;
     if (killer) killer.eliminations += 1;
+    if (killer?.kind === "human") {
+      if (victim.kind === "human") {
+        killer.humanEliminations += 1;
+      } else {
+        killer.botEliminations += 1;
+      }
+      if (weaponId) {
+        killer.weaponEliminations[weaponId] =
+          (killer.weaponEliminations[weaponId] ?? 0) + 1;
+      }
+    }
     victim.deaths += 1;
     victim.lastKillerName = killerName;
     this.feedCounter += 1;
@@ -2527,6 +2680,7 @@ export class GameSimulation {
     resetPickups(this.pickups);
     this.events.push({
       type: "match-end",
+      matchId: this.matchId,
       reason,
       winnerName: this.winnerName,
     });
@@ -3158,6 +3312,14 @@ export class GameSimulation {
       name: combatant.name,
       kind: combatant.kind,
       skinId: human ? human.skinId : bot!.skinId,
+      playerId: human?.playerId ?? null,
+      connected: human?.connected ?? true,
+      level: human?.cosmetics.level ?? 0,
+      badgeId: human?.cosmetics.equipped.badgeId ?? null,
+      titleId: human?.cosmetics.equipped.titleId ?? null,
+      eliminationEffectId:
+        human?.cosmetics.equipped.eliminationId ?? null,
+      trailId: human?.cosmetics.equipped.trailId ?? null,
       x: position.x,
       y: position.y,
       vx: combatant.kind === "human" ? human!.kin.vx : bot!.vx,

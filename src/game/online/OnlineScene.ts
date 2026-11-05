@@ -19,6 +19,7 @@ import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } fr
 import { createGameTextures } from "@/game/systems/TextureFactory";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController, type ControlFrame } from "@/game/systems/InputController";
+import { audio } from "@/game/audio/AudioEngine";
 import { CombatantView } from "@/game/online/CombatantView";
 import {
   createHumanKinematics,
@@ -101,6 +102,7 @@ interface OnlineProbe {
     id: string;
     kind: string;
     weaponId: string | null;
+    eliminationId: number;
     x: number;
     y: number;
     visible: boolean;
@@ -198,6 +200,8 @@ export class OnlineScene extends Phaser.Scene {
   }> = [];
   private hitFeedbackMs = 0;
   private localDamageSeq = 0;
+  private lastAudioCountdownSecond = -1;
+  private lastAudioMatchId: string | null = null;
   private lastPlayerKill: HudSnapshot["lastPlayerKill"] = null;
   private hudTimer = 0;
   private roomSubscriptions: Array<() => void> = [];
@@ -315,6 +319,7 @@ export class OnlineScene extends Phaser.Scene {
         ready: this.ready,
         snapshot: this.latestSnapshot,
         hud: this.bridge.getSnapshot(),
+        audio: audio.debugState(),
         views: [...this.views.values()].map((view) => ({
           id: view.id,
           name: this.latestSnapshot?.participants.find((p) => p.id === view.id)?.name ?? "",
@@ -341,6 +346,9 @@ export class OnlineScene extends Phaser.Scene {
           id,
           kind: view.kind,
           weaponId: view.weaponId,
+          eliminationId:
+            this.latestSnapshot?.loot.find((item) => item.id === id)
+              ?.eliminationId ?? 0,
           x: view.container.x,
           y: view.baseY,
           visible: view.container.visible,
@@ -605,6 +613,21 @@ export class OnlineScene extends Phaser.Scene {
       this.hudTimer = 0;
       this.publishHud(false);
     }
+
+    const snapshot = this.latestSnapshot;
+    if (snapshot?.phase === "countdown") {
+      const second = Math.ceil(snapshot.countdownRemainingMs / 1000);
+      if (second !== this.lastAudioCountdownSecond && second >= 0) {
+        this.lastAudioCountdownSecond = second;
+        audio.play("countdown", 0.8);
+      }
+    } else {
+      this.lastAudioCountdownSecond = -1;
+    }
+    audio.setJetpackActive(
+      Boolean(live && local?.alive && local.thrusting),
+      0.8,
+    );
   }
 
   private onSnapshot(snapshot: OnlineSnapshot): void {
@@ -1142,6 +1165,10 @@ export class OnlineScene extends Phaser.Scene {
           } else {
             this.effects.muzzle(event.x, event.y);
           }
+          this.playWeaponSound(
+            event.weaponId,
+            event.ownerId === this.room.sessionId,
+          );
           break;
         }
         case "hit": {
@@ -1200,13 +1227,27 @@ export class OnlineScene extends Phaser.Scene {
           ) {
             this.hitFeedbackMs = 100;
           }
+          if (event.victimId === this.room.sessionId) {
+            audio.play(toxic ? "toxicTick" : "damage", toxic ? 0.6 : 1);
+          }
           break;
         }
         case "elimination": {
+          const localEffect =
+            event.killerId === this.room.sessionId
+              ? this.localSnapshot()?.eliminationEffectId
+              : null;
+          const effectStyle =
+            localEffect === "elimination-copper"
+              ? "copper"
+              : localEffect === "elimination-toxic"
+                ? "toxic"
+                : undefined;
           this.effects.eliminationBurst(
             event.x,
             event.y - 52,
             event.weaponName.includes("STINKING") ? "toxic" : "impact",
+            effectStyle,
           );
           if (event.killerId === this.room.sessionId) {
             if (event.killerId !== event.victimId) {
@@ -1222,6 +1263,7 @@ export class OnlineScene extends Phaser.Scene {
             event.victimId === this.room.sessionId
           ) {
             this.cameras.main.shake(150, 0.004, true);
+            audio.play("elimination", 1);
           }
           break;
         }
@@ -1243,6 +1285,9 @@ export class OnlineScene extends Phaser.Scene {
             if (!batchFeedback || priority > batchFeedback.priority) {
               batchFeedback = { text, detail, priority };
             }
+            if (event.itemType === "medkit") audio.play("medkitPickup");
+            else if (event.itemType.endsWith("-grenade")) audio.play("uiConfirm");
+            else audio.play("weaponPickup");
           }
           break;
         }
@@ -1261,6 +1306,7 @@ export class OnlineScene extends Phaser.Scene {
           if (event.playerId === this.room.sessionId) {
             this.medkitFeedbackSeq += 1;
             this.medkitFeedbackAmount = event.healed;
+            audio.play("medkitUse");
           }
           break;
         }
@@ -1292,6 +1338,19 @@ export class OnlineScene extends Phaser.Scene {
                 Math.max(0.0015, 0.007 * (1 - distance / 900)),
                 true,
               );
+              audio.play(
+                event.grenadeType === "contact"
+                  ? "grenadeContact"
+                  : "grenadeFrag",
+                Math.max(0.35, 1 - distance / 1200),
+              );
+            } else {
+              audio.play(
+                event.grenadeType === "contact"
+                  ? "grenadeContact"
+                  : "grenadeFrag",
+                0.35,
+              );
             }
           }
           break;
@@ -1312,6 +1371,7 @@ export class OnlineScene extends Phaser.Scene {
             event.y,
             event.blastRadius,
           );
+          audio.play("rocketImpact", 1);
           const local = this.localSnapshot();
           if (local) {
             const distance = Math.hypot(
@@ -1330,6 +1390,7 @@ export class OnlineScene extends Phaser.Scene {
         }
         case "toxic-cloud-created": {
           this.effects.toxicCloudCreated(event.x, event.y);
+          audio.play("stinkActivate", 0.8);
           break;
         }
         case "toxic-cloud-expired": {
@@ -1354,6 +1415,13 @@ export class OnlineScene extends Phaser.Scene {
                 priority,
               };
             }
+            audio.play(
+              event.kind === "weapon"
+                ? "weaponPickup"
+                : event.kind === "medkit"
+                  ? "medkitPickup"
+                  : "uiConfirm",
+            );
           }
           break;
         }
@@ -1370,11 +1438,20 @@ export class OnlineScene extends Phaser.Scene {
           this.effects.weaponSwap(event.x, event.y);
           if (event.playerId === this.room.sessionId) {
             this.cameras.main.flash(120, 155, 216, 242, false);
+            audio.play("uiConfirm");
           }
           break;
         }
         case "match-end": {
           this.cameras.main.flash(220, 215, 255, 46, false);
+          if (this.lastAudioMatchId !== event.matchId) {
+            this.lastAudioMatchId = event.matchId;
+            const placement =
+              this.latestSnapshot?.standings.find(
+                (entry) => entry.id === this.room.sessionId,
+              )?.placement ?? 0;
+            audio.play(placement === 1 ? "victory" : "defeat", 1);
+          }
           this.publishHud(true);
           break;
         }
@@ -1755,7 +1832,35 @@ export class OnlineScene extends Phaser.Scene {
     }
   }
 
+  private playWeaponSound(weaponId: string, local: boolean): void {
+    const volume = local ? 1 : 0.55;
+    switch (weaponId) {
+      case "scatter-blaster":
+        audio.play("scatter", volume);
+        break;
+      case "vibe-lance":
+        audio.play("lance", volume);
+        break;
+      case "akimbo-rifles":
+        audio.play("akimbo", volume);
+        break;
+      case "vibe-smg":
+        audio.play("smg", volume);
+        break;
+      case "heavy-cannon":
+        audio.play("cannon", volume);
+        break;
+      case "rocket-launcher":
+        audio.play("rocketLaunch", volume);
+        break;
+      default:
+        audio.play("rifle", volume);
+        break;
+    }
+  }
+
   private cleanup(): void {
+    audio.setJetpackActive(false);
     for (const unsubscribe of this.roomSubscriptions) unsubscribe();
     this.roomSubscriptions = [];
     this.commandUnsubscribe?.();

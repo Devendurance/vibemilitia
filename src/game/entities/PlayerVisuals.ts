@@ -26,6 +26,7 @@ const MUZZLE_LOCAL_X = 67;
 
 interface PlayerVisualsOptions {
   dust?: boolean;
+  trailTint?: number;
 }
 
 /**
@@ -67,7 +68,7 @@ export class PlayerVisuals {
       lifespan: { min: 180, max: 330 },
       scale: { start: 0.7, end: 0 },
       alpha: { start: 0.95, end: 0 },
-      tint: [0xd7ff2e, 0x9bd8f2, 0xf5f3ec, 0xc7692f],
+      tint: [options.trailTint ?? 0xd7ff2e, 0x9bd8f2, 0xf5f3ec, 0xc7692f],
       frequency: 22,
       quantity: 2,
       emitting: false,

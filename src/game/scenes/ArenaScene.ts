@@ -33,6 +33,7 @@ import { selectSpawnPoint, type SpawnThreat } from "@/game/core/spawn";
 import { reloadProgress } from "@/game/core/weapon";
 import { Drone, type BotTarget, type BotWorld } from "@/game/entities/Drone";
 import { Player } from "@/game/entities/Player";
+import { audio } from "@/game/audio/AudioEngine";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController } from "@/game/systems/InputController";
 import { ProjectileSystem } from "@/game/systems/ProjectileSystem";
@@ -218,6 +219,10 @@ export class ArenaScene extends Phaser.Scene {
     } else {
       const previousWeaponId = this.player.weaponDefinition.id;
       const step = this.player.update(dtMs, input, input.aimWorld);
+    audio.setJetpackActive(
+      !this.player.dead && this.player.thrusting,
+      0.7,
+    );
       if (step.landed) {
         this.player.visuals.dustPuff(this.player.x, this.player.y);
         this.cameras.main.shake(55, 0.0012, true);
@@ -235,6 +240,17 @@ export class ArenaScene extends Phaser.Scene {
           this.elapsedMs,
         );
         this.effects.muzzle(muzzle.x, muzzle.y);
+      switch (definition.id) {
+        case "scatter-blaster":
+          audio.play("scatter", 0.8);
+          break;
+        case "vibe-lance":
+          audio.play("lance", 0.8);
+          break;
+        default:
+          audio.play("rifle", 0.8);
+          break;
+      }
         this.cameras.main.shake(
           38,
           Math.min(0.006, 0.0007 * definition.recoil),
@@ -328,6 +344,7 @@ export class ArenaScene extends Phaser.Scene {
     if (died) {
       this.recordElimination("player", drone.id, data.weaponName);
       this.cameras.main.shake(160, 0.004, true);
+      audio.play("elimination", 1);
     }
     this.publishHud(true);
   }
@@ -350,6 +367,7 @@ export class ArenaScene extends Phaser.Scene {
     const died = this.player.takeDamage(data.damage);
     this.effects.damageNumber(this.player.x, this.player.y - 100, data.damage, "#ffb4b6");
     this.cameras.main.shake(died ? 280 : 80, died ? 0.012 : 0.0025, true);
+    audio.play("damage", 1);
     if (died) {
       this.lastPlayerDeath = { x: this.player.x, y: this.player.y };
       this.effects.playerDestroyed(this.player.x, this.player.y);
@@ -400,6 +418,7 @@ export class ArenaScene extends Phaser.Scene {
       this.elapsedMs,
     );
     this.effects.muzzle(muzzle.x, muzzle.y, true);
+    audio.play("rifle", 0.35);
   }
 
   private onDroneDestroyed(drone: Drone): void {
@@ -489,6 +508,15 @@ export class ArenaScene extends Phaser.Scene {
     if (this.matchTimer.phase !== "ended") return;
     this.projectiles.clearAll();
     this.crosshair.clear();
+    audio.setJetpackActive(false);
+    const bestRival = this.drones.reduce(
+      (best, drone) => Math.max(best, drone.eliminations),
+      0,
+    );
+    audio.play(
+      this.player.eliminations >= bestRival ? "victory" : "defeat",
+      1,
+    );
     this.publishHud(true);
   }
 

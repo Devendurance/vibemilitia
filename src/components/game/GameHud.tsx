@@ -7,12 +7,20 @@ import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
 import { MEDKIT_CONFIG } from "@/game/core/pickups";
+import type { MatchReward, PlayerProfile } from "@/game/progression/profile";
+import { cosmeticById } from "@/game/progression/cosmetics";
+import {
+  totalXpForLevel,
+  xpForNextLevel,
+} from "@/game/progression/progression";
 
 interface GameHudProps {
   bridge: GameBridge;
   mode?: "local" | "online";
   playerName?: string;
   playerSkinId?: string;
+  profile?: PlayerProfile | null;
+  reward?: MatchReward | null;
 }
 
 function Keycap({ children }: { children: React.ReactNode }) {
@@ -190,10 +198,19 @@ export function GameHud({
   mode = "local",
   playerName,
   playerSkinId,
+  profile = null,
+  reward = null,
 }: GameHudProps) {
   const playerSkin = getCharacterSkin(
     mode === "online" ? playerSkinId : HUMAN_DEFAULT_SKIN_ID,
   );
+  const badge = profile?.equipped.badgeId
+    ? cosmeticById(profile.equipped.badgeId)
+    : null;
+  const title = profile?.equipped.titleId
+    ? cosmeticById(profile.equipped.titleId)
+    : null;
+  const levelLabel = String(profile?.level ?? 1).padStart(2, "0");
   const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
     bridge.getSnapshot(),
   );
@@ -224,6 +241,16 @@ export function GameHud({
       : null;
   const accuracy = Math.round(snapshot.playerAccuracy * 100);
   const victory = snapshot.playerPlacement === 1;
+  const rewardLevelXp = reward
+    ? Math.max(
+        0,
+        reward.profile.xp - totalXpForLevel(reward.profile.level),
+      )
+    : 0;
+  const rewardLevelSpan = reward ? xpForNextLevel(reward.profile.level) : 1;
+  const rewardProgress = reward
+    ? Math.max(0, Math.min(1, rewardLevelXp / Math.max(1, rewardLevelSpan)))
+    : 0;
   const selectedGrenadeCount =
     snapshot.grenadeSelected === "contact"
       ? snapshot.grenadeContact
@@ -324,7 +351,7 @@ export function GameHud({
               height={79}
               priority
             />
-            <span className="hud-avatar__level">01</span>
+            <span className="hud-avatar__level">{levelLabel}</span>
           </div>
           <div className="hud-identity__copy">
             <span className="hud-brand">VIBE MILITIA</span>
@@ -342,6 +369,13 @@ export function GameHud({
                   : "FFA OPERATOR"}
               </span>
             </div>
+            {mode === "online" && profile ? (
+              <div className="hud-identity__profile">
+                <span>{title?.name ?? "ROOKIE"}</span>
+                <span>{badge?.name ?? "LIME RECRUIT"}</span>
+                <span>LVL {profile.level}</span>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -874,6 +908,33 @@ export function GameHud({
               <strong className="display">{accuracy}%</strong>
             </div>
           </div>
+          {mode === "online" && reward ? (
+            <div className="results-progression" data-testid="results-progression">
+              <div className="results-progression__head">
+                <span className="mono-label">
+                  {reward.levelUp ? "LEVEL UP" : "MATCH XP"}
+                </span>
+                <strong className="display" data-testid="results-xp">
+                  +{reward.xpEarned} XP
+                </strong>
+              </div>
+              <div className="results-progression__breakdown">
+                {reward.breakdown.map((line) => (
+                  <span key={line.id}>
+                    {line.label} <strong>+{line.xp}</strong>
+                  </span>
+                ))}
+              </div>
+              <div className="profile-xp" aria-hidden="true">
+                <span style={{ width: `${rewardProgress * 100}%` }} />
+              </div>
+              <span className="mono-label">
+                LEVEL {reward.levelBefore}
+                {reward.levelUp ? ` -> ${reward.levelAfter}` : ""}
+                {" // "}TOTAL {reward.profile.xp} XP
+              </span>
+            </div>
+          ) : null}
           <button
             type="button"
             className="results-cta"

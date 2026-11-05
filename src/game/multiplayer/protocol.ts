@@ -50,6 +50,13 @@ export interface OnlineCombatantSnapshot {
   name: string;
   kind: PlayerKind;
   skinId: string;
+  playerId: string | null;
+  connected: boolean;
+  level: number;
+  badgeId: string | null;
+  titleId: string | null;
+  eliminationEffectId: string | null;
+  trailId: string | null;
   x: number;
   y: number;
   vx: number;
@@ -145,6 +152,8 @@ export interface OnlineProjectileSnapshot {
 export interface OnlineSnapshot {
   tick: number;
   serverTime: number;
+  matchId: string;
+  matchNumber: number;
   elapsedMs: number;
   phase: MatchPhase;
   endReason: EndReason;
@@ -215,6 +224,7 @@ export type OnlineEvent =
     }
   | {
       type: "match-end";
+      matchId: string;
       reason: EndReason;
       winnerName: string | null;
     }
@@ -357,6 +367,24 @@ export interface JoinOptions {
   roomName?: string;
   skinId?: string;
   open?: boolean;
+  guestToken?: string;
+}
+
+export interface OnlineHumanMatchResult {
+  id: string;
+  playerId: string | null;
+  name: string;
+  skinId: string;
+  placement: number;
+  eliminations: number;
+  deaths: number;
+  humanEliminations: number;
+  botEliminations: number;
+  participationMs: number;
+  inputsReceived: number;
+  weaponShots: Record<string, number>;
+  weaponHits: Record<string, number>;
+  weaponEliminations: Record<string, number>;
 }
 
 export interface OnlineRoomMetadata {

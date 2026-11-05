@@ -92,7 +92,22 @@
 - `verify:online:arsenal` also needs `VIBE_MILITIA_TEST_HOOKS=1` and `MATCH_COUNTDOWN_MS=0`. It verifies 26 checks across authored advanced caches, Akimbo dual layers and alternation, SMG cadence/reload, Cannon damage, rocket flight/explosion, advanced loot and an eight-combatant mixed lineup. Client-side test hooks add `setZoom`, `setAim`, `fireOnce` and `reloadOnce` for deterministic firing.
 - Advanced weapon caches and loot views are culled client-side when offscreen, including a cached `active` flag on pickup views so culling does not resurrect collected caches.
 
-## Phaser 4 gotchas
+## P4 facts
+
+- Touch input lives in `src/game/input/touchInput.ts`. `InputController` merges it into the same `ControlFrame` as keyboard and mouse. Touch controls render only on coarse pointers or `?touch=1`.
+- Touch reset runs on `blur`, `orientationchange`, `visibilitychange`, `pointercancel` and lost pointer capture. Utility buttons send the existing bridge commands or queue one-shot actions.
+- Audio lives in `src/game/audio/AudioEngine.ts`. It is original Web Audio synthesis, persists under `vibe-militia-audio`, has a 14-voice cap and one jetpack loop, and unlocks only after a gesture.
+- Progression rules live in `src/game/progression/progression.ts` and cosmetics in `cosmetics.ts`. XP is settled server-side in `FFARoom.recordCompletedMatch` once per `match_id`.
+- Guest tokens are `vm_guest_` plus 32 random bytes. Only the SHA-256 hash is stored. `POST /api/guest`, `GET /api/profile` and `PATCH /api/profile` are served by the Colyseus Express app.
+- `ProfileStore` uses `node:sqlite`, WAL, foreign keys, `schema_migrations` and `VACUUM INTO` backups. The database path is `DATABASE_PATH`.
+- `GameSimulation` snapshots now include `matchId`, `matchNumber`, and per-combatant `playerId`, `connected`, `level`, `badgeId`, `titleId`, `eliminationEffectId` and `trailId`.
+- Reconnect uses Colyseus `allowReconnection` in `onDrop` with `RECONNECT_GRACE_SECONDS`. The SDK client `reconnection.minUptime` is set to 0 so a disconnect immediately after joining still reconnects. The client also caps retries at grace plus 2.5 seconds.
+- `MAX_COMBATANTS` counts reserved disconnected humans through `simulation.humanSeats`. Reconnect does not add invulnerability and clears queued input.
+- Verification hooks are still gated by `VIBE_MILITIA_TEST_HOOKS=1`. P4 adds `guardTarget`, `pauseBotLoot`, `disableBotCuriosity` usage in suites.
+- Production config requires `ALLOWED_ORIGINS`, rejects wildcards, limits API bodies to 16 KB, rate-limits `/api` at 120/minute/IP and checks WebSocket upgrade origins.
+- `npm run db:backup` writes a consistent SQLite copy with `VACUUM INTO`.
+
+
 
 - Collision callback argument order can reverse when a group is paired with a sprite or array. Identify projectiles by their `bullet` data payload, never by argument position.
 - `setTintFill(color)` is removed. Use `setTint(color).setTintMode(Phaser.TintModes.FILL)`.
@@ -124,6 +139,9 @@
 - P3C-A grenade and loot stress with 8 humans, 8 peak grenades, 7 clouds, 2 overlapping clouds, 9 peak loot entities, 25 pickups and two rooms measured 51 fps, 1.04 ms average tick, 0.65 ms p95 and a 15,460-byte snapshot. The P3B-C baseline was 60 fps, 0.21 ms average, 0.27 ms p95 and 14,471 bytes.
 - P3C standard perf measured 58 to 59 fps, 0.22 ms average tick and 0.77 ms p95, 6/6 checks.
 - P3C grenade, advanced weapon and loot stress with 8 humans, 31 advanced shots, 7 peak grenades, 7 clouds, 2 overlapping clouds, 10 peak loot entities, 31 pickups and two rooms measured 60 fps, 0.06 ms average tick, 0.15 ms p95 and a 16,319-byte snapshot, 15/15 checks.
+- P4 standard perf measured 60 fps, 0.245 ms average tick and 0.547 ms p95 with audio active and a guest profile loaded.
+- P4 stress measured 60 fps, 0.041 ms average tick, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 peak grenades, 8 clouds, max overlap 8, 16 peak loot, 31 pickups and a 17,600-byte snapshot across two rooms.
+- P4 snapshots grew about 8 percent over P3C because each combatant carries profile, level, badge, title, elimination and trail fields.
 - Machine load matters. Chrome and background agents can push the stress FPS into the 20s and server p95 above 16 ms. Confirm CPU load and restart the server before recording a number.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
@@ -155,6 +173,9 @@
 - `npm run verify:online:stinking`
 - `npm run verify:online:loot` (server must run with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0`)
 - `npm run verify:online:arsenal` (server must run with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0`)
+- `npm run verify:online:p4` (disposable DB plus `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=4000 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`)
+- `npm run db:backup` (optional target path; uses `DATABASE_PATH`)
+- `npm run db:check` (prints profile-store health counts)
 - `npm run verify:online:grenade-perf` (add `HEADED=1` for real frame rate, hooks recommended for loot stress)
 - `npm run verify:online:rooms`
 - `npm run verify:online:perf` (add `HEADED=1` for real frame rate)

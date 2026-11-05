@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { ALL_PLAYER_WEAPONS } from "@/game/config/gameplay";
 import { getCharacterSkin } from "@/game/characters/roster";
 import { PlayerVisuals } from "@/game/entities/PlayerVisuals";
+import { cosmeticTint } from "@/game/progression/cosmetics";
 import type { OnlineCombatantSnapshot } from "@/game/multiplayer/protocol";
 
 const PLAYER_HEIGHT = 128;
@@ -58,7 +59,10 @@ export class CombatantView {
     const scale = PLAYER_HEIGHT / sprite.height;
     sprite.setScale(scale);
     this.sprite = sprite;
-    this.visuals = new PlayerVisuals(scene, sprite, { dust: false });
+    this.visuals = new PlayerVisuals(scene, sprite, {
+      dust: false,
+      trailTint: snapshot.trailId ? cosmeticTint(snapshot.trailId) : undefined,
+    });
     this.localRing =
       isLocal && snapshot.kind === "human"
         ? scene.add
