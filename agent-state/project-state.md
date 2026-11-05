@@ -133,7 +133,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `npm run verify:online:stinking`: 25/25 checks against the production build
 - `npm run verify:online:loot`: 41/41 checks against the production build
 - `npm run verify:online:arsenal`: 26/26 checks against the production build
-- `npm run verify:online:p4`: 33/33 checks against the production build
+- `npm run verify:online:p4`: 35/35 checks against the production build
 - `npm run verify:online:rooms`: 16/16 checks
 - `npm run verify:online:match`: 25/25 checks
 - `npm run verify:online:grenade-perf`: 15/15 checks
@@ -154,7 +154,7 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - P3C grenade, advanced weapon and loot stress: 60 fps, 0.06 ms average tick, 0.15 ms p95, 31 advanced shots, 7 peak grenades, 7 clouds, 2 overlapping clouds, 10 peak loot entities, 31 pickups, 16,319-byte snapshot and a second concurrent room
 - P4 standard perf: 60 fps, 0.245 ms average tick, 0.547 ms p95, 6/6 checks with audio active
 - P4 stress: 60 fps, 0.041 ms average tick, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 peak grenades, 8 clouds, max overlap 8, 16 peak loot, 31 pickups, 17,600-byte snapshot and a second room
-- P4 mobile: Chromium emulation at 844 x 390, `hasTouch`, CDP multi-touch, 33/33 P4 checks, no browser page errors
+- P4 mobile: Chromium emulation at 844 x 390, `hasTouch`, CDP multi-touch, 35/35 P4 checks, no browser page errors
 - Original public sources, archived sources and VIBER-010 cutout hash are unchanged
 - Local P1 remains 37/37 with no regression
 

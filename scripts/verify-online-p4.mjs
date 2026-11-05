@@ -245,6 +245,39 @@ try {
     firstReward.resultsXp ?? "missing",
   );
 
+  const endedMatchId = firstReward.matchId;
+  const endedSession = firstReward.sessionId;
+  await desktopContext.setOffline(true);
+  await page.waitForFunction(
+    () => Boolean(document.querySelector('[data-testid="reconnect-overlay"]')),
+    null,
+    { timeout: 5000 },
+  );
+  await page.waitForTimeout(1000);
+  await desktopContext.setOffline(false);
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="reconnect-overlay"]'),
+    null,
+    { timeout: 15000 },
+  );
+  await page.waitForTimeout(700);
+  const endedReconnect = await probe(page);
+  check(
+    "reconnect around match completion keeps the ended seat and results",
+    endedReconnect.sessionId === endedSession &&
+      endedReconnect.phase === "ended" &&
+      endedReconnect.matchId === endedMatchId &&
+      endedReconnect.lobby === false,
+    `${endedReconnect.sessionId} ${endedReconnect.phase}`,
+  );
+  const afterEndedReconnect = await fetchProfile(page);
+  check(
+    "reconnect around match completion does not duplicate XP",
+    afterEndedReconnect?.player?.xp === afterFirst?.player?.xp &&
+      afterEndedReconnect?.player?.matchesPlayed === 1,
+    `xp=${afterEndedReconnect?.player?.xp} matches=${afterEndedReconnect?.player?.matchesPlayed}`,
+  );
+
   await page.evaluate(() =>
     window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.endMatch(),
   );

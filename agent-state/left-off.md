@@ -13,7 +13,7 @@ P4 is complete: mobile touch, original audio, XP and levels, guest SQLite profil
 - Reconnect: 20-second configurable grace, same seat/session/inventory, reserved capacity, input clearing, no extra invulnerability, reconnect overlay and clean lobby return after expiry.
 - UX: lobby onboarding banner, settings guide, reconnect status, profile panel, XP results, compact mobile HUD, accessible labels and reduced-motion styles.
 - Deployment: env validation, production origin guards, WebSocket origin checks, `/health`, `/ready`, structured logs, API and input limits, Dockerfile, Compose, `.env.example` and `DEPLOYMENT.md`.
-- Final suites: unit 174; local 37/37; countdown 16/16; matchmaking 11/11; characters 35/35; bots 32/32; match 25/25; pickups 29/29; grenades 28/28; stinking 25/25; loot 41/41; arsenal 26/26; P4 33/33; rooms 16/16.
+- Final suites: unit 174; local 37/37; countdown 16/16; matchmaking 11/11; characters 35/35; bots 32/32; match 25/25; pickups 29/29; grenades 28/28; stinking 25/25; loot 41/41; arsenal 26/26; P4 35/35; rooms 16/16.
 - Performance: standard 60 fps, 0.245 ms average tick, 0.547 ms p95. Stress 60 fps, 0.041 ms average, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 clouds, max overlap 8, 17,600-byte snapshot, second room live.
 - Screenshots: `artifacts/p4/` desktop lobby/match/results, mobile lobby/touch/final, plus stress and test artifacts.
 
