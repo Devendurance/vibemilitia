@@ -29,6 +29,7 @@ import type {
   PlayerRecentMatch,
   PlayerWeaponStat,
 } from "../../src/game/progression/profile";
+import type { LeaderboardRow } from "./repository";
 import type { ClientEventInput } from "./repository";
 
 interface PlayerRow {
@@ -43,8 +44,17 @@ interface PlayerRow {
   eliminations: number;
   deaths: number;
   equipped_json: string;
+  x_handle: string | null;
+  x_public: number;
+  leaderboard_visible: number;
   created_at: number;
   updated_at: number;
+}
+
+export interface LeaderboardSettings {
+  xHandle: string | null;
+  xPublic: boolean;
+  leaderboardVisible: boolean;
 }
 
 interface MatchRow {
@@ -168,6 +178,17 @@ export class ProfileStore {
         VALUES (2, unixepoch() * 1000);
       `);
     }
+    if (version < 3) {
+      this.db.exec(`
+        ALTER TABLE players ADD COLUMN x_handle TEXT;
+        ALTER TABLE players ADD COLUMN x_public INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE players ADD COLUMN leaderboard_visible INTEGER NOT NULL DEFAULT 1;
+        CREATE INDEX IF NOT EXISTS idx_players_leaderboard
+          ON players (leaderboard_visible, xp DESC, wins DESC);
+        INSERT INTO schema_migrations (version, applied_at)
+        VALUES (3, unixepoch() * 1000);
+      `);
+    }
   }
 
   createGuest(name = "VIBER-GUEST", skinId = "viber-010"): GuestSession {
@@ -225,6 +246,50 @@ export class ProfileStore {
       )
       .run(safeName(name), skinId, Date.now(), playerId);
     return this.getProfileById(playerId);
+  }
+
+  updateLeaderboardSettings(
+    playerId: string,
+    input: Partial<LeaderboardSettings>,
+  ): PlayerProfile | null {
+    const current = this.getProfileById(playerId);
+    if (!current) return null;
+    const xHandle =
+      input.xHandle === undefined ? current.xHandle : input.xHandle;
+    const xPublic =
+      input.xPublic === undefined ? current.xPublic : Boolean(input.xPublic);
+    const leaderboardVisible =
+      input.leaderboardVisible === undefined
+        ? current.leaderboardVisible
+        : Boolean(input.leaderboardVisible);
+    this.db
+      .prepare(
+        `UPDATE players
+         SET x_handle = ?, x_public = ?, leaderboard_visible = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        xHandle,
+        xPublic ? 1 : 0,
+        leaderboardVisible ? 1 : 0,
+        Date.now(),
+        playerId,
+      );
+    return this.getProfileById(playerId);
+  }
+
+  getLeaderboard(limit = 25): LeaderboardRow[] {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    return this.db
+      .prepare(
+        `SELECT id, name, xp, wins, losses, eliminations, deaths,
+                matches_played, x_handle, x_public
+         FROM players
+         WHERE leaderboard_visible = 1 AND matches_played > 0
+         ORDER BY xp DESC, wins DESC, eliminations DESC, created_at ASC
+         LIMIT ?`,
+      )
+      .all(safeLimit) as unknown as LeaderboardRow[];
   }
 
   setEquipped(
@@ -551,6 +616,12 @@ export class ProfileStore {
       ),
       recentMatches,
       weaponStats,
+      xHandle: row.x_handle ?? null,
+      xPublic: Boolean(row.x_public),
+      leaderboardVisible:
+        row.leaderboard_visible === undefined
+          ? true
+          : Boolean(row.leaderboard_visible),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

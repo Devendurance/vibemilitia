@@ -5,7 +5,7 @@ describe("server config", () => {
   it("uses development defaults", () => {
     const config = loadServerConfig({});
     expect(config.port).toBe(2567);
-    expect(config.reconnectGraceSeconds).toBe(20);
+    expect(config.reconnectGraceSeconds).toBe(30);
     expect(config.allowedOrigins).toContain("http://localhost:3000");
     expect(config.production).toBe(false);
   });

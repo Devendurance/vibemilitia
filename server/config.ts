@@ -98,7 +98,7 @@ export function loadServerConfig(
     allowedOrigins: parseOrigins(env.ALLOWED_ORIGINS, production),
     reconnectGraceSeconds: Math.max(
       1,
-      Math.min(120, parseInteger(env.RECONNECT_GRACE_SECONDS, 20)),
+      Math.min(120, parseInteger(env.RECONNECT_GRACE_SECONDS, 30)),
     ),
     publicOrigin,
     production,

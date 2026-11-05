@@ -7,6 +7,25 @@ import type {
   PlayerProfile,
 } from "../../src/game/progression/profile";
 
+export interface LeaderboardSettings {
+  xHandle: string | null;
+  xPublic: boolean;
+  leaderboardVisible: boolean;
+}
+
+export interface LeaderboardRow {
+  id: string;
+  name: string;
+  xp: number;
+  wins: number;
+  losses: number;
+  eliminations: number;
+  deaths: number;
+  matches_played: number;
+  x_handle: string | null;
+  x_public: boolean | number;
+}
+
 export interface ProfileHealth {
   ok: boolean;
   backend: "sqlite" | "postgres";
@@ -37,6 +56,11 @@ export interface ProfileRepository {
     playerId: string,
     requested: Partial<EquippedCosmetics>,
   ): Promise<PlayerProfile | null>;
+  updateLeaderboardSettings(
+    playerId: string,
+    input: Partial<LeaderboardSettings>,
+  ): Promise<PlayerProfile | null>;
+  getLeaderboard(limit: number): Promise<LeaderboardRow[]>;
   recordMatch(input: MatchRecordInput): Promise<MatchRecordResult | null>;
   getPendingAwards(playerId: string): Promise<MatchReward[]>;
   markAwardsDelivered(playerId: string): Promise<void>;

@@ -33,8 +33,38 @@ export interface PlayerProfile {
   unlocked: string[];
   recentMatches: PlayerRecentMatch[];
   weaponStats: PlayerWeaponStat[];
+  /** Optional self-declared X handle. Never verified without X OAuth. */
+  xHandle: string | null;
+  /** Whether the self-declared X handle may appear on the public leaderboard. */
+  xPublic: boolean;
+  /** Opt-in to appear on the public, server-derived leaderboard. */
+  leaderboardVisible: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  name: string;
+  level: number;
+  xp: number;
+  wins: number;
+  losses: number;
+  eliminations: number;
+  deaths: number;
+  kd: number;
+  matchesPlayed: number;
+  /** Only present when the player explicitly made the handle public. */
+  xHandle: string | null;
+  /** Always false until a real X OAuth verification path exists. */
+  xVerified: false;
+}
+
+export interface LeaderboardResult {
+  entries: LeaderboardEntry[];
+  generatedAt: number;
+  period: "all-time";
+  metric: "xp";
 }
 
 export interface GuestSession {

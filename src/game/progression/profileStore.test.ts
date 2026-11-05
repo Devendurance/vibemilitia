@@ -157,6 +157,34 @@ describe("ProfileStore", () => {
     store.close();
   });
 
+  it("stores leaderboard identity settings and serves only opted-in ranked players", () => {
+    const store = new ProfileStore(":memory:");
+    const alpha = store.createGuest("ALPHA", "viber-010");
+    const bravo = store.createGuest("BRAVO", "viber-006");
+    store.updateLeaderboardSettings(alpha.player.id, {
+      xHandle: "alpha_vibes",
+      xPublic: true,
+      leaderboardVisible: true,
+    });
+    store.updateLeaderboardSettings(bravo.player.id, {
+      xHandle: "private_handle",
+      xPublic: false,
+      leaderboardVisible: false,
+    });
+    store.recordMatch(matchInput(alpha.player.id, "room:alpha"));
+    store.recordMatch(matchInput(bravo.player.id, "room:bravo"));
+    const rows = store.getLeaderboard(25);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe("ALPHA");
+    expect(rows[0]?.x_handle).toBe("alpha_vibes");
+    expect(rows[0]?.x_public).toBe(1);
+    const profile = store.getProfileById(alpha.player.id);
+    expect(profile?.xHandle).toBe("alpha_vibes");
+    expect(profile?.xPublic).toBe(true);
+    expect(profile?.leaderboardVisible).toBe(true);
+    store.close();
+  });
+
   it("stores anonymous client events with bounded fields", () => {
     const store = new ProfileStore(":memory:");
     store.recordClientEvent({

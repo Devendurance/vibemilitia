@@ -6,10 +6,13 @@ import { FFARoom } from "./FFARoom";
 import { FFA_ROOM, LOBBY_ROOM } from "../src/game/multiplayer/protocol";
 import { getCharacterSkin } from "../src/game/characters/roster";
 import type { EquippedCosmetics } from "../src/game/progression/cosmetics";
+import { normalizeXHandle } from "./persistence/codec";
 import {
   closePersistence,
   initializePersistence,
 } from "./persistence";
+import { buildLeaderboard } from "./leaderboard";
+import { resumeRegistry } from "./resumeRegistry";
 import { log } from "./log";
 
 async function bootstrap(): Promise<void> {
@@ -168,7 +171,7 @@ function guestRateLimit(
     return;
   }
   bucket.count += 1;
-  if (bucket.count > 10) {
+  if (bucket.count > 30) {
     response.status(429).json({ error: "GUEST_RATE_LIMITED" });
     return;
   }
@@ -208,6 +211,53 @@ app.get(
   }),
 );
 
+app.post(
+  "/api/resume",
+  asyncRoute(requireProfile),
+  asyncRoute(async (request: Request, response: Response) => {
+    const body = request.body as { handle?: unknown; roomId?: unknown };
+    const handle = typeof body?.handle === "string" ? body.handle : "";
+    const roomId = typeof body?.roomId === "string" ? body.roomId : null;
+    if (!handle) {
+      response.status(400).json({ error: "RESUME_HANDLE_REQUIRED" });
+      return;
+    }
+    const playerId = response.locals.playerId as string;
+    const entry = resumeRegistry.redeem(handle, playerId);
+    if (
+      !entry ||
+      (roomId !== null && roomId !== entry.roomId) ||
+      Date.now() >= entry.expiresAt
+    ) {
+      response.status(404).json({ error: "RESUME_NOT_AVAILABLE" });
+      return;
+    }
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      roomId: entry.roomId,
+      reconnectionToken: entry.reconnectionToken,
+      expiresAt: entry.expiresAt,
+    });
+    log.info("resume.redeemed", {
+      playerId,
+      roomId: entry.roomId,
+    });
+  }),
+);
+
+app.get(
+  "/api/leaderboard",
+  asyncRoute(async (request: Request, response: Response) => {
+    const limitValue = Number(request.query.limit);
+    const limit = Number.isFinite(limitValue)
+      ? Math.max(1, Math.min(100, Math.floor(limitValue)))
+      : 25;
+    const rows = await store.getLeaderboard(limit);
+    response.setHeader("Cache-Control", "no-store");
+    response.json(buildLeaderboard(rows));
+  }),
+);
+
 app.patch(
   "/api/profile",
   asyncRoute(requireProfile),
@@ -218,6 +268,9 @@ app.patch(
       skinId?: unknown;
       equipped?: unknown;
       claimAwards?: unknown;
+      xHandle?: unknown;
+      xPublic?: unknown;
+      leaderboardVisible?: unknown;
     };
     const current = await store.getProfileById(playerId);
     if (!current) {
@@ -230,6 +283,29 @@ app.patch(
       typeof body?.skinId === "string" ? body.skinId : current.skinId,
     ).skinId;
     await store.updateIdentity(playerId, name, skinId);
+    if (
+      body?.xHandle !== undefined ||
+      body?.xPublic !== undefined ||
+      body?.leaderboardVisible !== undefined
+    ) {
+      const xHandle =
+        body.xHandle === undefined
+          ? undefined
+          : normalizeXHandle(body.xHandle);
+      if (xHandle === undefined && body.xHandle !== undefined) {
+        response.status(400).json({ error: "X_HANDLE_INVALID" });
+        return;
+      }
+      await store.updateLeaderboardSettings(playerId, {
+        ...(xHandle !== undefined ? { xHandle } : {}),
+        ...(typeof body.xPublic === "boolean"
+          ? { xPublic: body.xPublic }
+          : {}),
+        ...(typeof body.leaderboardVisible === "boolean"
+          ? { leaderboardVisible: body.leaderboardVisible }
+          : {}),
+      });
+    }
     if (body?.equipped && typeof body.equipped === "object") {
       const equipped = await store.setEquipped(
         playerId,

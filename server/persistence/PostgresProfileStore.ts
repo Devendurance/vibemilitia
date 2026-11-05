@@ -26,8 +26,13 @@ import {
   parseEquipped,
   safeName,
 } from "./codec";
-import type { ProfileHealth, ProfileRepository } from "./repository";
-import type { ClientEventInput } from "./repository";
+import type {
+  ClientEventInput,
+  LeaderboardRow,
+  LeaderboardSettings,
+  ProfileHealth,
+  ProfileRepository,
+} from "./repository";
 
 interface PlayerRow {
   id: string;
@@ -41,6 +46,9 @@ interface PlayerRow {
   eliminations: number;
   deaths: number;
   equipped_json: EquippedCosmetics | string;
+  x_handle: string | null;
+  x_public: boolean;
+  leaderboard_visible: boolean;
   created_at: string | number;
   updated_at: string | number;
 }
@@ -212,6 +220,27 @@ export class PostgresProfileStore implements ProfileRepository {
           [Date.now()],
         );
       }
+      if (version < 3) {
+        await client.query(
+          "ALTER TABLE players ADD COLUMN IF NOT EXISTS x_handle TEXT",
+        );
+        await client.query(
+          "ALTER TABLE players ADD COLUMN IF NOT EXISTS x_public BOOLEAN NOT NULL DEFAULT FALSE",
+        );
+        await client.query(
+          "ALTER TABLE players ADD COLUMN IF NOT EXISTS leaderboard_visible BOOLEAN NOT NULL DEFAULT TRUE",
+        );
+        await client.query(`
+          CREATE INDEX IF NOT EXISTS idx_players_leaderboard
+            ON players (leaderboard_visible, xp DESC, wins DESC)
+        `);
+        await client.query(
+          `INSERT INTO schema_migrations (version, applied_at)
+           VALUES (3, $1)
+           ON CONFLICT (version) DO NOTHING`,
+          [Date.now()],
+        );
+      }
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
@@ -285,6 +314,43 @@ export class PostgresProfileStore implements ProfileRepository {
       [safeName(name), skinId, Date.now(), playerId],
     );
     return this.getProfileById(playerId);
+  }
+
+  async updateLeaderboardSettings(
+    playerId: string,
+    input: Partial<LeaderboardSettings>,
+  ): Promise<PlayerProfile | null> {
+    const current = await this.getProfileById(playerId);
+    if (!current) return null;
+    await this.pool.query(
+      `UPDATE players
+       SET x_handle = $1, x_public = $2, leaderboard_visible = $3, updated_at = $4
+       WHERE id = $5`,
+      [
+        input.xHandle === undefined ? current.xHandle : input.xHandle,
+        input.xPublic === undefined ? current.xPublic : Boolean(input.xPublic),
+        input.leaderboardVisible === undefined
+          ? current.leaderboardVisible
+          : Boolean(input.leaderboardVisible),
+        Date.now(),
+        playerId,
+      ],
+    );
+    return this.getProfileById(playerId);
+  }
+
+  async getLeaderboard(limit: number): Promise<LeaderboardRow[]> {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+    const result = await this.pool.query<LeaderboardRow>(
+      `SELECT id, name, xp, wins, losses, eliminations, deaths,
+              matches_played, x_handle, x_public
+       FROM players
+       WHERE leaderboard_visible = TRUE AND matches_played > 0
+       ORDER BY xp DESC, wins DESC, eliminations DESC, created_at ASC
+       LIMIT $1`,
+      [safeLimit],
+    );
+    return result.rows;
   }
 
   async setEquipped(
@@ -636,6 +702,12 @@ export class PostgresProfileStore implements ProfileRepository {
       unlocked: unlockedIds(progress.level),
       recentMatches,
       weaponStats,
+      xHandle: row.x_handle ?? null,
+      xPublic: Boolean(row.x_public),
+      leaderboardVisible:
+        row.leaderboard_visible === undefined
+          ? true
+          : Boolean(row.leaderboard_visible),
       createdAt: Number(row.created_at),
       updatedAt: Number(row.updated_at),
     };

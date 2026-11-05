@@ -5,6 +5,7 @@ import type {
 } from "@/game/progression/cosmetics";
 import type {
   GuestSession,
+  LeaderboardResult,
   MatchReward,
   PlayerProfile,
 } from "@/game/progression/profile";
@@ -135,6 +136,9 @@ export async function updateGuestProfile(input: {
   skinId?: string;
   equipped?: Partial<EquippedCosmetics>;
   claimAwards?: boolean;
+  xHandle?: string | null;
+  xPublic?: boolean;
+  leaderboardVisible?: boolean;
 }): Promise<{ player: PlayerProfile; pendingAwards: MatchReward[] } | null> {
   const token = readToken();
   if (!token) return null;
@@ -149,6 +153,41 @@ export async function updateGuestProfile(input: {
     });
     cacheProfile(result.player);
     return result;
+  } catch {
+    return null;
+  }
+}
+
+export interface RedeemedResume {
+  roomId: string;
+  reconnectionToken: string;
+  expiresAt: number;
+}
+
+export async function redeemResume(
+  handle: string,
+  roomId: string,
+): Promise<RedeemedResume | null> {
+  const token = readToken();
+  if (!token) return null;
+  try {
+    return await request<RedeemedResume>("/api/resume", {
+      method: "POST",
+      token,
+      body: JSON.stringify({ handle, roomId }),
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchLeaderboard(
+  limit = 25,
+): Promise<LeaderboardResult | null> {
+  try {
+    return await request<LeaderboardResult>(
+      `/api/leaderboard?limit=${Math.max(1, Math.min(100, limit))}`,
+    );
   } catch {
     return null;
   }

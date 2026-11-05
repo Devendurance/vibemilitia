@@ -13,6 +13,7 @@ import {
 import type { MatchReward } from "../src/game/progression/profile";
 import { getProfileStore } from "./persistence";
 import { getServerConfig } from "./persistence";
+import { resumeRegistry } from "./resumeRegistry";
 import { log } from "./log";
 
 interface RateBucket {
@@ -64,6 +65,13 @@ export class FFARoom extends Room {
     this.setSimulationInterval((delta) => this.gameLoop(delta), 1000 / 60);
     this.onMessage("input", (client, payload) => this.onInput(client, payload));
     this.onMessage("rematch", () => this.onRematch());
+    this.onMessage("request-resume", (client) => {
+      const playerId =
+        this.simulation
+          ?.matchResults()
+          .find((entry) => entry.id === client.sessionId)?.playerId ?? null;
+      this.issueResume(client, playerId);
+    });
     if (process.env.VIBE_MILITIA_TEST_HOOKS === "1") {
       this.onMessage("debug-eliminate", (client, payload) => {
         if (!this.simulation || !payload || typeof payload !== "object") return;
@@ -237,8 +245,29 @@ export class FFARoom extends Room {
     if (auth?.playerId) {
       const reward = this.rewardsByPlayer.get(auth.playerId);
       if (reward) client.send("profile-update", reward);
+      this.issueResume(client, auth.playerId);
     }
     this.queueMetadataUpdate();
+  }
+
+  private issueResume(client: Client, playerId: string | null): void {
+    if (!playerId) return;
+    const graceSeconds = getServerConfig().reconnectGraceSeconds;
+    const expiresAt = Date.now() + graceSeconds * 1000;
+    const resume = resumeRegistry.issue({
+      playerId,
+      roomId: this.roomId,
+      sessionId: client.sessionId,
+      reconnectionToken: client.reconnectionToken,
+      expiresAt,
+    });
+    if (!resume.handle) return;
+    client.send("resume-ready", {
+      handle: resume.handle,
+      roomId: this.roomId,
+      expiresAt: resume.expiresAt,
+      graceSeconds,
+    });
   }
 
   onDrop(client: Client, code?: number): void {
@@ -246,6 +275,11 @@ export class FFARoom extends Room {
     this.rateBuckets.delete(client.sessionId);
     this.simulation?.setHumanConnected(client.sessionId, false);
     const graceSeconds = getServerConfig().reconnectGraceSeconds;
+    resumeRegistry.refresh(
+      this.roomId,
+      client.sessionId,
+      Date.now() + graceSeconds * 1000,
+    );
     log.info("human.drop", {
       roomId: this.roomId,
       sessionId: client.sessionId,
@@ -260,6 +294,7 @@ export class FFARoom extends Room {
             ?.matchResults()
             .find((entry) => entry.id === reconnected.sessionId)?.playerId ??
           null;
+        this.issueResume(reconnected, profileId);
         const reward = profileId
           ? this.rewardsByPlayer.get(profileId)
           : undefined;
@@ -299,6 +334,7 @@ export class FFARoom extends Room {
 
   private releaseClient(sessionId: string): void {
     this.rateBuckets.delete(sessionId);
+    resumeRegistry.dropSession(this.roomId, sessionId);
     if (!this.simulation) return;
     const human = this.simulation
       .matchResults()
@@ -318,6 +354,7 @@ export class FFARoom extends Room {
     this.rateBuckets.clear();
     this.reservations.clear();
     this.rewardsByPlayer.clear();
+    resumeRegistry.dropRoom(this.roomId);
   }
 
   private gameLoop(deltaMs: number): void {

@@ -7,8 +7,13 @@ import type {
   PlayerProfile,
 } from "../../src/game/progression/profile";
 import { ProfileStore } from "./ProfileStore";
-import type { ProfileHealth, ProfileRepository } from "./repository";
-import type { ClientEventInput } from "./repository";
+import type {
+  ClientEventInput,
+  LeaderboardRow,
+  LeaderboardSettings,
+  ProfileHealth,
+  ProfileRepository,
+} from "./repository";
 export class SqliteProfileRepository implements ProfileRepository {
   readonly backend = "sqlite" as const;
   private readonly store: ProfileStore;
@@ -42,6 +47,17 @@ export class SqliteProfileRepository implements ProfileRepository {
     requested: Partial<EquippedCosmetics>,
   ): Promise<PlayerProfile | null> {
     return this.store.setEquipped(playerId, requested);
+  }
+
+  async updateLeaderboardSettings(
+    playerId: string,
+    input: Partial<LeaderboardSettings>,
+  ): Promise<PlayerProfile | null> {
+    return this.store.updateLeaderboardSettings(playerId, input);
+  }
+
+  async getLeaderboard(limit: number): Promise<LeaderboardRow[]> {
+    return this.store.getLeaderboard(limit);
   }
 
   async recordMatch(input: MatchRecordInput): Promise<MatchRecordResult | null> {
