@@ -2,38 +2,41 @@
 
 ## Current task
 
-P4 is complete: mobile touch, original audio, XP and levels, guest SQLite profiles, cosmetics, reconnect, UX/accessibility polish and production hosting configuration are implemented and verified. Stop before P5.
+P5 is implemented and locally verified. Neon PostgreSQL is provisioned and migrated. Public deployment and real-player beta are blocked on explicitly authorized persistent hosting and physical device access.
 
 ## Done
 
-- Mobile: landscape touch controls for move, aim, fire, jump/jetpack, reload, three weapons, grenade select/throw, medkit, swap and settings. Shared ControlFrame, pointer capture, safe areas, 0.18 dead zone, multi-touch, cancellation reset and compact touch HUD. Verified with Chromium 844 x 390 emulation and CDP multi-touch, not physical hardware.
-- Audio: original Web Audio synthesis for every required gameplay and UI event, persistent master/effects/mute, gesture unlock, 14-voice cap and jetpack loop.
-- Progression: server-confirmed XP, 50-level curve, participation checks, per-match caps, level-up celebration, results breakdown, titles, badges, elimination variants and jetpack trails.
-- Persistence: `node:sqlite` ProfileStore with migrations, WAL, hashed guest tokens, 174 tests, match idempotency, recent matches, weapon stats, unlocks and `VACUUM INTO` backups. Verified across server restart.
-- Reconnect: 20-second configurable grace, same seat/session/inventory, reserved capacity, input clearing, no extra invulnerability, reconnect overlay and clean lobby return after expiry.
-- UX: lobby onboarding banner, settings guide, reconnect status, profile panel, XP results, compact mobile HUD, accessible labels and reduced-motion styles.
-- Deployment: env validation, production origin guards, WebSocket origin checks, `/health`, `/ready`, structured logs, API and input limits, Dockerfile, Compose, `.env.example` and `DEPLOYMENT.md`.
-- Final suites: unit 174; local 37/37; countdown 16/16; matchmaking 11/11; characters 35/35; bots 32/32; match 25/25; pickups 29/29; grenades 28/28; stinking 25/25; loot 41/41; arsenal 26/26; P4 35/35; rooms 16/16.
-- Performance: standard 60 fps, 0.245 ms average tick, 0.547 ms p95. Stress 60 fps, 0.041 ms average, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 clouds, max overlap 8, 17,600-byte snapshot, second room live.
-- Screenshots: `artifacts/p4/` desktop lobby/match/results, mobile lobby/touch/final, plus stress and test artifacts.
+- PostgreSQL: dedicated Neon project `vibe-militia`, PG 17, `aws-us-east-2`, separate `p5-test` branch. Pooled connection configured through `DATABASE_URL`, SSL and `DATABASE_POOL_MAX`. Schema v1 covers players, weapon stats, matches, cosmetics and migrations. Schema v2 adds anonymous `client_events`. Transactions use `SELECT ... FOR UPDATE` for idempotent per-player rewards.
+- Persistence: async `ProfileRepository`, `SqliteProfileRepository`, `PostgresProfileStore`, shared token/name/equipped codec, `/ready` backend reporting, graceful async shutdown and request error middleware.
+- Migration: `server/db-migrate-postgres.ts` plus `scripts/create-migration-fixture.ts`. Validated 2 players, 1 weapon stat, 1 match, 8 cosmetics, retained XP and match count. SQLite source untouched.
+- Mobile: twin-stick controls with left-stick upward thrust, right-stick 360 aim, optional auto-fire past a configurable threshold, separate FIRE mode, persisted sensitivity/dead zones/thresholds, reliable multitouch, cancellation reset and safe-area layout.
+- Full-screen fit: Phaser `Scale.RESIZE`, `100dvh` mobile frame, safe areas, portrait rotation guard, fullscreen control and a web manifest. Desktop keeps centered 16:9.
+- Beta tooling: anonymous `POST /api/client-error` and `/api/feedback`, session client ID rate limiting, no IP or user-agent storage, in-match settings feedback trigger and session-bar trigger.
+- Verification: 182 unit tests pass, including 7 PostgreSQL tests. P4 35/35 and P5 42/42 pass against the Neon test branch. All P0-P4 browser suites pass on a clean SQLite server with `MATCH_COUNTDOWN_MS=10000`. P4/P5 use Neon.
+- Performance: final clean headless perf 56 fps, 0.40 ms average server tick, 1.43 ms p95. Grenade/advanced-weapon stress 15/15.
+- Artifacts: `artifacts/p5/` contains mobile screenshots at 1280x720, 844x390, 915x412, 740x360, portrait guard, P5 logs, P4 Neon logs and regression logs.
 
 ## Next
 
-- Commit and push the P4 checkpoint.
-- Stop before P5. Start P5 only on a new instruction.
+1. Review and commit the P5 changes.
+2. Push `main` to `origin/main`.
+3. If a persistent game-server host is explicitly authorized, deploy the game server and frontend, update `ALLOWED_ORIGINS`, and verify external guest creation, room joins, WSS and `/ready`.
+4. Run the real-player beta from `BETA_TESTING.md`.
+5. Start physical iOS/Android testing before declaring mobile parity.
 
 ## Known issues
 
-- Reconnect does not survive a full page reload or game-server restart.
-- Guest profiles are device-bound. SQLite supports one persistent game-server process. No account linking.
-- Mobile was not tested on physical iOS or Android hardware.
-- No gamepad, remapping, licensed music, voice, ranked mode or public deployment.
-- Verification hooks require `VIBE_MILITIA_TEST_HOOKS=1`; P4 suite also needs a disposable DB and short countdown/grace env.
-- Matchmaking suite expects a clean server because old open rooms can absorb Quick Match clients.
+- No public deployment and no live URL.
+- Physical iOS/Android device testing not performed.
+- Real-player beta not started.
+- Production Neon branch contains synthetic test profiles from this milestone. No real player data.
+- Multiple game-server replicas still need shared room discovery or sticky matchmaking even though PostgreSQL is shared.
+- Legacy suites need a clean server; matchmaking is sensitive to old open rooms.
+- Test hooks must stay disabled in production.
 
 ## Baseline
 
 - P4 implementation commit: `280871d`.
 - P4 reconnect verification commit: `20348f1`.
-- Last verified checkpoint before P4: `7dfb28b`.
-- `origin/main` matches the P4 verification commit.
+- Last documented checkpoint before P5: `2136963`.
+- `origin/main` should match this P5 checkpoint after push.

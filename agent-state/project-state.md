@@ -23,12 +23,13 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Weapons: Vibe Rifle, Scatter Blaster (seven pellets), Vibe Lance (two-shot precision), Akimbo Rifles, Vibe SMG, Heavy Cannon and Rocket Launcher. Each has independent ammo, cadence, reload, recoil, projectile texture, weapon texture and HUD slot.
 - Bots: online bots use ten validated official Viber skins with unique server-assigned `skinId` values, visible Vibe Rifle, muzzle flare, recoil, jetpack exhaust, health bars, damage reaction, spawn shield, death/respawn presentation and BOT callsign labels. They keep A* navigation, platform colliders, path smoothing, line-of-sight burst fire, vertical thrusters, stuck recovery, target hysteresis, bot-versus-bot combat and automatic respawns. Local P1 bots remain the original drones.
 - Online networking: Colyseus rooms, 60 Hz server tick, 20 Hz snapshots, 30 Hz client input, 45 messages/second input cap, local prediction with soft reconciliation, remote interpolation, projected bullets and server-side validation.
-- Mobile: responsive landscape touch controls for movement, aim, fire, jump and jetpack, reload, three weapon slots, grenade selection and throw, medkit, swap and settings. Controls write the shared `ControlFrame`, use pointer capture, safe-area insets, a 0.18 dead zone, simultaneous multi-touch and cancellation reset. Coarse-pointer devices hide desktop HUD panels in favour of a compact health, fuel, weapon and clock strip.
+- Mobile: Mini Militia-inspired twin-stick landscape controls. Left stick moves and pushes up for jetpack thrust, right stick aims independently and can auto-fire past a configurable threshold, and a separate FIRE button mode remains available. Settings persist move/aim dead zones, sensitivity, auto-fire threshold and fly threshold. Controls write the shared `ControlFrame`, use pointer capture, safe-area insets, simultaneous multi-touch and cancellation reset. Full-screen layout uses `Phaser.Scale.RESIZE`, a `100dvh` frame, safe areas, a portrait rotation guard and a fullscreen control. Coarse-pointer devices hide desktop HUD panels in favour of a compact status strip.
 - Audio: original Web Audio synthesis for all weapons, grenades, rocket impact, toxic ticks, jetpack, damage, eliminations, pickups, medkit, countdown, victory, defeat and UI. Master/effects volume and mute persist locally. 14-voice ceiling and one smoothed jetpack loop.
 - Progression: server-confirmed XP, 50-level curve, per-match participation checks and caps, level-up celebration, results XP breakdown, and level-based titles, badges, elimination variants and jetpack trails. Cosmetics never affect gameplay.
-- Guest profiles: opaque server-issued bearer token, SHA-256 at rest, SQLite persistence for identity, skin, XP, matches, wins, losses, eliminations, deaths, per-weapon stats, recent matches, unlocks and equipped cosmetics. Match records are idempotent by `(match_id, player_id)`.
+- Guest profiles: opaque server-issued bearer token, SHA-256 at rest, PostgreSQL persistence when `DATABASE_URL` is set and SQLite fallback otherwise. Stores identity, skin, XP, matches, wins, losses, eliminations, deaths, per-weapon stats, recent matches, unlocks, equipped cosmetics and anonymous client events. PostgreSQL uses a bounded `pg` pool, versioned migrations and transactional `SELECT ... FOR UPDATE` reward settlement. Match records are idempotent by `(match_id, player_id)`.
+- Beta feedback: anonymous `client_events` capture for client errors and 1-5 feedback, rate-limited by a session client ID, with no IP, user agent or personal data stored.
 - Reconnect: Colyseus `allowReconnection` with a 20-second configurable grace. Seat, score, character and inventory stay reserved. Buffered input is cleared, no extra invulnerability is granted, and the client shows a reconnect overlay. Grace expiry returns the player to the lobby and restores bot backfill.
-- Deployment: validated environment config, strict production `ALLOWED_ORIGINS`, WebSocket upgrade origin checks, HTTP CORS, `/health`, `/ready`, structured JSON logs, API and input rate limits, Dockerfile, Docker Compose, SQLite backup command and `DEPLOYMENT.md`.
+- Deployment: validated environment config, strict production `ALLOWED_ORIGINS`, WebSocket upgrade origin checks, HTTP CORS, `/health`, `/ready` with database backend reporting, structured JSON logs, API and input rate limits, Dockerfile, Docker Compose, SQLite backup command, Neon PostgreSQL guidance and `DEPLOYMENT.md`.
 - Room lifecycle: countdown, lobby, server-side quick match, create room, realtime room browser, invite links, full-room and ended-room errors, replay in the same room and auto-dispose when empty.
 - HUD: identity, health, jetpack, medkit count and use feedback, contact/frag/stinking grenade selection and counts, throw cooldown, supply pickup feedback, match clock, leaderboard, kill feed, weapon selector, ammo, reload, controls, debug, death overlay, results, boot overlay, online ping and server tick.
 - Browser test APIs: `window.__VIBE_MILITIA__` for local, `window.__VIBE_MILITIA_ONLINE__` for online.
@@ -48,11 +49,18 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `src/game/multiplayer`: shared protocol, deterministic human movement and authoritative `GameSimulation`.
 - `src/game/online`: online Phaser scene, combatant views and game bootstrap.
 - `src/game/audio`: original Web Audio synthesis and persistent master/effects/mute settings.
-- `src/game/input/touchInput.ts`: shared mutable touch frame consumed by the same `InputController` as keyboard and mouse.
-- `src/game/progression`: XP rules, level curve, cosmetics, profile types, tests and the SQLite profile-store test.
+- `src/game/input/touchInput.ts`: shared mutable touch frame consumed by the same `InputController` as keyboard and mouse. Separate button-fire and aim-fire flags plus button and thrust jump sources keep the modes independent.
+- `src/game/input/touchSettings.ts`: persisted touch dead zones, sensitivity, auto-fire threshold and fly threshold.
+- `src/game/progression`: XP rules, level curve, cosmetics, profile types and tests for SQLite and PostgreSQL stores.
 - `src/components/online/ProfilePanel.tsx`: guest level, XP, stats, cosmetic equip and recent matches.
-- `src/components/game/TouchControls.tsx`: landscape joysticks, fire, jump, reload, weapons, grenades, medkit, swap and settings.
+- `src/components/game/TouchControls.tsx`: twin-stick movement, thrust, aim, auto-fire, fire, jump, reload, weapons, grenades, medkit, swap and settings.
+- `src/components/game/TouchSettingsPanel.tsx`: touch mode, sensitivity, dead zones and threshold controls.
+- `src/components/online/BetaFeedback.tsx`: anonymous rating and feedback dialog.
+- `src/lib/betaTelemetry.ts`: anonymous client error and feedback submission.
 - `server/persistence/ProfileStore.ts`: SQLite schema/migrations, guest tokens, XP settlement, match records, cosmetics and backups.
+- `server/persistence/PostgresProfileStore.ts`: PostgreSQL pool, versioned schema, transactional idempotent rewards, client events and health.
+- `server/persistence/repository.ts`: async persistence contract used by both backends.
+- `server/db-migrate-postgres.ts`: validated, non-destructive SQLite-to-PostgreSQL migration.
 - `server/config.ts`: environment validation and production origin guards.
 - `server/log.ts`: structured JSON logging.
 - `DEPLOYMENT.md`, `Dockerfile`, `docker-compose.yml`: persistent game-server hosting guidance.
@@ -67,7 +75,10 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - `scripts/verify-online-loot.mjs`: P3C-A starter loadout, elimination bundle, weapon pickup, full-loadout swap, contest, expiry, late join, respawn, match-end and replay suite.
 - `scripts/verify-online-arsenal.mjs`: P3C advanced weapon cache, Akimbo alternation, SMG, Cannon, rocket, HUD and mixed-lineup suite.
 - `scripts/verify-online-p4.mjs`: guest profile, audio persistence, XP/levels, duplicate prevention, reconnect/capacity/grace expiry and mobile multi-touch suite.
+- `scripts/verify-online-p5.mjs`: mobile viewport fit, safe control layout, twin-stick thrust/aim/auto-fire, touch settings, feedback, portrait guard and desktop regression suite.
 - `scripts/verify-online-grenade-perf.mjs`: headed grenade, advanced weapon and dynamic-loot stress performance and snapshot measurement.
+- `scripts/create-migration-fixture.ts`: deterministic SQLite fixture for the PostgreSQL migration validation.
+- `BETA_TESTING.md`: 15-20 player beta runbook, metrics, pass criteria and privacy rules.
 
 ## Key decisions
 
@@ -116,47 +127,42 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - P4 guest tokens are 32 random bytes, shown once, and stored only as SHA-256 hashes. Profiles are device-bound.
 - P4 reconnect relies on Colyseus `allowReconnection`. The disconnected body stays vulnerable and input-free. The client caps retries at the configured grace plus a small buffer, then returns to the lobby.
 - P4 production config rejects wildcard and missing production origins. The game server must be a persistent Node process with a persistent SQLite volume.
+- P5 chooses PostgreSQL when `DATABASE_URL` is present and keeps SQLite as the fallback. The async repository contract wraps both backends.
+- P5 uses a bounded `pg` pool and `SELECT ... FOR UPDATE` so duplicate and concurrent per-player rewards serialize correctly. Reward delivery is tracked separately from reward calculation.
+- P5 settles match rewards off the simulation loop through a queued async call with a five-second retry on failure.
+- P5 uses Phaser `Scale.RESIZE` with the mobile frame fixed to the viewport. Desktop keeps the centered 16:9 frame. Artwork is never stretched.
+- P5 touch settings are stored under `vibe-militia-touch` and streamed to the control layer through a `vibe-touch-settings` event so changes apply without reloading the match.
+- P5 feedback stores only kind, message, route, app version, optional guest ID and rating. It never stores IP addresses or user agents.
 
 ## Verification
 
 - `npm run typecheck`: pass
-- `npm test`: 174 tests pass across 22 files
+- `npm test`: 182 tests pass across 23 files, including 7 PostgreSQL tests when `TEST_DATABASE_URL` is set
 - `npm run lint`: pass
 - `npm run build`: pass
-- `npm run verify:browser`: 37/37 checks against the production build
-- `npm run verify:online:countdown`: 16/16 checks against the production build
-- `npm run verify:online:matchmaking`: 11/11 checks against the production build on a clean server
-- `npm run verify:online:characters`: 35/35 checks against the production build
-- `npm run verify:online:bots`: 32/32 checks against the production build, including valid advanced bot weapons
-- `npm run verify:online:pickups`: 29/29 checks against the production build
-- `npm run verify:online:grenades`: 28/28 checks against the production build
-- `npm run verify:online:stinking`: 25/25 checks against the production build
-- `npm run verify:online:loot`: 41/41 checks against the production build
-- `npm run verify:online:arsenal`: 26/26 checks against the production build
-- `npm run verify:online:p4`: 35/35 checks against the production build
+- `npm run verify:browser`: 37/37 checks on the final rerun
+- `npm run verify:online:countdown`: 16/16 checks
+- `npm run verify:online:matchmaking`: 11/11 checks on a clean server
+- `npm run verify:online:characters`: 35/35 checks
+- `npm run verify:online:bots`: 32/32 checks
+- `npm run verify:online:pickups`: 29/29 checks
+- `npm run verify:online:grenades`: 28/28 checks
+- `npm run verify:online:stinking`: 25/25 checks
+- `npm run verify:online:loot`: 41/41 checks
+- `npm run verify:online:arsenal`: 26/26 checks
+- `npm run verify:online:p4`: 35/35 checks against the Neon test branch
+- `npm run verify:online:p5`: 42/42 checks against the Neon test branch
 - `npm run verify:online:rooms`: 16/16 checks
 - `npm run verify:online:match`: 25/25 checks
 - `npm run verify:online:grenade-perf`: 15/15 checks
-- All ten cards render and select, keyboard arrows work, mobile keeps two columns, refresh persists the choice, and corrupt storage falls back to VIBER-010
-- Create Room, invite join and Quick Match all used the selected skin, and two clients with different selections agreed on shared combatant skins
-- Eight independent human clients kept eight requested skins with no bot visuals
-- A selected human kept its skin while dead, after respawn, and after a 90-second match replay
-- The server rejected an arbitrary asset URL and fell back to VIBER-010
-- 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms
-- `npm run verify:online:match`: 25/25 checks, 8 humans, time-limit result, identical standings, replay reset, preserved selected skins
-- `npm run verify:online:rooms`: 16/16 checks, including countdown auto-start, full-room and ended-room errors
-- P3C loot suite: 31 shared static caches, starter rifle/scatter/empty HUD, exact three-item hostile bundle from the victim's actual weapon, identical loot ids and Phaser views on two clients, authoritative ammo on pickup, full-loadout E swap, duplicate-free replacement, late-join remaining loot, one-winner medkit contest, server-clock expiry, human death dropping the equipped weapon, starter respawn loadout, match-end cleanup and replay reset
-- P3C arsenal suite: Akimbo dual layers and server barrel alternation, SMG burst and reload, Heavy Cannon 60-damage impact, rocket flight and explosion with one falloff hit per victim, advanced elimination loot, authoritative ammo, respawn reset and an eight-combatant mixed-weapon lineup
-- P3C screenshots: `artifacts/p3c/` includes akimbo pickup/firing, SMG firing, heavy cannon firing/impact, rocket flight/explosion, advanced elimination loot and the eight-combatant lineup
-- P3B-C baseline performance: 59 fps clean, 0.36 ms average tick, 1.10 ms p95; grenade stress 60 fps, 0.21 ms average, 0.27 ms p95, 14,471-byte snapshots
-- P3C-A standard perf: 57 fps, 0.28 ms average tick, 0.67 ms p95, 6/6 checks
-- P3C standard perf: 58 to 59 fps, 0.22 ms average tick, 0.77 ms p95, 6/6 checks
-- P3C grenade, advanced weapon and loot stress: 60 fps, 0.06 ms average tick, 0.15 ms p95, 31 advanced shots, 7 peak grenades, 7 clouds, 2 overlapping clouds, 10 peak loot entities, 31 pickups, 16,319-byte snapshot and a second concurrent room
-- P4 standard perf: 60 fps, 0.245 ms average tick, 0.547 ms p95, 6/6 checks with audio active
-- P4 stress: 60 fps, 0.041 ms average tick, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 peak grenades, 8 clouds, max overlap 8, 16 peak loot, 31 pickups, 17,600-byte snapshot and a second room
-- P4 mobile: Chromium emulation at 844 x 390, `hasTouch`, CDP multi-touch, 35/35 P4 checks, no browser page errors
-- Original public sources, archived sources and VIBER-010 cutout hash are unchanged
-- Local P1 remains 37/37 with no regression
+- `npm run verify:online:perf`: 6/6 checks on the final clean run, 56 fps headless, 0.40 ms average tick, 1.43 ms p95
+- P0-P4 browser suites ran on a clean SQLite server with `MATCH_COUNTDOWN_MS=10000` to remove database and host latency from tight timing assumptions. P4 and P5 ran against Neon PostgreSQL.
+- PostgreSQL tests cover guest creation, token hashing, concurrent duplicate match writes, concurrent distinct rewards, reward-delivery idempotency, cosmetics validation, anonymous client events and health.
+- SQLite-to-PostgreSQL migration validation used 2 players, 1 weapon stat, 1 match and 8 cosmetics. Target counts matched and the migrated player retained XP and match count. The SQLite source was not modified.
+- Neon project `vibe-militia` exists in the authorized organization, region `aws-us-east-2`, PostgreSQL 17, with a separate `p5-test` branch.
+- P5 mobile evidence: four landscape viewport shapes, real CDP multi-touch, simultaneous movement/thrust/aim/auto-fire, separate FIRE mode, feedback submission, portrait guard and desktop frame dependency.
+- Screenshots: `artifacts/p5/` includes mobile 16:9, 19.5:9, 20:9, compact and portrait guard captures.
+- Original public sources, archived sources and VIBER-010 cutout hash are unchanged.
 
 ## Known limitations
 
@@ -191,9 +197,11 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - Blast cover uses a uniform 55 percent reduction when a platform blocks the blast line, not full occlusion.
 - Grenade and toxic damage are not counted in weapon accuracy. Each grenade and cloud has a stable ID and owner for attribution.
 - Guest profiles are device-bound. Clearing browser storage loses access. No accounts, wallets or account linking.
-- SQLite assumes one persistent game-server process. Multiple replicas need a shared database.
+- PostgreSQL is the durable backend. SQLite remains a single-process fallback. Colyseus room state is process-local, so multiple game-server replicas still need a shared room directory or sticky matchmaking.
 - Progression and cosmetics are cosmetic only. No ranked, skill rating or paid content.
 - Audio uses original synthesis only. No music, voice acting, 3D mix or dynamic soundtrack.
-- Mobile was verified with Chromium emulation and CDP multi-touch, not physical iOS or Android hardware.
+- Mobile was verified with Chromium emulation and CDP multi-touch at four landscape shapes, not physical iOS or Android hardware. Portrait intentionally shows a rotation guard.
 - No gamepad support or keyboard remapping. Touch controls are online-only.
-- Deployment configuration is verified locally. No public deployment was performed because no infrastructure credentials were supplied.
+- Deployment configuration is verified locally. Neon PostgreSQL is provisioned and migrated. No public frontend or game-server deployment was performed because no persistent game-server host was explicitly authorized.
+- Anonymous feedback and client errors are stored in `client_events`. There is no analytics dashboard or session replay.
+- The real-player beta has not started. `BETA_TESTING.md` is the runbook.

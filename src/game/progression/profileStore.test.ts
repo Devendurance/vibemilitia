@@ -156,4 +156,30 @@ describe("ProfileStore", () => {
     expect(other?.reward.xpEarned).toBeGreaterThan(0);
     store.close();
   });
+
+  it("stores anonymous client events with bounded fields", () => {
+    const store = new ProfileStore(":memory:");
+    store.recordClientEvent({
+      kind: "feedback",
+      message: "x".repeat(1200),
+      route: "/online",
+      appVersion: "p5-beta",
+      guestId: null,
+      rating: 4,
+    });
+    store.recordClientEvent({
+      kind: "error",
+      message: "TypeError: boom",
+      route: "/online/room=abc",
+      appVersion: "p5-beta",
+      guestId: "pl_test",
+      rating: null,
+    });
+    const rows = store.clientEventsForTests();
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.message.length).toBe(600);
+    expect(rows[1]?.guest_id).toBe("pl_test");
+    expect(rows[1]?.rating).toBeNull();
+    store.close();
+  });
 });

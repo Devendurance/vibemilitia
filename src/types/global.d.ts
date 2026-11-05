@@ -22,6 +22,20 @@ declare global {
           effects: number;
           voices: number;
         };
+        touch: {
+          enabled: boolean;
+          fire: boolean;
+          buttonFire: boolean;
+          aimFire: boolean;
+          jumpHeld: boolean;
+          thrustHeld: boolean;
+          moveX: number;
+        };
+        control: {
+          fire: boolean;
+          moveX: number;
+          jumpHeld: boolean;
+        } | null;
         views: Array<{
           id: string;
           name: string;

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -9,6 +9,12 @@ import {
   validateEquipped,
   type EquippedCosmetics,
 } from "../../src/game/progression/cosmetics";
+import {
+  TOKEN_PREFIX,
+  hashToken,
+  parseEquipped,
+  safeName,
+} from "./codec";
 import {
   calculateMatchXp,
   progressForXp,
@@ -23,6 +29,7 @@ import type {
   PlayerRecentMatch,
   PlayerWeaponStat,
 } from "../../src/game/progression/profile";
+import type { ClientEventInput } from "./repository";
 
 interface PlayerRow {
   id: string;
@@ -56,26 +63,6 @@ interface WeaponRow {
   shots: number;
   hits: number;
   eliminations: number;
-}
-
-const TOKEN_PREFIX = "vm_guest_";
-
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
-
-function safeName(value: string): string {
-  const cleaned = value.replace(/[^\w .-]/g, "").trim().slice(0, 18);
-  return cleaned.length > 0 ? cleaned : "VIBER-GUEST";
-}
-
-function parseEquipped(value: string): EquippedCosmetics {
-  try {
-    const parsed = JSON.parse(value) as Partial<EquippedCosmetics>;
-    return validateEquipped(parsed, 999);
-  } catch {
-    return { ...DEFAULT_EQUIPPED };
-  }
 }
 
 export class ProfileStore {
@@ -161,6 +148,24 @@ export class ProfileStore {
         );
         INSERT INTO schema_migrations (version, applied_at)
         VALUES (1, unixepoch() * 1000);
+      `);
+    }
+    if (version < 2) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS client_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          message TEXT NOT NULL,
+          route TEXT NOT NULL,
+          app_version TEXT NOT NULL,
+          guest_id TEXT,
+          rating INTEGER,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_client_events_created
+          ON client_events (created_at DESC);
+        INSERT INTO schema_migrations (version, applied_at)
+        VALUES (2, unixepoch() * 1000);
       `);
     }
   }
@@ -415,6 +420,47 @@ export class ProfileStore {
         "UPDATE matches SET reward_delivered = 1 WHERE player_id = ? AND match_id = ?",
       )
       .run(playerId, matchId);
+  }
+
+  recordClientEvent(input: ClientEventInput): void {
+    this.db
+      .prepare(
+        `INSERT INTO client_events
+          (kind, message, route, app_version, guest_id, rating, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.kind,
+        input.message.slice(0, 600),
+        input.route.slice(0, 200),
+        input.appVersion.slice(0, 60),
+        input.guestId,
+        input.rating,
+        Date.now(),
+      );
+  }
+
+  clientEventsForTests(): Array<{
+    kind: string;
+    message: string;
+    route: string;
+    app_version: string;
+    guest_id: string | null;
+    rating: number | null;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT kind, message, route, app_version, guest_id, rating
+         FROM client_events ORDER BY id ASC`,
+      )
+      .all() as unknown as Array<{
+      kind: string;
+      message: string;
+      route: string;
+      app_version: string;
+      guest_id: string | null;
+      rating: number | null;
+    }>;
   }
 
   health(): { ok: boolean; players: number; matches: number } {

@@ -107,6 +107,26 @@
 - Production config requires `ALLOWED_ORIGINS`, rejects wildcards, limits API bodies to 16 KB, rate-limits `/api` at 120/minute/IP and checks WebSocket upgrade origins.
 - `npm run db:backup` writes a consistent SQLite copy with `VACUUM INTO`.
 
+## P5 facts
+
+- PostgreSQL is selected when `DATABASE_URL` is non-empty after trimming. SQLite is the fallback. Keep `DATABASE_URL` in the gitignored `.env.local`, never in source or logs.
+- Dedicated Neon project: `vibe-militia`, PG 17, `aws-us-east-2`, production branch `main`, test branch `p5-test`. Pooled URLs are used for the server.
+- `server/persistence/repository.ts` is the async contract. `SqliteProfileRepository` wraps `ProfileStore`; `PostgresProfileStore` owns the `pg` pool.
+- PostgreSQL migrations are versioned. v1 covers `players`, `weapon_stats`, `matches`, `cosmetics` and `schema_migrations`. v2 adds `client_events`.
+- Reward settlement uses `BEGIN`, `SELECT ... FOR UPDATE` on the player, duplicate check by `(match_id, player_id)`, stat updates and reward-delivery state in one transaction. The simulation loop never awaits database work.
+- `FFARoom.queueMatchSettlement()` retries a failed settlement after five seconds. Reconnect reward delivery is awaited and failures are logged without leaking credentials.
+- `server/db-migrate-postgres.ts` is non-destructive. It opens SQLite read-only, copies rows with `ON CONFLICT`, prints source and target counts and validates that target counts are not short. `scripts/create-migration-fixture.ts` builds a deterministic 2-player fixture.
+- Touch settings live under `vibe-militia-touch`. `touchSettings.ts` clamps values and emits `vibe-touch-settings`; `TouchControls` listens so changes apply during a live match.
+- `touchInput.ts` tracks separate `buttonFire`, `aimFire`, `buttonJumpHeld` and `thrustHeld` sources. `fire` and `jumpHeld` are derived so releasing one source cannot clear the other.
+- The online Phaser config uses `Phaser.Scale.RESIZE` with `NO_CENTER`. Desktop `.game-frame` remains 1440x810. Mobile `.game-frame.is-touch` is fixed to `100vw` by `100dvh`.
+- Portrait touch mode shows `orientation-guard` and hides touch controls. Fullscreen is requested on the `.game-frame` element.
+- Feedback is anonymous. `client_events` stores kind, message, route, app version, optional guest ID and rating. It never stores IP or user agent.
+- Client event rate limit is 20 per minute per session `clientId` sent in the JSON body. The session ID lives in `sessionStorage`, not a tracking cookie.
+- CORS on the Colyseus Express app is owned by the transport and allows `Authorization` and `Content-Type`. Do not add a custom required header without testing preflight. This is why the feedback client ID is in the body, not `X-Client-Id`.
+- `verify:online:p5` covers four landscape shapes, canvas/camera fit, control overlap, thumb reach, CDP multitouch, thrust, auto-fire, FIRE mode, touch settings streaming, feedback submission, portrait guard and desktop frame.
+- P0-P4 browser suites are sensitive to stale rooms and short countdowns. Run matchmaking on a clean server. Run older suites with `MATCH_COUNTDOWN_MS=10000` and SQLite when host or Neon latency eats into their timing assumptions.
+- The production Neon branch contains synthetic test profiles from this milestone. No real players exist yet. The `p5-test` branch is intentionally disposable and its PostgreSQL tests truncate `players`.
+
 
 
 - Collision callback argument order can reverse when a group is paired with a sprite or array. Identify projectiles by their `bullet` data payload, never by argument position.
@@ -142,6 +162,8 @@
 - P4 standard perf measured 60 fps, 0.245 ms average tick and 0.547 ms p95 with audio active and a guest profile loaded.
 - P4 stress measured 60 fps, 0.041 ms average tick, 0.128 ms p95, all four advanced weapons, 31 advanced shots, 8 peak grenades, 8 clouds, max overlap 8, 16 peak loot, 31 pickups and a 17,600-byte snapshot across two rooms.
 - P4 snapshots grew about 8 percent over P3C because each combatant carries profile, level, badge, title, elimination and trail fields.
+- P5 final clean headless perf measured 56 fps, 0.40 ms average server tick, 1.43 ms p95, 6/6 checks. An earlier run on a busy host measured 27.7 ms p95, so confirm host load before treating p95 as a regression.
+- P5 P4 and P5 suites ran against the Neon test branch. Older P0-P4 browser suites ran against SQLite with a 10-second countdown to isolate gameplay from database latency.
 - Machine load matters. Chrome and background agents can push the stress FPS into the 20s and server p95 above 16 ms. Confirm CPU load and restart the server before recording a number.
 - Dev-server frame rate is not a valid performance signal. The Viber bot build measured 34 fps in dev and 60 fps in production.
 - Static arena and background layers are baked. Local A* recomputes on an 850 ms cadence. Online bot repath uses `DRONE_CONFIG.repathMs`.
@@ -173,7 +195,11 @@
 - `npm run verify:online:stinking`
 - `npm run verify:online:loot` (server must run with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0`)
 - `npm run verify:online:arsenal` (server must run with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0`)
-- `npm run verify:online:p4` (disposable DB plus `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=4000 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`)
+- `npm run verify:online:p4` (Neon or disposable DB plus `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=4000 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`)
+- `npm run verify:online:p5` (Neon or disposable DB plus `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`)
+- `npm run test:postgres` (requires `TEST_DATABASE_URL`; truncates players on the test branch)
+- `npm run db:fixture:sqlite` (writes `data/p5-migration-fixture.sqlite`)
+- `npm run db:migrate:postgres -- --from=<sqlite> [--apply]` (non-destructive SQLite to PostgreSQL migration)
 - `npm run db:backup` (optional target path; uses `DATABASE_PATH`)
 - `npm run db:check` (prints profile-store health counts)
 - `npm run verify:online:grenade-perf` (add `HEADED=1` for real frame rate, hooks recommended for loot stress)

@@ -617,7 +617,10 @@ try {
   );
   await selectStinking(pageC);
   const lateHost = await probe(pageC);
-  const pageD = await contextA.newPage();
+  const contextD = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
+  const pageD = await contextD.newPage();
   pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
   await pageD.goto(`${baseUrl}/online?room=${lateHost.roomId}`, {
     waitUntil: "networkidle",
@@ -656,6 +659,7 @@ try {
     ).every((pickup) => pickup.active),
   );
   await pageD.close();
+  await contextD.close();
   await pageC.close();
 
   check(

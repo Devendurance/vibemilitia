@@ -1,0 +1,18 @@
+{
+  "name": "Vibe Militia",
+  "short_name": "Vibe Militia",
+  "description": "Server-authoritative side-view free-for-all arena shooter.",
+  "start_url": "/online",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#070809",
+  "theme_color": "#0c0d0f",
+  "icons": [
+    {
+      "src": "/sprites/viber-010/viber-010-avatar.png",
+      "sizes": "240x317",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

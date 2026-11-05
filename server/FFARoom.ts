@@ -45,6 +45,7 @@ export class FFARoom extends Room {
   private lastPhase: string | null = null;
   private metadataChain: Promise<void> = Promise.resolve();
   private lastRecordedMatchId: string | null = null;
+  private settlementInFlight = false;
   private rewardsByPlayer = new Map<string, MatchReward>();
   private reservations = new Set<string>();
 
@@ -148,7 +149,16 @@ export class FFARoom extends Room {
     }
   }
 
-  onAuth(_client: Client, options: JoinOptions): AuthenticatedJoinOptions {
+  onAuth(
+    _client: Client,
+    options: JoinOptions,
+  ): Promise<AuthenticatedJoinOptions> {
+    return this.authenticate(options);
+  }
+
+  private async authenticate(
+    options: JoinOptions,
+  ): Promise<AuthenticatedJoinOptions> {
     if (this.simulation && this.simulation.phase === "ended") {
       throw new Error("MATCH_ENDED");
     }
@@ -165,7 +175,9 @@ export class FFARoom extends Room {
       trailId: "trail-lime",
     };
     if (options?.guestToken) {
-      const profile = getProfileStore().getProfileByToken(options.guestToken);
+      const profile = await getProfileStore().getProfileByToken(
+        options.guestToken,
+      );
       if (!profile) {
         throw new Error("GUEST_TOKEN_INVALID");
       }
@@ -240,7 +252,7 @@ export class FFARoom extends Room {
       graceSeconds,
     });
     void this.allowReconnection(client, graceSeconds)
-      .then((reconnected) => {
+      .then(async (reconnected) => {
         this.simulation?.setHumanConnected(reconnected.sessionId, true);
         reconnected.send("snapshot", this.simulation?.snapshot() ?? null);
         const profileId =
@@ -251,9 +263,18 @@ export class FFARoom extends Room {
         const reward = profileId
           ? this.rewardsByPlayer.get(profileId)
           : undefined;
-        if (reward) {
+        if (reward && profileId) {
           reconnected.send("profile-update", reward);
-          getProfileStore().markAwardDelivered(profileId!, reward.matchId);
+          await getProfileStore()
+            .markAwardDelivered(profileId, reward.matchId)
+            .catch((error: unknown) => {
+              log.error("profile.reward_delivery_failed", {
+                roomId: this.roomId,
+                playerId: profileId,
+                message:
+                  error instanceof Error ? error.message : "unknown",
+              });
+            });
         }
         log.info("human.reconnected", {
           roomId: this.roomId,
@@ -317,7 +338,7 @@ export class FFARoom extends Room {
     const phase = this.simulation.phase;
     if (phase !== this.lastPhase) {
       this.lastPhase = phase;
-      if (phase === "ended") this.recordCompletedMatch();
+      if (phase === "ended") this.queueMatchSettlement();
       this.queueMetadataUpdate();
     }
 
@@ -332,7 +353,24 @@ export class FFARoom extends Room {
     }
   }
 
-  private recordCompletedMatch(): void {
+  private queueMatchSettlement(): void {
+    if (this.settlementInFlight) return;
+    this.settlementInFlight = true;
+    void this.recordCompletedMatch()
+      .catch((error: unknown) => {
+        this.lastRecordedMatchId = null;
+        log.error("match.settlement_failed", {
+          roomId: this.roomId,
+          message: error instanceof Error ? error.message : "unknown",
+        });
+        this.clock.setTimeout(() => this.queueMatchSettlement(), 5000);
+      })
+      .finally(() => {
+        this.settlementInFlight = false;
+      });
+  }
+
+  private async recordCompletedMatch(): Promise<void> {
     const simulation = this.simulation;
     if (!simulation || simulation.phase !== "ended") return;
     const matchId = simulation.matchId;
@@ -341,7 +379,7 @@ export class FFARoom extends Room {
     const store = getProfileStore();
     for (const result of simulation.matchResults()) {
       if (!result.playerId) continue;
-      const recorded = store.recordMatch({
+      const recorded = await store.recordMatch({
         matchId,
         playerId: result.playerId,
         placement: result.placement,
@@ -358,14 +396,14 @@ export class FFARoom extends Room {
         weaponEliminations: result.weaponEliminations,
       });
       if (!recorded) continue;
-      this.rewardsByPlayer.set(result.playerId, recorded.reward);
       if (recorded.duplicate) continue;
+      this.rewardsByPlayer.set(result.playerId, recorded.reward);
       const client = this.clients.find(
         (entry) => entry.sessionId === result.id,
       );
       if (client) {
         client.send("profile-update", recorded.reward);
-        store.markAwardDelivered(result.playerId, matchId);
+        await store.markAwardDelivered(result.playerId, matchId);
       }
       log.info("match.recorded", {
         roomId: this.roomId,

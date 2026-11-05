@@ -19,6 +19,7 @@ import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } fr
 import { createGameTextures } from "@/game/systems/TextureFactory";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController, type ControlFrame } from "@/game/systems/InputController";
+import { touchInput } from "@/game/input/touchInput";
 import { audio } from "@/game/audio/AudioEngine";
 import { CombatantView } from "@/game/online/CombatantView";
 import {
@@ -320,6 +321,22 @@ export class OnlineScene extends Phaser.Scene {
         snapshot: this.latestSnapshot,
         hud: this.bridge.getSnapshot(),
         audio: audio.debugState(),
+        touch: {
+          enabled: touchInput.enabled,
+          fire: touchInput.fire,
+          buttonFire: touchInput.buttonFire,
+          aimFire: touchInput.aimFire,
+          jumpHeld: touchInput.jumpHeld,
+          thrustHeld: touchInput.thrustHeld,
+          moveX: touchInput.moveX,
+        },
+        control: this.lastFrame
+          ? {
+              fire: this.lastFrame.fire,
+              moveX: this.lastFrame.moveX,
+              jumpHeld: this.lastFrame.jumpHeld,
+            }
+          : null,
         views: [...this.views.values()].map((view) => ({
           id: view.id,
           name: this.latestSnapshot?.participants.find((p) => p.id === view.id)?.name ?? "",

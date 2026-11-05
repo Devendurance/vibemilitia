@@ -2,7 +2,7 @@
 
 A playable side-view free-for-all arena shooter built with Phaser 4, TypeScript, Next.js and Colyseus. The local build is a complete 90-second match against three navigation-capable bot drones. The online build adds server-authoritative rooms for up to eight combatants, a ten-character picker, ten validated official Viber skins and a seven-weapon arsenal. Online bots use the same weapon, movement and PlayerVisuals layers as human players.
 
-P4 adds responsive touch gameplay, original synthesized audio with persistent settings, server-confirmed XP and levels, guest profiles in SQLite, cosmetic titles, badges, elimination styles and jetpack trails, a 20-second reconnect grace period, onboarding, accessibility polish and production hosting configuration.
+P4 adds responsive touch gameplay, original synthesized audio with persistent settings, server-confirmed XP and levels, guest profiles, cosmetic titles, badges, elimination styles and jetpack trails, a configurable reconnect grace period, onboarding and production hosting configuration. P5 adds Neon PostgreSQL persistence, a Mini Militia-inspired twin-stick touch model, full-screen landscape fit for wide phones, a portrait rotation guard, anonymous beta feedback and error capture, and release and beta-readiness documentation.
 
 The operator is VIBER-010, prepared from the original Vibe Vibers NFT artwork.
 
@@ -33,7 +33,7 @@ The Colyseus server listens on port `2567` by default. Set `PORT` for the server
 
 New rooms use a 10-second pre-match countdown. Override it with `MATCH_COUNTDOWN_MS` on the game server. The value is clamped from 0 to 60000 milliseconds.
 
-Guest profiles use SQLite at `DATABASE_PATH`. Set `ALLOWED_ORIGINS` to the trusted frontend origins in production, and set `RECONNECT_GRACE_SECONDS` to change the reconnect reservation from its 20-second default. See `DEPLOYMENT.md` for Docker, WSS, backup and migration guidance.
+Guest profiles use PostgreSQL when `DATABASE_URL` is set and fall back to SQLite at `DATABASE_PATH` when it is absent. Set `ALLOWED_ORIGINS` to the trusted frontend origins in production, and set `RECONNECT_GRACE_SECONDS` to change the reconnect reservation from its 20-second default. See `DEPLOYMENT.md` for Neon, Docker, WSS, backup, restore and migration guidance, and `BETA_TESTING.md` for the 15-20 player beta plan.
 
 ## Match rules
 
@@ -73,7 +73,11 @@ The input layer samples a plain `ControlFrame` object. Touch controls write the 
 
 ### Touch controls
 
-Landscape mobile play shows a left movement stick, a right aim stick, a fire button, jump and jetpack hold, reload, three weapon slots, grenade selection and throw, medkit, swap and settings. Controls respect safe-area insets, use pointer capture per control, support simultaneous movement, aiming, firing and thrust, reset on touch cancellation, blur or orientation change, and apply a 0.18 joystick dead zone. On coarse-pointer devices the desktop HUD panels are replaced by a compact health, fuel, weapon and clock strip so the controls do not cover critical information. Desktop controls are unchanged.
+Landscape mobile play uses a Mini Militia-inspired twin-stick model. The left stick moves horizontally, and pushing it upward engages jetpack thrust. The right stick aims independently in 360 degrees and can fire automatically when pushed past a configurable threshold. A separate FIRE button mode remains available, and the FIRE and JUMP controls stay on screen in either mode.
+
+Touch settings expose move and aim dead zones, aim sensitivity, auto-fire threshold and fly threshold, and persist in `vibe-militia-touch`. The controls support simultaneous movement, aiming, firing and thrust, use pointer capture per control, reset on cancellation, blur, visibility loss or orientation change, and respect safe-area insets.
+
+The mobile match fills the available landscape viewport instead of a fixed 16:9 box. Phaser uses `Scale.RESIZE`, the camera follows the real parent size, and the React frame covers the viewport with `100dvh`. The controller supports 16:9, 19.5:9, 20:9 and compact landscape screens without stretching artwork. A fullscreen control is available in match settings, and portrait orientation shows a rotation guard instead of a tiny match. Touch layout is verified at 1280x720, 844x390, 915x412 and 740x360. Desktop remains a centered 16:9 frame.
 
 ## Audio
 
@@ -110,17 +114,20 @@ Cosmetic rewards unlock from level: player titles, profile badges, elimination b
 
 A guest identity is issued by `POST /api/guest`. The server returns an opaque `vm_guest_...` bearer token once and stores only its SHA-256 hash. The browser keeps the token in local storage. Clearing browser storage loses access to the profile. Account linking does not exist yet.
 
-Profiles are device-bound and server-authoritative. SQLite stores:
+Profiles are device-bound and server-authoritative. PostgreSQL and SQLite store the same logical records:
 
 - Player ID, token hash, callsign, selected skin and equipped cosmetics.
 - Total XP, level, matches, wins, losses, eliminations and deaths.
 - Per-weapon shots, hits and eliminations.
 - Recent completed matches with placement, stats, XP and outcome.
 - Unlocked cosmetics.
+- Anonymous client events for beta feedback and error capture.
 
 Match records use `(match_id, player_id)` as a primary key. The server awards XP once per match, regardless of duplicate match-end events, reconnect attempts, replay requests or client messages. The server never accepts client-submitted XP, placement or elimination totals.
 
-SQLite runs in WAL mode with foreign keys and a five-second busy timeout. `schema_migrations` records the schema version. `npm run db:backup` uses `VACUUM INTO` for a consistent copy. See `DEPLOYMENT.md` for startup, backup, restore and migration guidance.
+PostgreSQL is selected when `DATABASE_URL` exists, uses a bounded `pg` pool, applies versioned migrations on startup and serializes per-player reward settlement with `SELECT ... FOR UPDATE`. SQLite remains the fallback with WAL mode, foreign keys, a five-second busy timeout and a `VACUUM INTO` backup command. Database failures are logged without tokens or connection strings.
+
+Match settlement runs outside the 60 Hz simulation loop and retries after five seconds. `schema_migrations` records the applied schema version in both backends. See `DEPLOYMENT.md` for migration, backup and restore guidance.
 
 ## Reconnect
 
@@ -134,7 +141,7 @@ Unexpected disconnects use Colyseus reconnection support. The server calls `allo
 - A reconnect during countdown or live play resumes the same seat.
 - After grace expiry, or a failed recovery, the seat is released, a bot backfills, and the client returns to the lobby.
 
-Reconnect works across temporary network loss. It does not survive a game-server process restart because match state is in memory. Guest profiles do survive a server restart through SQLite.
+Reconnect works across temporary network loss. It does not survive a game-server process restart because match state is in memory. Guest profiles do survive a server restart through PostgreSQL or the SQLite fallback.
 
 ## Weapons
 
@@ -263,7 +270,7 @@ The `/online` route adds a Colyseus lobby and independent free-for-all rooms. Th
 - The session bar shows room ping and the latest server tick duration.
 - Full rooms report `ROOM FULL // Eight human players are already connected.` Ended rooms report a replay error instead of silently joining a dead match.
 
-Guest callsigns are temporary and stored in local storage. There are no accounts, wallets, progression or persistent stats.
+Guest callsigns are temporary and stored in local storage. There are no accounts or wallets. Progression is a device-bound guest profile stored in PostgreSQL or SQLite.
 
 ## Bot navigation
 
@@ -352,11 +359,12 @@ server/
   index.ts                 Colyseus bootstrap, guest/profile API, health and readiness
   FFARoom.ts               countdown, reconnect grace, XP settlement, metadata
   log.ts                   structured JSON logging
-  persistence/             SQLite schema, migrations, profiles, matches, backups
+  persistence/             SQLite and PostgreSQL stores, migrations, repository contract
 scripts/                   asset preparation and browser verification
 Dockerfile                 persistent game-server image
 docker-compose.yml         single-host persistent deployment
-DEPLOYMENT.md              environment, WSS, backup, migration and scaling notes
+DEPLOYMENT.md              environment, Neon, WSS, backup, restore and scaling notes
+BETA_TESTING.md           15-20 player beta plan, pass criteria and privacy rules
 ```
 
 Game rules and pathfinding are free of Phaser imports. The local scene owns presentation and Arcade Physics. Online matches use the shared headless simulation in `src/game/multiplayer/GameSimulation.ts`, which runs in Node and uses the same arena, weapon definitions, movement model, bot navigation and match rules as local mode.
@@ -387,6 +395,7 @@ npm run verify:online:stinking
 npm run verify:online:loot
 npm run verify:online:arsenal
 npm run verify:online:p4
+npm run verify:online:p5
 npm run verify:online:grenade-perf
 npm run verify:online:rooms
 npm run verify:online:perf
@@ -418,6 +427,8 @@ HEADED=1 npm run verify:online:grenade-perf
 
 `verify:online:p4` covers the complete P4 journey. It creates a guest profile, checks audio persistence, completes three real server-awarded matches, verifies XP, level-up, duplicate prevention and replay records, reconnects during combat, countdown and after grace expiry, fills a room to test reserved-seat capacity, runs multi-touch movement, aim, fire and jetpack simultaneously, and exercises touch reload, weapon selection, grenade throw and cache swap. Run it against a disposable database with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=4000 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`.
 
+`verify:online:p5` covers mobile fidelity and Neon-backed play. It checks 16:9, 19.5:9, 20:9 and compact landscape viewports, confirms the frame, Phaser canvas and camera all fill the viewport, checks control overlap and thumb reach, runs simultaneous CDP multi-touch movement, thrust, aim and auto-fire, switches to FIRE-button mode, sends anonymous feedback, verifies the portrait rotation guard, and confirms desktop keeps the centered 16:9 frame. Run it with `VIBE_MILITIA_TEST_HOOKS=1 MATCH_COUNTDOWN_MS=0 RECONNECT_GRACE_SECONDS=5 XP_MIN_PARTICIPATION_MS=0`.
+
 `verify:online:grenade-perf` measures one human with seven bots, then fills the room with seven SDK humans, arms them with all four advanced weapons, holds fire, throws all three grenade types and creates dynamic loot while a second room stays live. It reports client FPS, average/p95/max server tick, active grenade and cloud counts, maximum cloud overlap, pickup and peak loot counts, advanced weapon counts and snapshot byte size. Use `HEADED=1` for the client frame-rate number.
 
 `verify:online:rooms` creates two concurrent rooms, checks state isolation, rejects a ninth human with the full-room message, releases a seat and rejoins, then waits for an independent match to end and checks the replay error.
@@ -427,33 +438,29 @@ HEADED=1 npm run verify:online:grenade-perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 174 tests pass across 22 files
+- `npm test`: 182 tests pass across 23 files, including 7 Neon PostgreSQL tests with `TEST_DATABASE_URL` set
 - `npm run lint`: pass
 - `npm run build`: pass
-- `npm run verify:browser`: 37/37 checks pass
-- `npm run verify:online:countdown`: 16/16 checks pass, including HUD and lobby card synchronization
+- `npm run verify:browser`: 37/37 checks pass on the final rerun
+- `npm run verify:online:countdown`: 16/16 checks pass
 - `npm run verify:online:matchmaking`: 11/11 checks pass on a clean server
-- `npm run verify:online:characters`: 35/35 checks pass against the production build
-- `npm run verify:online:bots`: 32/32 checks pass against the production build, including valid advanced bot weapons and loss/respawn presentation.
-- All ten character cards render, every card is selectable, keyboard arrows change selection, mobile shows two readable columns, and refresh plus corrupt-storage fallback behave correctly.
-- Create Room, invite join and Quick Match all use the selected skin. Two clients choosing different characters see the same assignments, and bots avoid those skins where possible.
-- Eight human clients kept eight independently requested skins with no bot visuals.
-- Selected humans retained their skin while dead, after respawn, and after replay.
-- The server rejected an arbitrary asset URL and fell back to VIBER-010.
-- 15 concurrent Quick Match clients joined in under a second as 8 + 7 humans across two rooms.
-- `verify:online:match`: 25/25 checks pass, 8 humans, time-limit result, identical standings, replay reset, and preserved VIBER-123/BUREAU-023 selections.
-- `verify:online:pickups`: 29/29 checks pass. Two clients saw the same 31 supply caches, a collected medkit disappeared for both, a late join saw no duplicated inventory, a second room kept independent pickup state, the respawn cycle completed, `H` healed without exceeding the cap, the HUD showed the heal amount, and a duplicate use consumed no extra medkit.
-- `verify:online:grenades`: 28/28 checks pass. Both clients saw the same contact, frag and stinking caches and distinct artworks, key selection and the throw control worked, the frag detonated after about 5 seconds of server simulation time, a contact grenade eliminated a bot with correct kill-feed credit, self-damage did not award an opponent a kill, medkits still healed, and a second room had independent grenade and pickup state.
-- `verify:online:stinking`: 25/25 checks pass. The cloud activated at 160 px for 6 seconds, applied 6 HP toxic ticks, eliminated the player without granting a kill, restored the one-of-each loadout on respawn, damaged and eliminated an idle opponent with owner credit, appeared to a late joiner, and left a second room's pickups independent.
-- `verify:online:loot`: 41/41 checks pass against the production build. Two clients agreed on 31 static caches, the starter rifle/scatter/empty loadout, three-item hostile elimination bundles, one weapon/medkit/grenade Phaser view per item in both sessions, authoritative ammo on pickup, the full-loadout `E` swap, duplicate-free replacement, a late joiner with remaining loot, a one-winner medkit contest, 12-second server-clock expiry, a human death dropping the actual equipped weapon, starter loadout restoration, match-end cleanup, replay reset, and a reserved seat for a disconnected late joiner.
-- `verify:online:arsenal`: 26/26 checks pass against the production build. Akimbo dual barrels and server alternation, SMG cadence/reload, Heavy Cannon 60-damage direct impact, rocket flight/explosion/single falloff hit, advanced elimination loot, authoritative ammo, respawn reset and an eight-human mixed-weapon lineup all render correctly.
-- `verify:online:p4`: 35/35 checks pass against the production build. Guest profile bootstrap, audio persistence, three real server-awarded match records, XP and level-up, duplicate XP prevention, reconnect around match completion, replay match ids, reconnect during combat and countdown, reserved-seat capacity, grace-expiry lobby return, simultaneous multi-touch movement/aim/fire/jetpack, touch reload, weapon selection, grenade throw and cache swap all pass.
-- `verify:online:rooms`: 16/16 checks pass, including countdown auto-start, full-room and ended-room errors.
-- P3B-C baseline `HEADED=1 npm run verify:online:perf`: 59 fps, 0.36 ms average server tick, 1.10 ms p95 on a clean server.
-- P3C standard `HEADED=1 npm run verify:online:perf`: 58 to 59 fps, 0.22 ms average server tick, 0.77 ms p95, 6/6 checks.
-- P4 standard `HEADED=1 npm run verify:online:perf`: 60 fps, 0.245 ms average server tick, 0.547 ms p95, 6/6 checks with audio active.
-- P4 `HEADED=1 npm run verify:online:grenade-perf`: 15/15 checks pass with 8 humans, a second room, all four advanced weapons firing, 31 advanced shots, 8 peak grenades, 8 active toxic clouds, up to 8 overlapping clouds, 60 fps, 0.041 ms average tick, 0.128 ms p95, 16 peak dynamic loot entities, 31 pickups and a 17,600-byte snapshot. The snapshot grew about 8 percent from the P3C baseline because combatants now carry profile, level, badge, title, elimination and trail fields.
-- Mobile verification used Chromium mobile emulation at 844 x 390 with `hasTouch`, real CDP multi-touch events, safe-area CSS and all touch controls. Physical iOS and Android hardware were not available in this environment.
+- `npm run verify:online:characters`: 35/35 checks pass
+- `npm run verify:online:bots`: 32/32 checks pass
+- `npm run verify:online:match`: 25/25 checks pass
+- `npm run verify:online:pickups`: 29/29 checks pass
+- `npm run verify:online:grenades`: 28/28 checks pass
+- `npm run verify:online:stinking`: 25/25 checks pass
+- `npm run verify:online:loot`: 41/41 checks pass
+- `npm run verify:online:arsenal`: 26/26 checks pass
+- `npm run verify:online:rooms`: 16/16 checks pass
+- `npm run verify:online:p4`: 35/35 checks pass against the Neon test branch
+- `npm run verify:online:p5`: 42/42 checks pass against the Neon test branch across four landscape shapes plus portrait guard and desktop
+- `npm run verify:online:perf`: 6/6 checks pass on the final clean run, 56 fps headless, 0.40 ms average tick, 1.43 ms p95
+- `npm run verify:online:grenade-perf`: 15/15 checks pass
+- P0-P4 browser suites were run against a clean SQLite server with `MATCH_COUNTDOWN_MS=10000` to remove host and database latency from their tight timing assumptions. P4 and P5 were run against Neon PostgreSQL.
+- Neon PostgreSQL tests cover guest creation, token hashing, duplicate concurrent match writes, concurrent distinct rewards, reward-delivery idempotency, cosmetics validation, anonymous feedback storage and the `/ready` backend.
+- SQLite-to-PostgreSQL migration validation used a fixture with 2 players, 1 weapon stat, 1 match and 8 cosmetics. Target counts matched and the migrated player retained XP and match count. The SQLite source was not modified or deleted.
+- Mobile verification used Chromium mobile emulation at 1280x720, 844x390, 915x412 and 740x360 with `hasTouch`, real CDP multi-touch events, safe-area CSS and all touch controls. Physical iOS and Android hardware were not available in this environment.
 - Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
@@ -488,10 +495,14 @@ Last verification against the production build:
 - If the validated roster ever drops below the number of combatants, bot skin assignment safely reuses entries rather than inventing assets.
 - The character body is static because the NFT is a 3/4 portrait. Weapon and effects are separate layers.
 - Guest profiles are device-bound. Clearing browser storage loses access until account linking exists, and there is no email, wallet or password recovery.
-- SQLite is designed for one persistent game-server process. Running multiple game-server replicas against one SQLite file is unsupported.
+- PostgreSQL is the durable backend. SQLite remains a single-process fallback. Colyseus room state is still process-local, so multiple game-server replicas need a shared room directory or sticky matchmaking before horizontal scaling.
 - XP, levels, titles, badges, elimination variants and jetpack trails are cosmetic only. There is no ranked mode, matchmaking skill rating or paid content.
 - The audio system uses original synthesis. There is no licensed music, voice acting, 3D positional mix or dynamic soundtrack.
-- Mobile controls were verified with Chromium mobile emulation, CDP multi-touch and real touch event handling. Physical iOS and Android hardware were not available in this environment.
+- Mobile controls were verified with Chromium mobile emulation, CDP multi-touch and real touch event handling at four landscape shapes. Physical iOS and Android hardware were not available in this environment.
+- Mobile play is landscape-only by design. Portrait shows a rotation guard. Very small or unusual aspect ratios may still need per-device tuning after physical testing.
+- Anonymous feedback and client errors are stored in `client_events`. There is no analytics dashboard, funnel tracking or session replay.
+- No public deployment was performed because no persistent game-server host was explicitly authorized. No live URL is claimed.
+- The real-player beta has not started. `BETA_TESTING.md` is the runbook.
 - There is no gamepad support or full keyboard remapping.
 - Touch controls are part of the online match UI. Local P1 mode remains keyboard and mouse.
 - The arena uses runtime-baked primitive art, not a final authored tileset.
@@ -506,9 +517,9 @@ Last verification against the production build:
 
 ## Next steps
 
-1. P4 is complete. Wait for a P5 instruction before starting new modes or platform work.
-2. Add account linking so guest profiles can move between devices.
-3. Move progression to a shared database before running multiple game-server replicas.
+1. P5 code and automated verification are complete. The next milestone is the real-player beta in `BETA_TESTING.md`, starting with physical iOS and Android devices.
+2. Deploy the frontend and persistent game server to explicitly authorized infrastructure, then verify external guest creation, room joins and WSS.
+3. Add account linking so guest profiles can move between devices.
 4. Add server-side lag compensation and a configurable latency test harness.
 5. Add licensed or original music, voice and a richer audio mix.
 6. Add gamepad support and remapping.

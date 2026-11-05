@@ -13,7 +13,9 @@ import { GameBridge } from "@/game/bridge";
 import { GameHud } from "@/components/game/GameHud";
 import { AudioSettings } from "@/components/game/AudioSettings";
 import { TouchControls } from "@/components/game/TouchControls";
+import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import { ProfilePanel } from "@/components/online/ProfilePanel";
+import { BetaFeedback } from "@/components/online/BetaFeedback";
 import { OnlineGameCanvas } from "@/components/online/OnlineGameCanvas";
 import type { OnlineRoomMetadata } from "@/game/multiplayer/protocol";
 import { audio } from "@/game/audio/AudioEngine";
@@ -28,6 +30,7 @@ import {
   DEFAULT_EQUIPPED,
   type EquippedCosmetics,
 } from "@/game/progression/cosmetics";
+import { installClientErrorCapture } from "@/lib/betaTelemetry";
 
 type OnlineRoom = Room;
 type OnlineClient = Client;
@@ -99,6 +102,9 @@ function OnlineGameSession({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [portrait, setPortrait] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const gameFrameRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     (window as unknown as { __HUD_BRIDGE__?: GameBridge }).__HUD_BRIDGE__ = bridge;
@@ -145,6 +151,37 @@ function OnlineGameSession({
     };
   }, []);
 
+  useEffect(() => {
+    const updateOrientation = () => {
+      setPortrait(window.innerHeight > window.innerWidth);
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    const onOrientation = () => {
+      window.setTimeout(updateOrientation, 180);
+    };
+    updateOrientation();
+    window.addEventListener("resize", updateOrientation);
+    window.addEventListener("orientationchange", onOrientation);
+    document.addEventListener("fullscreenchange", updateOrientation);
+    return () => {
+      window.removeEventListener("resize", updateOrientation);
+      window.removeEventListener("orientationchange", onOrientation);
+      document.removeEventListener("fullscreenchange", updateOrientation);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await gameFrameRef.current?.requestFullscreen?.();
+      }
+    } catch {
+      // Fullscreen can be blocked by the browser or an embedded frame.
+    }
+  };
+
   const closeGuide = () => {
     setShowGuide(false);
     try {
@@ -173,7 +210,11 @@ function OnlineGameSession({
     <main className="militia-page">
       <div className="militia-page__grid" aria-hidden="true" />
       <div className="militia-page__glow" aria-hidden="true" />
-      <section className={`game-frame${touchMode ? " is-touch" : ""}`} aria-label="Vibe Militia online arena">
+      <section
+        ref={gameFrameRef}
+        className={`game-frame${touchMode ? " is-touch" : ""}${portrait && touchMode ? " is-portrait" : ""}${isFullscreen ? " is-fullscreen" : ""}`}
+        aria-label="Vibe Militia online arena"
+      >
         <OnlineGameCanvas room={room} bridge={bridge} playerName={playerName} />
         <GameHud
           bridge={bridge}
@@ -201,6 +242,26 @@ function OnlineGameSession({
                 {reconnectGraceSeconds} seconds. Keep this tab open.
               </p>
               <span className="reconnect-card__bar" aria-hidden="true" />
+            </div>
+          </div>
+        ) : null}
+        {portrait && touchMode ? (
+          <div
+            className="orientation-overlay"
+            data-testid="orientation-guard"
+            role="status"
+            aria-live="assertive"
+          >
+            <div className="orientation-card">
+              <span className="orientation-icon" aria-hidden="true">
+                <span />
+              </span>
+              <span className="mono-label">LANDSCAPE REQUIRED</span>
+              <strong className="display">ROTATE YOUR DEVICE</strong>
+              <p>
+                Sector 07 needs a wide view for fair aiming and thumb reach.
+                Turn your phone sideways to return to the match.
+              </p>
             </div>
           </div>
         ) : null}
@@ -245,6 +306,7 @@ function OnlineGameSession({
                 </button>
               </div>
               <AudioSettings />
+              {touchMode ? <TouchSettingsPanel /> : null}
               <div className="settings-card__controls">
                 <span className="mono-label">CONTROLS</span>
                 <p>
@@ -253,11 +315,12 @@ function OnlineGameSession({
                   medkit, E swap.
                 </p>
                 <p>
-                  Touch: left stick moves, right stick aims, FIRE shoots, JUMP
-                  holds the jetpack. The online match keeps running while this
-                  panel is open.
+                  Touch: left stick moves, push it up to fly, right stick aims
+                  and can auto-fire, FIRE and JUMP remain available. The online
+                  match keeps running while this panel is open.
                 </p>
               </div>
+              {touchMode ? <BetaFeedback /> : null}
               <div className="settings-card__actions">
                 <button
                   type="button"
@@ -269,6 +332,16 @@ function OnlineGameSession({
                 >
                   LEAVE MATCH
                 </button>
+                {touchMode ? (
+                  <button
+                    type="button"
+                    className="online-secondary online-secondary--small"
+                    onClick={() => void toggleFullscreen()}
+                    data-testid="toggle-fullscreen"
+                  >
+                    {isFullscreen ? "EXIT FULLSCREEN" : "FULLSCREEN"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="online-primary online-primary--small"
@@ -303,7 +376,10 @@ function OnlineGameSession({
                 </li>
                 <li>
                   <strong>AIM AND FIRE</strong>
-                  <span>Mouse or the right stick. Hold fire to keep shooting.</span>
+                  <span>
+                    Mouse or the right stick. Push the right stick past the
+                    threshold to auto-fire, or use the FIRE button.
+                  </span>
                 </li>
                 <li>
                   <strong>LOOT THE SECTOR</strong>
@@ -358,6 +434,7 @@ function OnlineGameSession({
           >
             SETTINGS
           </button>
+          <BetaFeedback compact />
           <button
             type="button"
             className="hud-button"
@@ -398,6 +475,7 @@ export function OnlineShell() {
 
   useEffect(() => {
     mountedRef.current = true;
+    const uninstallErrorCapture = installClientErrorCapture();
     const timer = window.setTimeout(() => {
       const saved = window.localStorage.getItem("vibe-militia-guest");
       const initialName = saved || randomGuestName();
@@ -445,6 +523,7 @@ export function OnlineShell() {
     }, 0);
     return () => {
       window.clearTimeout(timer);
+      uninstallErrorCapture();
       mountedRef.current = false;
     };
   }, []);
@@ -798,8 +877,9 @@ export function OnlineShell() {
                 KNOW THE SECTOR
               </h2>
               <p>
-                WASD or left stick moves. Space or JUMP lifts. Mouse or right
-                stick aims. Fire, reload with R, swap weapons with 1 to 3,
+                WASD or left stick moves. Push the left stick up to fly. Mouse
+                or right stick aims, and the right stick can auto-fire past the
+                configured threshold. Reload with R, swap weapons with 1 to 3,
                 grenades with 4 to 6 and G, medkits with H, loot swaps with E.
               </p>
             </div>

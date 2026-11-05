@@ -1,19 +1,36 @@
 import { loadServerConfig, type ServerConfig } from "../config";
 import { ProfileStore } from "./ProfileStore";
+import { SqliteProfileRepository } from "./SqliteProfileRepository";
+import { PostgresProfileStore } from "./PostgresProfileStore";
+import type { ProfileRepository } from "./repository";
 import { XP_RULES } from "../../src/game/progression/progression";
 
-let store: ProfileStore | null = null;
+let store: ProfileRepository | null = null;
 let config: ServerConfig | null = null;
 
-export function initializePersistence(env = process.env): {
+export async function initializePersistence(env = process.env): Promise<{
   config: ServerConfig;
-  store: ProfileStore;
-} {
+  store: ProfileRepository;
+}> {
   config = loadServerConfig(env);
-  store = new ProfileStore(config.databasePath, {
+  const xpRules = {
     minParticipationMs:
       config.xpMinParticipationMs ?? XP_RULES.minParticipationMs,
-  });
+  };
+  if (config.databaseUrl) {
+    const postgres = new PostgresProfileStore({
+      connectionString: config.databaseUrl,
+      max: config.databasePoolMax,
+      ssl: config.databaseSsl,
+      xpRules,
+    });
+    await postgres.connect();
+    store = postgres;
+  } else {
+    store = new SqliteProfileRepository(
+      new ProfileStore(config.databasePath, xpRules),
+    );
+  }
   return { config, store };
 }
 
@@ -22,13 +39,13 @@ export function getServerConfig(): ServerConfig {
   return config;
 }
 
-export function getProfileStore(): ProfileStore {
+export function getProfileStore(): ProfileRepository {
   if (!store) throw new Error("Profile store has not been initialized.");
   return store;
 }
 
-export function closePersistence(): void {
-  store?.close();
+export async function closePersistence(): Promise<void> {
+  await store?.close();
   store = null;
   config = null;
 }

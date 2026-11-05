@@ -12,14 +12,16 @@ import {
   queueTouchSwap,
   resetTouchInput,
   setTouchAim,
+  setTouchAimFire,
   setTouchEnabled,
-  setTouchFire,
+  setTouchFireButton,
   setTouchJumpHeld,
   setTouchMove,
+  setTouchThrustHeld,
 } from "@/game/input/touchInput";
+import { getTouchSettings, type TouchSettings } from "@/game/input/touchSettings";
 
 const STICK_RADIUS = 52;
-const DEAD_ZONE = 0.18;
 
 function stickVector(
   element: HTMLElement,
@@ -51,10 +53,16 @@ export function TouchControls({
   const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
     bridge.getSnapshot(),
   );
+  const [settings, setSettings] = useState<TouchSettings>(() =>
+    getTouchSettings(),
+  );
   const [moveKnob, setMoveKnob] = useState({ x: 0, y: 0 });
   const [aimKnob, setAimKnob] = useState({ x: 0, y: 0 });
+  const [autoFire, setAutoFire] = useState(false);
+  const [thrusting, setThrusting] = useState(false);
   const movePointer = useRef<number | null>(null);
   const aimPointer = useRef<number | null>(null);
+  const thrustRef = useRef(false);
   const moveRef = useRef<HTMLDivElement>(null);
   const aimRef = useRef<HTMLDivElement>(null);
 
@@ -65,12 +73,18 @@ export function TouchControls({
       resetTouchInput();
       setMoveKnob({ x: 0, y: 0 });
       setAimKnob({ x: 0, y: 0 });
+      setAutoFire(false);
+      setThrusting(false);
+      thrustRef.current = false;
       movePointer.current = null;
       aimPointer.current = null;
     };
+    const preventGesture = (event: Event) => event.preventDefault();
     window.addEventListener("blur", reset);
     window.addEventListener("orientationchange", reset);
     document.addEventListener("visibilitychange", reset);
+    document.addEventListener("gesturestart", preventGesture);
+    document.addEventListener("gesturechange", preventGesture);
     return () => {
       unsubscribe();
       resetTouchInput();
@@ -78,72 +92,119 @@ export function TouchControls({
       window.removeEventListener("blur", reset);
       window.removeEventListener("orientationchange", reset);
       document.removeEventListener("visibilitychange", reset);
+      document.removeEventListener("gesturestart", preventGesture);
+      document.removeEventListener("gesturechange", preventGesture);
     };
   }, [bridge]);
+
+  useEffect(() => {
+    const updateSettings = (event: Event) => {
+      setSettings((event as CustomEvent<TouchSettings>).detail);
+    };
+    window.addEventListener("vibe-touch-settings", updateSettings);
+    return () => {
+      window.removeEventListener("vibe-touch-settings", updateSettings);
+    };
+  }, []);
+
+  const applyMoveVector = (
+    vector: { x: number; y: number },
+  ) => {
+    const moveX =
+      Math.abs(vector.x) > settings.leftDeadZone ? vector.x : 0;
+    setTouchMove(moveX);
+    setMoveKnob({
+      x: vector.x * STICK_RADIUS,
+      y: vector.y * STICK_RADIUS,
+    });
+    const thrust = vector.y <= -settings.thrustThreshold;
+    if (thrust && !thrustRef.current) {
+      queueTouchJump();
+    }
+    thrustRef.current = thrust;
+    setThrusting(thrust);
+    setTouchThrustHeld(thrust);
+  };
 
   const beginMove = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     movePointer.current = event.pointerId;
-    const vector = stickVector(
-      event.currentTarget,
-      event.clientX,
-      event.clientY,
+    applyMoveVector(
+      stickVector(event.currentTarget, event.clientX, event.clientY),
     );
-    setTouchMove(Math.abs(vector.x) > DEAD_ZONE ? vector.x : 0);
-    setMoveKnob({ x: vector.x * STICK_RADIUS, y: 0 });
   };
 
   const updateMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (movePointer.current !== event.pointerId) return;
-    const vector = stickVector(
-      event.currentTarget,
-      event.clientX,
-      event.clientY,
+    applyMoveVector(
+      stickVector(event.currentTarget, event.clientX, event.clientY),
     );
-    const moveX = Math.abs(vector.x) > DEAD_ZONE ? vector.x : 0;
-    setTouchMove(moveX);
-    setMoveKnob({ x: vector.x * STICK_RADIUS, y: 0 });
   };
 
   const endMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (movePointer.current !== event.pointerId) return;
     movePointer.current = null;
     setTouchMove(0);
+    setTouchThrustHeld(false);
     setMoveKnob({ x: 0, y: 0 });
+    setThrusting(false);
+    thrustRef.current = false;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Capture may already be released by the browser.
+    }
+  };
+
+  const applyAimVector = (
+    vector: { x: number; y: number; distance: number },
+  ) => {
+    if (vector.distance < settings.rightDeadZone) {
+      setTouchAimFire(false);
+      setAutoFire(false);
+      return;
+    }
+    setTouchAim(Math.atan2(vector.y, vector.x));
+    setAimKnob({
+      x: vector.x * STICK_RADIUS,
+      y: vector.y * STICK_RADIUS,
+    });
+    const poweredDistance = Math.min(1.5, vector.distance) * settings.aimSensitivity;
+    const firing =
+      settings.aimFireEnabled &&
+      poweredDistance >= settings.aimFireThreshold;
+    setTouchAimFire(firing);
+    setAutoFire(firing);
   };
 
   const beginAim = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     aimPointer.current = event.pointerId;
-    const vector = stickVector(
-      event.currentTarget,
-      event.clientX,
-      event.clientY,
+    applyAimVector(
+      stickVector(event.currentTarget, event.clientX, event.clientY),
     );
-    if (vector.distance >= DEAD_ZONE) {
-      setTouchAim(Math.atan2(vector.y, vector.x));
-      setAimKnob({ x: vector.x * STICK_RADIUS, y: vector.y * STICK_RADIUS });
-    }
   };
 
   const updateAim = (event: React.PointerEvent<HTMLDivElement>) => {
     if (aimPointer.current !== event.pointerId) return;
-    const vector = stickVector(
-      event.currentTarget,
-      event.clientX,
-      event.clientY,
+    applyAimVector(
+      stickVector(event.currentTarget, event.clientX, event.clientY),
     );
-    if (vector.distance < DEAD_ZONE) return;
-    setTouchAim(Math.atan2(vector.y, vector.x));
-    setAimKnob({ x: vector.x * STICK_RADIUS, y: vector.y * STICK_RADIUS });
   };
 
   const endAim = (event: React.PointerEvent<HTMLDivElement>) => {
     if (aimPointer.current !== event.pointerId) return;
     aimPointer.current = null;
+    setTouchAimFire(false);
+    setAutoFire(false);
     setAimKnob({ x: 0, y: 0 });
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Capture may already be released by the browser.
+    }
   };
 
   const selectedGrenadeIndex =
@@ -182,11 +243,12 @@ export function TouchControls({
         </div>
       </div>
       <div
-        className="touch-stick touch-stick--move"
+        className={`touch-stick touch-stick--move${thrusting ? " is-thrusting" : ""}`}
         ref={moveRef}
         data-testid="touch-move"
+        data-thrusting={thrusting}
         role="group"
-        aria-label="Move joystick"
+        aria-label="Move and fly joystick"
         onPointerDown={beginMove}
         onPointerMove={updateMove}
         onPointerUp={endMove}
@@ -200,7 +262,9 @@ export function TouchControls({
           style={{ transform: `translate(${moveKnob.x}px, ${moveKnob.y}px)` }}
           aria-hidden="true"
         />
-        <span className="touch-stick__label mono-label">MOVE</span>
+        <span className="touch-stick__label mono-label">
+          {thrusting ? "THRUST" : "MOVE"}
+        </span>
       </div>
 
       <div className="touch-tools">
@@ -285,11 +349,13 @@ export function TouchControls({
       </div>
 
       <div
-        className="touch-stick touch-stick--aim"
+        className={`touch-stick touch-stick--aim${autoFire ? " is-firing" : ""}`}
         ref={aimRef}
         data-testid="touch-aim"
+        data-auto-fire={autoFire}
+        data-aim-fire-enabled={settings.aimFireEnabled}
         role="group"
-        aria-label="Aim control"
+        aria-label="Aim and optional auto-fire control"
         onPointerDown={beginAim}
         onPointerMove={updateAim}
         onPointerUp={endAim}
@@ -303,22 +369,25 @@ export function TouchControls({
           style={{ transform: `translate(${aimKnob.x}px, ${aimKnob.y}px)` }}
           aria-hidden="true"
         />
-        <span className="touch-stick__label mono-label">AIM</span>
+        <span className="touch-stick__label mono-label">
+          {autoFire ? "FIRING" : "AIM"}
+        </span>
       </div>
 
+      <button
+        type="button"
+        className="touch-button touch-button--settings touch-settings-button"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          onSettings();
+        }}
+        data-testid="touch-settings"
+        aria-label="Open settings"
+      >
+        SETTINGS
+      </button>
+
       <div className="touch-actions">
-        <button
-          type="button"
-          className="touch-button touch-button--settings"
-          onPointerDown={(event) => {
-            event.preventDefault();
-            onSettings();
-          }}
-          data-testid="touch-settings"
-          aria-label="Open settings"
-        >
-          SETTINGS
-        </button>
         <button
           type="button"
           className="touch-button touch-button--grenade"
@@ -357,7 +426,14 @@ export function TouchControls({
             queueTouchJump();
             setTouchJumpHeld(true);
           }}
-          onPointerUp={() => setTouchJumpHeld(false)}
+          onPointerUp={(event) => {
+            setTouchJumpHeld(false);
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            } catch {
+              // Capture may already be released.
+            }
+          }}
           onPointerCancel={() => setTouchJumpHeld(false)}
           onLostPointerCapture={() => setTouchJumpHeld(false)}
           data-testid="touch-jump"
@@ -371,11 +447,18 @@ export function TouchControls({
           onPointerDown={(event) => {
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
-            setTouchFire(true);
+            setTouchFireButton(true);
           }}
-          onPointerUp={() => setTouchFire(false)}
-          onPointerCancel={() => setTouchFire(false)}
-          onLostPointerCapture={() => setTouchFire(false)}
+          onPointerUp={(event) => {
+            setTouchFireButton(false);
+            try {
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            } catch {
+              // Capture may already be released.
+            }
+          }}
+          onPointerCancel={() => setTouchFireButton(false)}
+          onLostPointerCapture={() => setTouchFireButton(false)}
           data-testid="touch-fire"
           aria-label="Fire weapon"
         >

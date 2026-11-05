@@ -3,6 +3,9 @@ import path from "node:path";
 export interface ServerConfig {
   port: number;
   databasePath: string;
+  databaseUrl: string | null;
+  databasePoolMax: number;
+  databaseSsl: boolean;
   allowedOrigins: string[];
   reconnectGraceSeconds: number;
   publicOrigin: string | null;
@@ -66,11 +69,29 @@ export function loadServerConfig(
   }
   const countdown = env.MATCH_COUNTDOWN_MS;
   const xpMin = env.XP_MIN_PARTICIPATION_MS;
+  const databaseUrl = env.DATABASE_URL?.trim() || null;
+  if (databaseUrl) {
+    let parsed: URL;
+    try {
+      parsed = new URL(databaseUrl);
+    } catch {
+      throw new Error("DATABASE_URL must be a valid PostgreSQL connection URL.");
+    }
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+      throw new Error("DATABASE_URL must use the postgres protocol.");
+    }
+  }
   return {
     port: parseInteger(env.PORT, 2567),
     databasePath:
       env.DATABASE_PATH?.trim() ||
       path.join(process.cwd(), "data", "vibe-militia.sqlite"),
+    databaseUrl,
+    databasePoolMax: Math.max(
+      1,
+      Math.min(20, parseInteger(env.DATABASE_POOL_MAX, 8)),
+    ),
+    databaseSsl: env.DATABASE_SSL !== "0",
     allowedOrigins: parseOrigins(env.ALLOWED_ORIGINS, production),
     reconnectGraceSeconds: Math.max(
       1,

@@ -302,8 +302,12 @@ try {
   await page.evaluate(() =>
     window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.endMatch(),
   );
-  await page.waitForTimeout(1200);
-  const afterSecond = await fetchProfile(page);
+  let afterSecond = await fetchProfile(page);
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    if ((afterSecond?.player?.matchesPlayed ?? 0) >= 2) break;
+    await page.waitForTimeout(400);
+    afterSecond = await fetchProfile(page);
+  }
   check(
     "a second match adds a separate progression record",
     afterSecond?.player?.matchesPlayed === 2 &&
@@ -416,19 +420,32 @@ try {
   );
   await capacityPage.waitForTimeout(600);
   let rejectMessage = "";
+  let ninthRoom = null;
   const ninthClient = new Client(serverUrl);
-  try {
-    const ninth = await ninthClient.joinById(capacityRoom, { name: "NINTH" });
-    await ninth.leave();
-  } catch (error) {
-    rejectMessage = error instanceof Error ? error.message : String(error);
-  }
+  const ninthJoin = ninthClient
+    .joinById(capacityRoom, { name: "NINTH" })
+    .then((joined) => {
+      ninthRoom = joined;
+      return joined;
+    })
+    .catch((error) => {
+      rejectMessage = error instanceof Error ? error.message : String(error);
+      return null;
+    });
+  // Hold the host offline briefly while the ninth client attempts to join.
+  // A reserved seat must reject the newcomer before the host reconnects.
+  await capacityPage.waitForTimeout(1500);
+  await desktopContext.setOffline(false);
+  await Promise.race([
+    ninthJoin,
+    new Promise((resolve) => setTimeout(resolve, 8000)),
+  ]);
+  if (ninthRoom) await ninthRoom.leave().catch(() => {});
   check(
     "a reserved disconnected seat still counts toward room capacity",
-    /full|locked|seat/i.test(rejectMessage),
-    rejectMessage,
+    /full|locked|seat/i.test(rejectMessage) && ninthRoom === null,
+    rejectMessage || (ninthRoom ? "ninth client joined" : "no rejection received"),
   );
-  await desktopContext.setOffline(false);
   await capacityPage.waitForFunction(
     () => !document.querySelector('[data-testid="reconnect-overlay"]'),
     null,

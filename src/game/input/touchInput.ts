@@ -16,6 +16,10 @@ export interface TouchFrame {
 
 export interface MutableTouchInput extends TouchFrame {
   enabled: boolean;
+  buttonFire: boolean;
+  aimFire: boolean;
+  buttonJumpHeld: boolean;
+  thrustHeld: boolean;
 }
 
 export const touchInput: MutableTouchInput = {
@@ -23,7 +27,11 @@ export const touchInput: MutableTouchInput = {
   moveX: 0,
   aimAngle: null,
   fire: false,
+  buttonFire: false,
+  aimFire: false,
   jumpHeld: false,
+  buttonJumpHeld: false,
+  thrustHeld: false,
   jumpPressed: false,
   reloadPressed: false,
   weaponSlotPressed: null,
@@ -41,7 +49,11 @@ export function setTouchEnabled(enabled: boolean): void {
 export function resetTouchInput(): void {
   touchInput.moveX = 0;
   touchInput.fire = false;
+  touchInput.buttonFire = false;
+  touchInput.aimFire = false;
   touchInput.jumpHeld = false;
+  touchInput.buttonJumpHeld = false;
+  touchInput.thrustHeld = false;
   touchInput.jumpPressed = false;
   touchInput.reloadPressed = false;
   touchInput.weaponSlotPressed = null;
@@ -60,12 +72,24 @@ export function setTouchAim(angle: number | null): void {
     angle === null || !Number.isFinite(angle) ? null : angle;
 }
 
-export function setTouchFire(fire: boolean): void {
-  touchInput.fire = fire;
+export function setTouchFireButton(fire: boolean): void {
+  touchInput.buttonFire = fire;
+  touchInput.fire = touchInput.buttonFire || touchInput.aimFire;
+}
+
+export function setTouchAimFire(fire: boolean): void {
+  touchInput.aimFire = fire;
+  touchInput.fire = touchInput.buttonFire || touchInput.aimFire;
 }
 
 export function setTouchJumpHeld(held: boolean): void {
-  touchInput.jumpHeld = held;
+  touchInput.buttonJumpHeld = held;
+  touchInput.jumpHeld = touchInput.buttonJumpHeld || touchInput.thrustHeld;
+}
+
+export function setTouchThrustHeld(held: boolean): void {
+  touchInput.thrustHeld = held;
+  touchInput.jumpHeld = touchInput.buttonJumpHeld || touchInput.thrustHeld;
 }
 
 export function queueTouchJump(): void {

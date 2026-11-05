@@ -188,7 +188,7 @@ export class InputController {
       moveX,
       jumpPressed,
       jumpHeld: this.keys.space.isDown || Boolean(touch?.jumpHeld),
-      fire: pointer.primaryDown || Boolean(touch?.fire),
+      fire: touch ? Boolean(touch.fire) : pointer.primaryDown,
       reloadPressed,
       weaponSlotPressed,
       medkitPressed,

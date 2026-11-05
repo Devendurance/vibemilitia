@@ -1,3 +1,4 @@
+import "./loadEnv";
 import { LobbyRoom, Server } from "colyseus";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -11,8 +12,21 @@ import {
 } from "./persistence";
 import { log } from "./log";
 
-const { config, store } = initializePersistence();
-const { allowedOrigins } = config;
+async function bootstrap(): Promise<void> {
+  const { config, store } = await initializePersistence();
+  const { allowedOrigins } = config;
+
+const asyncRoute =
+  (
+    handler: (
+      request: Request,
+      response: Response,
+      next: NextFunction,
+    ) => Promise<void>,
+  ) =>
+  (request: Request, response: Response, next: NextFunction): void => {
+    void handler(request, response, next).catch(next);
+  };
 
 function isAllowedOrigin(origin: string | null | undefined): boolean {
   // Native and same-origin clients may omit Origin. Browsers always send it.
@@ -86,17 +100,17 @@ function readBearerToken(request: Request): string | null {
   return token.length > 20 ? token : null;
 }
 
-function requireProfile(
+const requireProfile = async (
   request: Request,
   response: Response,
   next: NextFunction,
-): void {
+): Promise<void> => {
   const token = readBearerToken(request);
   if (!token) {
     response.status(401).json({ error: "GUEST_TOKEN_REQUIRED" });
     return;
   }
-  const player = store.getProfileByToken(token);
+  const player = await store.getProfileByToken(token);
   if (!player) {
     response.status(401).json({ error: "GUEST_TOKEN_INVALID" });
     return;
@@ -104,7 +118,7 @@ function requireProfile(
   response.locals.playerId = player.id;
   response.locals.token = token;
   next();
-}
+};
 
 app.get("/health", (_request: Request, response: Response) => {
   response.json({
@@ -115,29 +129,27 @@ app.get("/health", (_request: Request, response: Response) => {
   });
 });
 
-app.get("/ready", (_request: Request, response: Response) => {
-  try {
-    const health = store.health();
+app.get(
+  "/ready",
+  asyncRoute(async (_request: Request, response: Response) => {
+    const health = await store.health();
     response.json({
       ok: health.ok,
-      database: { players: health.players, matches: health.matches },
-      persistence: config.databasePath.includes(":memory:")
-        ? "memory"
-        : "sqlite",
+      database: {
+        backend: health.backend,
+        players: health.players,
+        matches: health.matches,
+      },
+      persistence: health.backend,
     });
-  } catch (error) {
-    response.status(503).json({
-      ok: false,
-      error: error instanceof Error ? error.message : "DATABASE_UNAVAILABLE",
-    });
-  }
-});
+  }),
+);
 
 app.get("/api/config", (_request: Request, response: Response) => {
   response.json({
     reconnectGraceSeconds: config.reconnectGraceSeconds,
     matchCountdownMs: config.matchCountdownMs,
-    persistence: config.databasePath.includes(":memory:") ? "memory" : "sqlite",
+    persistence: store.backend,
   });
 });
 
@@ -163,37 +175,43 @@ function guestRateLimit(
   next();
 }
 
-app.post("/api/guest", guestRateLimit, (request: Request, response: Response) => {
-  const body = request.body as { name?: unknown; skinId?: unknown };
-  const name = typeof body?.name === "string" ? body.name : "VIBER-GUEST";
-  const skinId = getCharacterSkin(
-    typeof body?.skinId === "string" ? body.skinId : undefined,
-  ).skinId;
-  const guest = store.createGuest(name, skinId);
-  log.info("guest.created", { playerId: guest.player.id });
-  response.status(201).json(guest);
-});
+app.post(
+  "/api/guest",
+  guestRateLimit,
+  asyncRoute(async (request: Request, response: Response) => {
+    const body = request.body as { name?: unknown; skinId?: unknown };
+    const name = typeof body?.name === "string" ? body.name : "VIBER-GUEST";
+    const skinId = getCharacterSkin(
+      typeof body?.skinId === "string" ? body.skinId : undefined,
+    ).skinId;
+    const guest = await store.createGuest(name, skinId);
+    log.info("guest.created", { playerId: guest.player.id });
+    response.status(201).json(guest);
+  }),
+);
 
 app.get(
   "/api/profile",
-  requireProfile,
-  (_request: Request, response: Response) => {
-    const player = store.getProfileById(response.locals.playerId as string);
+  asyncRoute(requireProfile),
+  asyncRoute(async (_request: Request, response: Response) => {
+    const player = await store.getProfileById(
+      response.locals.playerId as string,
+    );
     if (!player) {
       response.status(404).json({ error: "PROFILE_NOT_FOUND" });
       return;
     }
     response.json({
       player,
-      pendingAwards: store.getPendingAwards(player.id),
+      pendingAwards: await store.getPendingAwards(player.id),
     });
-  },
+  }),
 );
 
 app.patch(
   "/api/profile",
-  requireProfile,
-  (request: Request, response: Response) => {
+  asyncRoute(requireProfile),
+  asyncRoute(async (request: Request, response: Response) => {
     const playerId = response.locals.playerId as string;
     const body = request.body as {
       name?: unknown;
@@ -201,7 +219,7 @@ app.patch(
       equipped?: unknown;
       claimAwards?: unknown;
     };
-    const current = store.getProfileById(playerId);
+    const current = await store.getProfileById(playerId);
     if (!current) {
       response.status(404).json({ error: "PROFILE_NOT_FOUND" });
       return;
@@ -211,9 +229,9 @@ app.patch(
     const skinId = getCharacterSkin(
       typeof body?.skinId === "string" ? body.skinId : current.skinId,
     ).skinId;
-    store.updateIdentity(playerId, name, skinId);
+    await store.updateIdentity(playerId, name, skinId);
     if (body?.equipped && typeof body.equipped === "object") {
-      const equipped = store.setEquipped(
+      const equipped = await store.setEquipped(
         playerId,
         body.equipped as Partial<EquippedCosmetics>,
       );
@@ -223,13 +241,133 @@ app.patch(
       }
     }
     if (body?.claimAwards === true) {
-      store.markAwardsDelivered(playerId);
+      await store.markAwardsDelivered(playerId);
     }
-    const player = store.getProfileById(playerId);
+    const player = await store.getProfileById(playerId);
     response.json({
       player,
-      pendingAwards: body?.claimAwards === true ? [] : store.getPendingAwards(playerId),
+      pendingAwards:
+        body?.claimAwards === true
+          ? []
+          : await store.getPendingAwards(playerId),
     });
+  }),
+);
+
+const clientEventBuckets = new Map<string, { at: number; count: number }>();
+function clientEventRateLimit(
+  request: Request,
+  response: Response,
+  next: NextFunction,
+): void {
+  const reported = (request.body as { clientId?: unknown } | undefined)?.clientId;
+  const key =
+    typeof reported === "string"
+      ? reported.replace(/[^\w-]/g, "").slice(0, 64) || "anonymous"
+      : "anonymous";
+  const now = Date.now();
+  const bucket = clientEventBuckets.get(key);
+  if (!bucket || now - bucket.at >= 60_000) {
+    clientEventBuckets.set(key, { at: now, count: 1 });
+    next();
+    return;
+  }
+  bucket.count += 1;
+  if (bucket.count > 20) {
+    response.status(429).json({ error: "CLIENT_EVENT_RATE_LIMITED" });
+    return;
+  }
+  next();
+}
+
+app.post(
+  "/api/client-error",
+  clientEventRateLimit,
+  asyncRoute(async (request: Request, response: Response) => {
+    const body = request.body as {
+      message?: unknown;
+      route?: unknown;
+      appVersion?: unknown;
+    };
+    if (typeof body?.message !== "string" || body.message.length === 0) {
+      response.status(400).json({ error: "MESSAGE_REQUIRED" });
+      return;
+    }
+    const token = readBearerToken(request);
+    const profile = token ? await store.getProfileByToken(token) : null;
+    await store.recordClientEvent({
+      kind: "error",
+      message: body.message,
+      route:
+        typeof body.route === "string"
+          ? body.route.split("?")[0] ?? "/"
+          : "/unknown",
+      appVersion:
+        typeof body.appVersion === "string" ? body.appVersion : "unknown",
+      guestId: profile?.id ?? null,
+      rating: null,
+    });
+    response.status(204).end();
+  }),
+);
+
+app.post(
+  "/api/feedback",
+  clientEventRateLimit,
+  asyncRoute(async (request: Request, response: Response) => {
+    const body = request.body as {
+      rating?: unknown;
+      message?: unknown;
+      route?: unknown;
+      appVersion?: unknown;
+    };
+    const rating =
+      typeof body?.rating === "number" &&
+      body.rating >= 1 &&
+      body.rating <= 5
+        ? Math.floor(body.rating)
+        : null;
+    const message =
+      typeof body?.message === "string" ? body.message.slice(0, 600) : "";
+    if (rating === null && message.length === 0) {
+      response.status(400).json({ error: "FEEDBACK_REQUIRED" });
+      return;
+    }
+    const token = readBearerToken(request);
+    const profile = token ? await store.getProfileByToken(token) : null;
+    await store.recordClientEvent({
+      kind: "feedback",
+      message,
+      route:
+        typeof body?.route === "string"
+          ? body.route.split("?")[0] ?? "/"
+          : "/unknown",
+      appVersion:
+        typeof body?.appVersion === "string" ? body.appVersion : "unknown",
+      guestId: profile?.id ?? null,
+      rating,
+    });
+    response.status(204).end();
+  }),
+);
+
+app.use(
+  (
+    error: unknown,
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) => {
+    log.error("api.request_failed", {
+      method: request.method,
+      path: request.path,
+      message: error instanceof Error ? error.message : "unknown",
+    });
+    if (response.headersSent) {
+      next(error);
+      return;
+    }
+    response.status(503).json({ error: "SERVICE_UNAVAILABLE" });
   },
 );
 
@@ -247,6 +385,7 @@ async function main(): Promise<void> {
     port: config.port,
     origins: allowedOrigins.join(","),
     production: config.production,
+    persistence: store.backend,
   });
   console.log(`Vibe Militia server listening on port ${config.port}`);
 }
@@ -259,7 +398,7 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await server.gracefullyShutdown(false);
   } finally {
-    closePersistence();
+    await closePersistence();
     process.exit(0);
   }
 }
@@ -276,4 +415,13 @@ process.on("unhandledRejection", (reason) => {
   });
 });
 
-void main();
+  await main();
+}
+
+void bootstrap().catch((error: unknown) => {
+  log.error("server.boot_failed", {
+    message: error instanceof Error ? error.message : String(error),
+  });
+  console.error(error);
+  process.exit(1);
+});

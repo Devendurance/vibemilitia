@@ -306,7 +306,10 @@ try {
     );
   }
 
-  const pageD = await contextA.newPage();
+  const contextD = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
+  const pageD = await contextD.newPage();
   pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
   await pageD.goto(roomUrl, { waitUntil: "networkidle" });
   await pageD.waitForTimeout(500);
@@ -324,6 +327,7 @@ try {
     `medkits=${lateJoin.medkits}`,
   );
   await pageD.close();
+  await contextD.close();
 
   // Move away so the collected pickup can respawn without being re-collected.
   const escapeKey = afterCollectA.x > 1800 ? "KeyA" : "KeyD";

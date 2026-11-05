@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Archivo, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -19,9 +19,25 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Vibe Militia | P0 Training Ground",
+  title: "Vibe Militia | Online Beta",
   description:
-    "A local side-view arena shooter prototype built on Phaser 4, featuring the original Vibe Vibers artwork.",
+    "A server-authoritative side-view arena shooter with touch controls, progression and original audio.",
+  applicationName: "Vibe Militia",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Vibe Militia",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0c0d0f",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

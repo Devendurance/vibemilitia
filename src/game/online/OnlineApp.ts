@@ -9,18 +9,20 @@ export function createOnlineGame(
   bridge: GameBridge,
   playerName: string,
 ): Phaser.Game {
+  const width = Math.max(320, parent.clientWidth || 1440);
+  const height = Math.max(240, parent.clientHeight || 810);
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
-    width: 1440,
-    height: 810,
+    width,
+    height,
     backgroundColor: "#0c0d0f",
     scene: [new OnlineScene(room, bridge, playerName)],
     scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-      width: 1440,
-      height: 810,
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.NO_CENTER,
+      width,
+      height,
     },
     physics: {
       default: "arcade",
