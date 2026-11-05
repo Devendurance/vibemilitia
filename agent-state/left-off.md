@@ -34,5 +34,6 @@ P4 is complete: mobile touch, original audio, XP and levels, guest SQLite profil
 ## Baseline
 
 - P4 implementation commit: `280871d`.
+- P4 reconnect verification commit: `20348f1`.
 - Last verified checkpoint before P4: `7dfb28b`.
-- `origin/main` matches the P4 implementation commit.
+- `origin/main` matches the P4 verification commit.
