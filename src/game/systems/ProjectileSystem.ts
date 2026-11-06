@@ -5,6 +5,7 @@ import {
   PROJECTILE_LIFETIME_MS,
 } from "@/game/config/gameplay";
 import type { EffectsSystem } from "@/game/systems/EffectsSystem";
+import { ART_SCALE } from "@/game/systems/LoadoutArt";
 
 export type ProjectileOwnerKind = "player" | "bot";
 
@@ -161,8 +162,12 @@ export class ProjectileSystem {
     bullet.setTexture(options.texture);
     body.enable = true;
     body.setAllowGravity(false);
+    // Art is exported at 2x. Arcade multiplies a body by its object's scale, so
+    // dividing here keeps every hitbox the size it has always been.
+    const scale = options.texture === "bullet-drone" ? 1 : ART_SCALE;
+    bullet.setScale(scale);
     const size = BODY_SIZES[options.texture] ?? { width: 16, height: 7 };
-    body.setSize(size.width, size.height);
+    body.setSize(size.width / scale, size.height / scale);
     body.setVelocity(
       Math.cos(options.angle) * options.speed,
       Math.sin(options.angle) * options.speed,

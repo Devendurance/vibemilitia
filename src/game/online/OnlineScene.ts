@@ -51,6 +51,9 @@ import type {
 } from "@/game/multiplayer/protocol";
 
 const HUD_PUBLISH_INTERVAL_MS = 100;
+const PROJECTILE_TEXTURES = new Map(
+  ALL_PLAYER_WEAPONS.map((weapon) => [weapon.id, weapon.projectileTexture]),
+);
 /** A predicted shot the server never echoes stops counting after this long. */
 const CONFIRM_WINDOW_MS = 1500;
 const COUNTDOWN_MAX_EXTRAPOLATION_MS = 250;
@@ -208,6 +211,7 @@ export class OnlineScene extends Phaser.Scene {
   private resizeHandler: (() => void) | null = null;
   private previousPhase: string | null = null;
   private bulletGraphics!: Phaser.GameObjects.Graphics;
+  private projectileImages: Phaser.GameObjects.Image[] = [];
   private debugGraphics!: Phaser.GameObjects.Graphics;
   private crosshair!: Phaser.GameObjects.Graphics;
   private debugVisible = false;
@@ -2121,32 +2125,34 @@ export class OnlineScene extends Phaser.Scene {
     };
   }
 
+  /**
+   * Each shot is a pooled image at a fixed depth, with the same soft streak
+   * behind it on the one shared Graphics. Images are reused and never tweened.
+   */
   private drawProjectiles(): void {
     this.bulletGraphics.clear();
     if (!this.latestSnapshot) return;
     const extrapolate = Math.min(0.08, (performance.now() - this.snapshotAt) / 1000);
-    for (const projectile of this.latestSnapshot.projectiles) {
+    const projectiles = this.latestSnapshot.projectiles;
+    for (let index = 0; index < projectiles.length; index += 1) {
+      const projectile = projectiles[index];
       const x = projectile.x + projectile.vx * extrapolate;
       const y = projectile.y + projectile.vy * extrapolate;
-      const isRocket = projectile.weaponId === "rocket-launcher";
-      const isHeavy = projectile.weaponId === "heavy-cannon";
-      const isLance = projectile.weaponId === "vibe-lance";
-      const isScatter = projectile.weaponId === "scatter-blaster";
-      const isSmg =
-        projectile.weaponId === "vibe-smg" ||
-        projectile.weaponId === "akimbo-rifles";
-      const color = isRocket
-        ? 0xc7692f
-        : isHeavy
-          ? 0xf4e21c
-          : isLance
-            ? 0x9bd8f2
-            : isScatter
-              ? 0xc7692f
-              : isSmg
-                ? 0xd7ff2e
-                : 0xd7ff2e;
-      if (isRocket) {
+      const texture =
+        PROJECTILE_TEXTURES.get(projectile.weaponId) ?? "bullet-player";
+      let image = this.projectileImages[index];
+      if (!image) {
+        image = this.add.image(x, y, texture).setDepth(38).setScale(ART_SCALE);
+        this.projectileImages.push(image);
+      } else if (image.texture.key !== texture) {
+        image.setTexture(texture);
+      }
+      image
+        .setPosition(x, y)
+        .setRotation(Math.atan2(projectile.vy, projectile.vx))
+        .setVisible(true);
+
+      if (projectile.weaponId === "rocket-launcher") {
         this.bulletGraphics.lineStyle(11, 0xc7692f, 0.18);
         this.bulletGraphics.lineBetween(
           x - projectile.vx * 0.11,
@@ -2161,30 +2167,21 @@ export class OnlineScene extends Phaser.Scene {
           x - projectile.vx * 0.06,
           y - projectile.vy * 0.06,
         );
-        this.bulletGraphics.lineStyle(7, 0x0c0d0f, 1);
-        this.bulletGraphics.lineBetween(
-          x - projectile.vx * 0.03,
-          y - projectile.vy * 0.03,
-          x,
-          y,
-        );
-        this.bulletGraphics.lineStyle(4, 0xe5484d, 1);
-        this.bulletGraphics.lineBetween(
-          x - projectile.vx * 0.026,
-          y - projectile.vy * 0.026,
-          x,
-          y,
-        );
-        this.bulletGraphics.fillStyle(0xf4e21c, 1);
-        this.bulletGraphics.fillCircle(
-          x - projectile.vx * 0.032,
-          y - projectile.vy * 0.032,
-          4.2,
-        );
-        this.bulletGraphics.fillStyle(0xf5f3ec, 1);
-        this.bulletGraphics.fillCircle(x, y, 2.2);
         continue;
       }
+      const isHeavy = projectile.weaponId === "heavy-cannon";
+      const isLance = projectile.weaponId === "vibe-lance";
+      const isScatter = projectile.weaponId === "scatter-blaster";
+      const isSmg =
+        projectile.weaponId === "vibe-smg" ||
+        projectile.weaponId === "akimbo-rifles";
+      const color = isHeavy
+        ? 0xf4e21c
+        : isLance || projectile.weaponId === "vibe-smg"
+          ? 0x9bd8f2
+          : isScatter
+            ? 0xc7692f
+            : 0xd7ff2e;
       this.bulletGraphics.lineStyle(
         isHeavy ? 8 : isLance ? 5 : isSmg ? 2.5 : 4,
         color,
@@ -2196,12 +2193,11 @@ export class OnlineScene extends Phaser.Scene {
         x,
         y,
       );
-      this.bulletGraphics.fillStyle(color, 1);
-      this.bulletGraphics.fillCircle(
-        x,
-        y,
-        isHeavy ? 4.6 : isLance ? 2.4 : isSmg ? 1.8 : 2.2,
-      );
+    }
+    for (let index = projectiles.length; index < this.projectileImages.length; index += 1) {
+      const image = this.projectileImages[index];
+      if (!image.visible) break;
+      image.setVisible(false);
     }
   }
 
@@ -2331,6 +2327,7 @@ export class OnlineScene extends Phaser.Scene {
 
   private cleanup(): void {
     this.clearBackdrop();
+    this.projectileImages = [];
     if (this.sceneReadyTimer !== null) window.clearTimeout(this.sceneReadyTimer);
     this.sceneReadyTimer = null;
     this.renderScaler?.setChangeListener(null);
