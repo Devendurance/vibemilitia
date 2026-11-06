@@ -418,7 +418,7 @@ try {
     afterThrow.local?.grenadeStinking === 0 &&
       afterThrow.local?.grenadeContact === 1 &&
       afterThrow.local?.grenadeFrag === 1,
-    `stink=${afterThrow.local?.grenadeStinking}`,
+    `stink=${afterThrow.local?.grenadeStinking} alive=${afterThrow.local?.alive} selected=${afterThrow.local?.selectedGrenade} cooldown=${afterThrow.local?.grenadeCooldownRemainingMs} before=${beforeSelf.local?.grenadeStinking} beforeAlive=${beforeSelf.local?.alive} phase=${afterThrow.phase}`,
   );
   check(
     "the stinking canister is synchronized",

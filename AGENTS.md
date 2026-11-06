@@ -90,12 +90,14 @@
 - On the combined right pad, fire means "a thumb is down" and nothing else. The dead zone only freezes the angle. Don't put a distance threshold back on firing.
 - Local fire and aim are read straight from `touchInput`. Muzzle flash and sound are predicted and matched against server `shot` events through `unconfirmedShots`. Ammo, damage, cadence and hits stay on the server.
 - GO comes only from the snapshot phase changing to `live`. The digit is extrapolated from authoritative remaining time and holds at 1 until then. Don't use a live blur for the countdown: `match-backdrop` is one cached low-resolution frame.
+- Bot views build one per frame and batch shaders are linked behind the countdown backdrop. Both exist to keep the first live frames clear, so keep them when changing match start.
 - `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
 
 ## TESTING
 
 - Use any testing tools and libraries available to the project to test your changes.
 - `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `npm run verify:mobile`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
+- Never take a screenshot in a run that measures timing. It stalls rAF across the whole browser.
 - Emulated mobile proves events and layout, never physical device performance. Say so in reports.
 - Never assume your changes work; always test.
 - If the project does not have any testing tools, scripts, MCP tools, or similar resources available for testing, ask the user whether testing should be skipped.

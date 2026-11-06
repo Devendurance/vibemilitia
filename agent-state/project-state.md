@@ -6,7 +6,16 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
-## Playability rescue (current milestone)
+## Mobile control correction (current milestone)
+
+- Right pad: fire is "thumb down", aim is "thumb has a direction". Tap keeps the retained aim, drag or a 140 ms hold takes the thumb direction. Pad state writes straight to the DOM.
+- Packets: a press latches into the next packet, and the rest of that frame sends no fire so a slow-frame tap stays one shot.
+- Local shots are predicted at weapon cadence for flash and sound, matched to server `shot` events.
+- `RenderScaler` owns CSS size, backing size and world zoom. Phone world zoom and control sizes come from the screen. A resolution drop must earn at least 8% within two steps or it is reverted.
+- `lockMatchViewport` holds the page during touch matches and re-applies its viewport meta when Next rewrites head tags.
+- Countdown: `MatchCountdown` plus one cached `match-backdrop`. Batch shaders are linked behind it, bot views build one per frame.
+
+## Playability rescue (previous milestone)
 
 - Netcode: the server consumes one client tick per server tick and holds a player whose input is late, so `LocalPredictor` replay lands exactly. `RemoteInterpolator` plays remotes from a timestamped buffer with a monotonic clock.
 - Snapshots: version 2 clients get fast, slow and self sections (`snapshotCodec.ts`), about 650 B instead of 10 KB. Older tabs keep the full message.
