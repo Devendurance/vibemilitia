@@ -44,6 +44,8 @@ export class PracticeHost {
   private sinceSnapshot = 0;
   private lastPhase: string;
   private paused = false;
+  /** Art loads slowly on a phone. The start sequence waits so it can be seen. */
+  private sceneReady = false;
   private debug: boolean;
 
   constructor(options: PracticeOptions, emit: PracticeEmit) {
@@ -85,7 +87,7 @@ export class PracticeHost {
   }
 
   advance(deltaMs: number): void {
-    if (this.paused) return;
+    if (this.paused || !this.sceneReady) return;
     this.accumulator += Math.min(deltaMs, 100);
     let iterations = 0;
     while (this.accumulator >= SERVER_TICK_MS && iterations < 6) {
@@ -119,6 +121,9 @@ export class PracticeHost {
         // Practice may restart at any time. Online rooms only rematch at the end.
         if (this.simulation.phase === "live") this.simulation.debugEndMatch();
         if (this.simulation.rematch().ok) this.sendFull();
+        return;
+      case "scene-ready":
+        this.sceneReady = true;
         return;
       case "pause":
         this.paused = Boolean(message);

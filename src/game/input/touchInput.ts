@@ -22,8 +22,12 @@ export interface MutableTouchInput extends TouchFrame {
   thrustHeld: boolean;
   /** True while a thumb is on the aim pad, used for camera look-ahead. */
   aimActive: boolean;
-  /** Tap-fire latch, so a tap shorter than one packet still reaches the server. */
-  tapFireUntil: number;
+  /** Set on press, cleared by the next input packet, so a tap cannot miss one. */
+  fireLatch: boolean;
+  /** Event time of the latest aim change, for input latency telemetry. */
+  aimStamp: number;
+  /** Event time of the latest press that asked for fire. */
+  fireStamp: number;
 }
 
 export const touchInput: MutableTouchInput = {
@@ -37,7 +41,9 @@ export const touchInput: MutableTouchInput = {
   buttonJumpHeld: false,
   thrustHeld: false,
   aimActive: false,
-  tapFireUntil: 0,
+  fireLatch: false,
+  aimStamp: 0,
+  fireStamp: 0,
   jumpPressed: false,
   reloadPressed: false,
   weaponSlotPressed: null,
@@ -61,7 +67,7 @@ export function resetTouchInput(): void {
   touchInput.buttonJumpHeld = false;
   touchInput.thrustHeld = false;
   touchInput.aimActive = false;
-  touchInput.tapFireUntil = 0;
+  touchInput.fireLatch = false;
   touchInput.jumpPressed = false;
   touchInput.reloadPressed = false;
   touchInput.weaponSlotPressed = null;
@@ -75,18 +81,30 @@ export function setTouchMove(moveX: number): void {
   touchInput.moveX = Math.max(-1, Math.min(1, moveX));
 }
 
-export function setTouchAim(angle: number | null): void {
+export function setTouchAim(
+  angle: number | null,
+  stamp = performance.now(),
+): void {
   touchInput.aimAngle =
     angle === null || !Number.isFinite(angle) ? null : angle;
+  touchInput.aimStamp = stamp;
 }
 
 export function setTouchAimActive(active: boolean): void {
   touchInput.aimActive = active;
 }
 
-/** Holds fire long enough for one packet to carry it, for a quick tap. */
-export function queueTouchTapFire(durationMs = 90): void {
-  touchInput.tapFireUntil = performance.now() + durationMs;
+/**
+ * Guarantees the next input packet carries fire. Packets go out every 33 ms, so
+ * a tap between two of them would otherwise reach the server as nothing.
+ */
+export function latchTouchFire(stamp = performance.now()): void {
+  touchInput.fireLatch = true;
+  touchInput.fireStamp = stamp;
+}
+
+export function clearTouchFireLatch(): void {
+  touchInput.fireLatch = false;
 }
 
 export function setTouchFireButton(fire: boolean): void {
@@ -138,7 +156,7 @@ export function consumeTouchFrame(): TouchFrame | null {
   const frame: TouchFrame = {
     moveX: touchInput.moveX,
     aimAngle: touchInput.aimAngle,
-    fire: touchInput.fire || performance.now() < touchInput.tapFireUntil,
+    fire: touchInput.fire || touchInput.fireLatch,
     jumpHeld: touchInput.jumpHeld,
     jumpPressed: touchInput.jumpPressed,
     reloadPressed: touchInput.reloadPressed,

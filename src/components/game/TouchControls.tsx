@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Gauge, Home, RotateCw, Settings, ShieldPlus, Swords } from "lucide-react";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
@@ -12,7 +12,7 @@ import {
   queueTouchMedkit,
   queueTouchReload,
   queueTouchSwap,
-  queueTouchTapFire,
+  latchTouchFire,
   resetTouchInput,
   setTouchAim,
   setTouchAimActive,
@@ -23,13 +23,26 @@ import {
   setTouchMove,
   setTouchThrustHeld,
 } from "@/game/input/touchInput";
+import { lockMatchViewport } from "@/game/input/matchViewport";
 import { getTouchSettings, type TouchSettings } from "@/game/input/touchSettings";
 
 /** Knob travel as a fraction of the pad radius. */
 const KNOB_TRAVEL = 0.62;
-/** Shorter than this, with little drag, is a tap that fires the retained aim. */
-const TAP_MAX_MS = 220;
-const TAP_MAX_TRAVEL = 0.4;
+/** Thumb travel, as a fraction of the radius, before a press counts as a drag. */
+const AIM_DRAG_SLOP = 0.08;
+/** A press held this long without a drag takes the thumb's direction. */
+const AIM_HOLD_COMMIT_MS = 140;
+
+interface AimGesture {
+  id: number;
+  rect: DOMRect;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+  /** Last pointer position, so the hold timer can commit where the thumb is. */
+  lastX: number;
+  lastY: number;
+}
 
 function moveKnobTo(
   knob: HTMLElement | null,
@@ -43,11 +56,10 @@ function moveKnobTo(
 }
 
 function stickVector(
-  element: HTMLElement,
+  rect: DOMRect,
   clientX: number,
   clientY: number,
 ): { x: number; y: number; distance: number } {
-  const rect = element.getBoundingClientRect();
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
   const radius = Math.max(24, Math.min(rect.width, rect.height) / 2);
@@ -86,51 +98,84 @@ export function TouchControls({
   const [settings, setSettings] = useState<TouchSettings>(() =>
     getTouchSettings(),
   );
-  const [autoFire, setAutoFire] = useState(false);
-  const [thrusting, setThrusting] = useState(false);
-  const movePointer = useRef<number | null>(null);
-  const aimPointer = useRef<number | null>(null);
+  const settingsRef = useRef(settings);
+  const movePointer = useRef<{ id: number; rect: DOMRect } | null>(null);
+  const aimGesture = useRef<AimGesture | null>(null);
+  const aimHoldTimer = useRef<number | null>(null);
   const thrustRef = useRef(false);
   const movePadRef = useRef<HTMLDivElement>(null);
   const aimPadRef = useRef<HTMLDivElement>(null);
   const moveKnobRef = useRef<HTMLSpanElement>(null);
   const aimKnobRef = useRef<HTMLSpanElement>(null);
-  const aimStart = useRef({ at: 0, travel: 0 });
+  const moveLabelRef = useRef<HTMLSpanElement>(null);
+  const aimLabelRef = useRef<HTMLSpanElement>(null);
+
+  // These change at touch rate, so they write to the DOM directly. Going through
+  // React state would tie firing feedback to a render.
+  const showThrust = useCallback((active: boolean) => {
+    const pad = movePadRef.current;
+    if (!pad) return;
+    pad.classList.toggle("is-thrusting", active);
+    pad.setAttribute("data-thrusting", String(active));
+    if (moveLabelRef.current) {
+      moveLabelRef.current.textContent = active ? "THRUST" : "MOVE";
+    }
+  }, []);
+  const showFiring = useCallback((active: boolean) => {
+    const pad = aimPadRef.current;
+    if (!pad) return;
+    pad.classList.toggle("is-firing", active);
+    pad.setAttribute("data-auto-fire", String(active));
+    if (aimLabelRef.current) {
+      aimLabelRef.current.textContent = active
+        ? "FIRING"
+        : settingsRef.current.aimFireEnabled
+          ? "AIM + FIRE"
+          : "AIM";
+    }
+  }, []);
+  const clearAimHold = useCallback(() => {
+    if (aimHoldTimer.current !== null) {
+      window.clearTimeout(aimHoldTimer.current);
+      aimHoldTimer.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     setTouchEnabled(true);
+    const unlockViewport = lockMatchViewport();
     const unsubscribe = bridge.subscribe(setSnapshot);
     const reset = () => {
       resetTouchInput();
+      clearAimHold();
       moveKnobTo(moveKnobRef.current, movePadRef.current, 0, 0);
       moveKnobTo(aimKnobRef.current, aimPadRef.current, 0, 0);
-      setAutoFire(false);
-      setThrusting(false);
+      showFiring(false);
+      showThrust(false);
       thrustRef.current = false;
       movePointer.current = null;
-      aimPointer.current = null;
+      aimGesture.current = null;
     };
-    const preventGesture = (event: Event) => event.preventDefault();
     window.addEventListener("blur", reset);
     window.addEventListener("orientationchange", reset);
     document.addEventListener("visibilitychange", reset);
-    document.addEventListener("gesturestart", preventGesture);
-    document.addEventListener("gesturechange", preventGesture);
     return () => {
       unsubscribe();
+      unlockViewport();
+      clearAimHold();
       resetTouchInput();
       setTouchEnabled(false);
       window.removeEventListener("blur", reset);
       window.removeEventListener("orientationchange", reset);
       document.removeEventListener("visibilitychange", reset);
-      document.removeEventListener("gesturestart", preventGesture);
-      document.removeEventListener("gesturechange", preventGesture);
     };
-  }, [bridge]);
+  }, [bridge, clearAimHold, showFiring, showThrust]);
 
   useEffect(() => {
     const updateSettings = (event: Event) => {
-      setSettings((event as CustomEvent<TouchSettings>).detail);
+      const next = (event as CustomEvent<TouchSettings>).detail;
+      settingsRef.current = next;
+      setSettings(next);
     };
     window.addEventListener("vibe-touch-settings", updateSettings);
     return () => {
@@ -139,41 +184,40 @@ export function TouchControls({
   }, []);
 
   const applyMoveVector = (vector: { x: number; y: number }) => {
-    const moveX = Math.abs(vector.x) > settings.leftDeadZone ? vector.x : 0;
+    const current = settingsRef.current;
+    const moveX = Math.abs(vector.x) > current.leftDeadZone ? vector.x : 0;
     setTouchMove(moveX);
     moveKnobTo(moveKnobRef.current, movePadRef.current, vector.x, vector.y);
-    const thrust = vector.y <= -settings.thrustThreshold;
+    const thrust = vector.y <= -current.thrustThreshold;
     if (thrust && !thrustRef.current) {
       queueTouchJump();
     }
+    if (thrust !== thrustRef.current) showThrust(thrust);
     thrustRef.current = thrust;
-    setThrusting(thrust);
     setTouchThrustHeld(thrust);
   };
 
   const beginMove = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    movePointer.current = event.pointerId;
-    applyMoveVector(
-      stickVector(event.currentTarget, event.clientX, event.clientY),
-    );
+    const rect = event.currentTarget.getBoundingClientRect();
+    movePointer.current = { id: event.pointerId, rect };
+    applyMoveVector(stickVector(rect, event.clientX, event.clientY));
   };
 
   const updateMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (movePointer.current !== event.pointerId) return;
-    applyMoveVector(
-      stickVector(event.currentTarget, event.clientX, event.clientY),
-    );
+    const pointer = movePointer.current;
+    if (pointer?.id !== event.pointerId) return;
+    applyMoveVector(stickVector(pointer.rect, event.clientX, event.clientY));
   };
 
   const endMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (movePointer.current !== event.pointerId) return;
+    if (movePointer.current?.id !== event.pointerId) return;
     movePointer.current = null;
     setTouchMove(0);
     setTouchThrustHeld(false);
     moveKnobTo(moveKnobRef.current, movePadRef.current, 0, 0);
-    setThrusting(false);
+    showThrust(false);
     thrustRef.current = false;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -182,58 +226,75 @@ export function TouchControls({
     }
   };
 
-  const applyAimVector = (vector: {
-    x: number;
-    y: number;
-    distance: number;
-  }) => {
-    aimStart.current.travel = Math.max(aimStart.current.travel, vector.distance);
-    if (vector.distance < settings.rightDeadZone) {
-      setTouchAimFire(false);
-      setAutoFire(false);
-      moveKnobTo(aimKnobRef.current, aimPadRef.current, vector.x, vector.y);
-      return;
-    }
-    setTouchAim(Math.atan2(vector.y, vector.x));
+  /**
+   * Two separate states. Fire is "a thumb is on the pad" and nothing else, so
+   * no position can interrupt it. Aim is "the thumb has a usable direction",
+   * so the dead zone only freezes the angle, where it would otherwise spin.
+   */
+  const applyAim = (gesture: AimGesture, stamp: number) => {
+    const vector = stickVector(gesture.rect, gesture.lastX, gesture.lastY);
     moveKnobTo(aimKnobRef.current, aimPadRef.current, vector.x, vector.y);
-    const poweredDistance = Math.min(1.5, vector.distance) * settings.aimSensitivity;
-    const firing =
-      settings.aimFireEnabled &&
-      poweredDistance >= settings.aimFireThreshold;
-    setTouchAimFire(firing);
-    setAutoFire(firing);
+    if (!gesture.dragging) return;
+    if (vector.distance >= settingsRef.current.rightDeadZone) {
+      setTouchAim(Math.atan2(vector.y, vector.x), stamp);
+    }
   };
 
   const beginAim = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    aimPointer.current = event.pointerId;
-    aimStart.current = { at: performance.now(), travel: 0 };
+    const combined = settingsRef.current.aimFireEnabled;
+    const gesture: AimGesture = {
+      id: event.pointerId,
+      rect: event.currentTarget.getBoundingClientRect(),
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      // Combined mode keeps the retained aim for a tap. The FIRE button mode has
+      // no tap, so the pad aims from the first contact.
+      dragging: !combined,
+    };
+    aimGesture.current = gesture;
     setTouchAimActive(true);
-    applyAimVector(
-      stickVector(event.currentTarget, event.clientX, event.clientY),
-    );
+    if (combined) {
+      setTouchAimFire(true);
+      latchTouchFire(event.timeStamp);
+      showFiring(true);
+      clearAimHold();
+      aimHoldTimer.current = window.setTimeout(() => {
+        aimHoldTimer.current = null;
+        if (aimGesture.current !== gesture) return;
+        gesture.dragging = true;
+        applyAim(gesture, performance.now());
+      }, AIM_HOLD_COMMIT_MS);
+    }
+    applyAim(gesture, event.timeStamp);
   };
 
   const updateAim = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (aimPointer.current !== event.pointerId) return;
-    applyAimVector(
-      stickVector(event.currentTarget, event.clientX, event.clientY),
-    );
+    const gesture = aimGesture.current;
+    if (gesture?.id !== event.pointerId) return;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+    if (!gesture.dragging) {
+      const radius = Math.max(24, gesture.rect.width / 2);
+      const travel = Math.hypot(
+        event.clientX - gesture.startX,
+        event.clientY - gesture.startY,
+      );
+      if (travel / radius >= AIM_DRAG_SLOP) gesture.dragging = true;
+    }
+    applyAim(gesture, event.timeStamp);
   };
 
   const endAim = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (aimPointer.current !== event.pointerId) return;
-    aimPointer.current = null;
-    const quickTap =
-      event.type === "pointerup" &&
-      settings.aimFireEnabled &&
-      performance.now() - aimStart.current.at <= TAP_MAX_MS &&
-      aimStart.current.travel <= TAP_MAX_TRAVEL;
-    if (quickTap) queueTouchTapFire();
+    if (aimGesture.current?.id !== event.pointerId) return;
+    aimGesture.current = null;
+    clearAimHold();
     setTouchAimActive(false);
     setTouchAimFire(false);
-    setAutoFire(false);
+    showFiring(false);
     moveKnobTo(aimKnobRef.current, aimPadRef.current, 0, 0);
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -310,9 +371,8 @@ export function TouchControls({
 
       <div
         ref={movePadRef}
-        className={`tc-pad tc-pad--move${thrusting ? " is-thrusting" : ""}`}
+        className="tc-pad tc-pad--move"
         data-testid="touch-move"
-        data-thrusting={thrusting}
         role="group"
         aria-label="Move and fly directional pad"
         onPointerDown={beginMove}
@@ -330,17 +390,16 @@ export function TouchControls({
         </span>
         <span className="tc-pad__ring" aria-hidden="true" />
         <span ref={moveKnobRef} className="tc-pad__knob" aria-hidden="true" />
-        <span className="tc-pad__label">{thrusting ? "THRUST" : "MOVE"}</span>
+        <span ref={moveLabelRef} className="tc-pad__label">MOVE</span>
       </div>
 
       <div
         ref={aimPadRef}
-        className={`tc-pad tc-pad--aim${autoFire ? " is-firing" : ""}`}
+        className="tc-pad tc-pad--aim"
         data-testid="touch-aim"
-        data-auto-fire={autoFire}
         data-aim-fire-enabled={settings.aimFireEnabled}
         role="group"
-        aria-label="Aim and optional auto-fire pad"
+        aria-label="Aim and fire pad"
         onPointerDown={beginAim}
         onPointerMove={updateAim}
         onPointerUp={endAim}
@@ -354,8 +413,8 @@ export function TouchControls({
         </span>
         <span className="tc-pad__ring" aria-hidden="true" />
         <span ref={aimKnobRef} className="tc-pad__knob" aria-hidden="true" />
-        <span className="tc-pad__label">
-          {autoFire ? "FIRING" : settings.aimFireEnabled ? "AIM + FIRE" : "AIM"}
+        <span ref={aimLabelRef} className="tc-pad__label">
+          {settings.aimFireEnabled ? "AIM + FIRE" : "AIM"}
         </span>
       </div>
 
@@ -366,6 +425,7 @@ export function TouchControls({
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           setTouchFireButton(true);
+          latchTouchFire(event.timeStamp);
         }}
         onPointerUp={(event) => {
           setTouchFireButton(false);
@@ -532,8 +592,8 @@ export function TouchControls({
       </span>
       <span className="sr-only">
         Touch controls active. Left pad moves and pushes up to fly. Right pad
-        rotates your aim. Drag to aim and fire, tap to fire once, release to
-        stop. Active weapon{" "}
+        rotates your aim and fires while your thumb is down. Tap to fire once,
+        release to stop. Active weapon{" "}
         {activeSlot?.shortName ?? snapshot.weaponShortName}.
       </span>
     </div>

@@ -9,4 +9,6 @@ export interface MatchRoom {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onMessage(type: string, callback: (message: any) => void): () => void;
   send(type: string, message?: unknown): void;
+  /** Local rooms hold their countdown until the scene can show it. */
+  markSceneReady?(): void;
 }

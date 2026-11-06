@@ -130,8 +130,10 @@ export class CombatantView {
     nameVisible: boolean;
     botLabelVisible: boolean;
     healthBarVisible: boolean;
+    aim: number;
   } {
     return {
+      aim: this.currentAim,
       texture: this.sprite.texture.key,
       weaponTexture: this.visuals.weaponTextureKey,
       weaponVisible: this.visuals.weaponVisible,

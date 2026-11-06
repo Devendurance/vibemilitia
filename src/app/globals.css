@@ -120,11 +120,14 @@ a:focus-visible {
   position: absolute;
   inset: 0;
   z-index: 0;
+  overflow: hidden;
   background: var(--ink);
 }
 
 .game-canvas canvas {
   display: block;
+  width: var(--canvas-w);
+  height: var(--canvas-h);
   cursor: none;
 }
 
@@ -2829,8 +2832,7 @@ a:focus-visible {
   overscroll-behavior: none;
 }
 
-.game-frame.is-touch .game-canvas,
-.game-frame.is-touch .game-canvas canvas {
+.game-frame.is-touch .game-canvas {
   width: 100%;
   height: 100%;
 }
@@ -6122,7 +6124,12 @@ a:focus-visible {
       "footer";
     gap: 7px;
     padding: 8px 10px 6px;
-    overflow: hidden;
+    /* The hub scrolls itself. The document stays locked for match routes. */
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
   .hub-top { gap: 8px; }
   .hub-brand__mark { width: 28px; height: 24px; }
@@ -7094,7 +7101,10 @@ a:focus-visible {
 }
 
 .game-frame.is-touch .touch-controls {
-  --pad-size: clamp(116px, 36dvh, 156px);
+  /* Sized from the screen. A pad must not change when a browser toolbar moves. */
+  --pad-size: clamp(112px, calc(var(--match-h, 100vh) * 0.36), 156px);
+  --tc-button: clamp(44px, calc(var(--match-h, 100vh) * 0.118), 46px);
+  --tc-jump: clamp(52px, calc(var(--match-h, 100vh) * 0.149), 58px);
   --tc-gap: 10px;
   --safe-left: env(safe-area-inset-left);
   --safe-right: env(safe-area-inset-right);
@@ -7226,8 +7236,8 @@ a:focus-visible {
   display: grid;
   place-items: center;
   gap: 0;
-  width: 46px;
-  height: 46px;
+  width: var(--tc-button);
+  height: var(--tc-button);
   padding: 0;
   border: 1px solid rgba(245, 243, 236, 0.28);
   border-radius: 50%;
@@ -7253,8 +7263,8 @@ a:focus-visible {
 .game-frame.is-touch .tc-action--jump {
   right: calc(14px + var(--safe-right) + var(--pad-size) + var(--tc-gap));
   bottom: calc(10px + var(--safe-bottom));
-  width: 58px;
-  height: 58px;
+  width: var(--tc-jump);
+  height: var(--tc-jump);
   border-color: rgba(215, 255, 46, 0.5);
 }
 
@@ -7333,21 +7343,6 @@ a:focus-visible {
   background: rgba(215, 255, 46, 0.16);
 }
 
-/* Short phones: tighten the arc rather than cover the middle of the arena. */
-@media (max-height: 380px) {
-  .game-frame.is-touch .touch-controls {
-    --pad-size: 112px;
-  }
-  .game-frame.is-touch .tc-action {
-    width: 44px;
-    height: 44px;
-  }
-  .game-frame.is-touch .tc-action--jump {
-    width: 52px;
-    height: 52px;
-  }
-}
-
 .game-frame.is-touch .results-card {
   width: min(640px, calc(100% - 20px));
   padding: 10px 14px;
@@ -7410,4 +7405,168 @@ a:focus-visible {
   bottom: auto;
   left: 50%;
   transform: translateX(-50%);
+}
+
+/* ---------- Portrait hub: scrolls, with room for thumbs ---------- */
+
+@media (orientation: portrait) and (max-width: 900px) {
+  .hub {
+    grid-template-rows: 50px minmax(190px, 30vh) auto auto auto;
+  }
+  .hub__scene { position: fixed; }
+  .hub-hero { overflow: clip; }
+  .hub-nav__item { height: 36px; }
+  .hub-edit { height: 32px; padding: 0 10px; font-size: 9px; }
+  .hub-mode__tabs button { height: 40px; font-size: 10px; }
+  .hub-option { min-height: 44px; }
+  .hub-difficulty button { height: 40px; font-size: 10px; }
+  .hub-mode__note { font-size: 11px; line-height: 1.4; }
+  .hub-footer__links button { min-height: 32px; font-size: 8px; }
+  .hub-footer__status .mono-label { font-size: 8px; }
+  .hub-hero__change { height: 36px; font-size: 9px; }
+}
+
+/* ---------- Match viewport lock ---------- */
+
+html.in-match,
+html.in-match body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+html.in-match .settings-overlay,
+html.in-match .settings-card {
+  touch-action: pan-y;
+}
+
+html.in-match .settings-card input,
+html.in-match .settings-card textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* iOS zooms the page when a smaller input takes focus, and the zoom stays. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+.game-frame.is-touch .tc-top-button {
+  position: relative;
+}
+
+/* Keeps the small top buttons at a 44px target without crowding the strip. */
+.game-frame.is-touch .tc-top-button::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+/* Narrow phones: the slot row would run into the right cluster beside a notch. */
+@media (max-width: 700px) {
+  .game-frame.is-touch .tc-weapons {
+    bottom: calc(10px + var(--safe-bottom) + var(--pad-size) + 8px);
+    left: calc(14px + var(--safe-left));
+  }
+}
+
+/* ---------- Pre-match countdown ---------- */
+
+/* The strip already names the mode on a phone, and space there is short. */
+.game-frame.is-touch .hud-intro {
+  display: none;
+}
+
+.game-canvas canvas.match-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.match-countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.match-countdown__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 13, 15, 0.46);
+}
+
+.match-countdown__waiting {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 14px 28px 12px;
+  border: 1px solid #3d434b;
+  border-radius: 8px;
+  background: rgba(22, 24, 28, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.match-countdown__waiting strong {
+  color: #f5f3ec;
+  font: 800 44px/1 var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  font-stretch: 125%;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-countdown__digit,
+.match-countdown__go {
+  position: relative;
+  font-family: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+  font-size: clamp(120px, 42cqh, 280px);
+  font-stretch: 125%;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 6px 0 #0c0d0f;
+  will-change: transform, opacity;
+}
+
+.match-countdown__digit {
+  color: #f5f3ec;
+  animation: match-digit 1000ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.match-countdown__go {
+  color: #f4e21c;
+  animation: match-go 700ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes match-digit {
+  0% { opacity: 0; transform: scale(1.6); }
+  18% { opacity: 1; transform: scale(1); }
+  78% { opacity: 1; transform: scale(0.96); }
+  100% { opacity: 0.2; transform: scale(0.82); }
+}
+
+@keyframes match-go {
+  0% { opacity: 0; transform: scale(0.7); }
+  20% { opacity: 1; transform: scale(1.08); }
+  60% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .match-countdown__digit,
+  .match-countdown__go {
+    animation-name: none;
+  }
 }

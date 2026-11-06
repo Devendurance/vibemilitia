@@ -30,6 +30,7 @@
     "verify:online:p5": "node scripts/verify-online-p5.mjs",
     "verify:ux": "node scripts/verify-hub-ux.mjs",
     "verify:playability": "node scripts/verify-playability.mjs",
+    "verify:mobile": "node scripts/verify-mobile-controls.mjs",
     "measure:playability": "node scripts/measure-playability.mjs",
     "verify:production": "node scripts/verify-production-beta.mjs",
     "server:dev": "tsx watch server/index.ts",

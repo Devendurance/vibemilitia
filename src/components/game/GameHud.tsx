@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { getCharacterSkin, HUMAN_DEFAULT_SKIN_ID } from "@/game/characters/roster";
+import { MatchCountdown } from "@/components/game/MatchCountdown";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
@@ -438,6 +439,12 @@ export function GameHud({
             <em>{mode === "practice" ? `PRACTICE // ${difficultyLabel ?? "NORMAL"}` : "FREE FOR ALL"}</em>
           </div>
         ) : null}
+
+        <MatchCountdown
+          phase={snapshot.matchPhase}
+          countdownMs={snapshot.matchCountdownMs}
+          hidden={bootVisible}
+        />
 
         <div className="hud-feed" aria-live="polite">
           {visibleFeed.map((entry) => (

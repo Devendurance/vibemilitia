@@ -85,12 +85,17 @@
 - A real public RTT from Nigeria through the Cloudflare tunnel is 360 to 560 ms. Test netcode at 550/80 as well as 100-250 ms, using `scripts/lib/latency-proxy.mjs`. Devtools throttling does not reliably apply to WebSockets.
 - Never add a per-frame Phaser `Arc`, `Ellipse` or stroked shape to a match. Each one re-tessellates every frame. Bake a texture in `makeBakedEffects`. Never use `backdrop-filter` over the live canvas.
 - Practice is `GameSimulation` in a worker behind `PracticeRoom`. Add rules to the simulation, never to a practice copy. The older drone drill stays at `/practice?engine=legacy` for the P1 suite only.
+- Render scale and world zoom are separate. `RenderScaler` owns the CSS size, the backing size and `worldZoom`, and the camera renders at `worldZoom * renderScale`. Keep Phaser's own scale zoom at 1: its `resize` skips the canvas style at zoom 1, which once left a 1055x488 canvas in an 844x390 frame and enlarged the world by 25%.
+- On a phone, world zoom and control sizes come from the physical screen, never from `dvh` or the current height, so browser toolbars can't move them. Small height losses don't resize the canvas, the frame clips it.
+- On the combined right pad, fire means "a thumb is down" and nothing else. The dead zone only freezes the angle. Don't put a distance threshold back on firing.
+- Local fire and aim are read straight from `touchInput`. Muzzle flash and sound are predicted and matched against server `shot` events through `unconfirmedShots`. Ammo, damage, cadence and hits stay on the server.
+- GO comes only from the snapshot phase changing to `live`. The digit is extrapolated from authoritative remaining time and holds at 1 until then. Don't use a live blur for the countdown: `match-backdrop` is one cached low-resolution frame.
 - `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
 
 ## TESTING
 
 - Use any testing tools and libraries available to the project to test your changes.
-- `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
+- `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `npm run verify:mobile`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
 - Emulated mobile proves events and layout, never physical device performance. Say so in reports.
 - Never assume your changes work; always test.
 - If the project does not have any testing tools, scripts, MCP tools, or similar resources available for testing, ask the user whether testing should be skipped.

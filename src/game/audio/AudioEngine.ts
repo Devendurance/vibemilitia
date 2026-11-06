@@ -19,6 +19,7 @@ export type SoundId =
   | "medkitPickup"
   | "medkitUse"
   | "countdown"
+  | "matchGo"
   | "victory"
   | "defeat"
   | "uiSelect"
@@ -374,6 +375,11 @@ class AudioEngine {
         break;
       case "countdown":
         this.tone({ type: "square", frequency: 660, duration: 0.1, gain: 0.07 * gain });
+        break;
+      case "matchGo":
+        [880, 1320].forEach((frequency, index) =>
+          this.tone({ type: "square", frequency, duration: 0.2, gain: 0.08 * gain, delay: index * 0.05 }),
+        );
         break;
       case "victory":
         [523, 659, 784, 1046].forEach((frequency, index) =>
