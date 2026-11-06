@@ -234,8 +234,8 @@ export class PlayerVisuals {
   }
 
   kick(): void {
-    this.muzzle.setPosition(MUZZLE_LOCAL_X, this.weaponImage.y);
-    this.muzzle2.setPosition(MUZZLE_LOCAL_X, this.weaponImage2.y);
+    this.muzzle.setY(this.weaponImage.y);
+    this.muzzle2.setY(this.weaponImage2.y);
   }
 
   dustPuff(x: number, y: number): void {
