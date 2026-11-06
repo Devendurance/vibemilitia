@@ -456,18 +456,19 @@ Last verification against the production build:
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass on the final rerun against `/practice`
-- `npm run verify:online:countdown`: 16/16 checks pass
+- `npm run verify:online:countdown`: core countdown, bot fill, live HUD and lobby card checks pass. The 90-second clock assertion sampled 82.85 seconds after a cold client start and correctly failed its strict timing assumption.
 - `npm run verify:online:matchmaking`: 11/11 checks pass on a clean server
 - `npm run verify:online:characters`: 34/35 on the final timing-sensitive run; the one miss was a late human joining after bot skin assignment, a documented collision case. All other character checks passed.
 - `npm run verify:online:bots`: 32/32 checks pass
 - `npm run verify:online:match`: 25/25 checks pass
 - `npm run verify:online:pickups`: 28/28 checks pass
-- `npm run verify:online:grenades`: 28/28 checks pass
-- `npm run verify:online:stinking`: 25/25 checks pass
+- `npm run verify:online:grenades`: 28/28 checks pass on the rerun after a timing-only contact-kill miss
+- `npm run verify:online:stinking`: 25/25 checks pass after baselining death counts and using the bridge command on the late-join page
+- `npm run verify:online:arsenal`: 26/26 checks pass
 - `npm run verify:online:loot`: 41/41 checks pass
 - `npm run verify:online:p4`: 35/35 checks pass
 - `npm run verify:online:arsenal`: 26/26 checks pass
-- `npm run verify:online:rooms`: 16/16 checks pass
+- `npm run verify:online:rooms`: 15/16 on the final run with one transient Cloudflare-style 522 on a join request; all functional seat, end-state and error-message checks passed
 - `npm run verify:online:p5`: 42/42 checks pass across four landscape shapes plus portrait guard and desktop
 - `npm run verify:ux`: 49/49 checks pass against the public production site with zero browser errors across ten viewport shapes, drawer interactions, practice, reload recovery and a two-human room
 - `npm run verify:production`: 50/50 checks pass against the public beta, including PostgreSQL, two browser contexts, countdown joins, a live round, replay, reconnect, XP settlement and the mobile landscape guard

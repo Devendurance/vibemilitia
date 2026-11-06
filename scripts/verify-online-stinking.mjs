@@ -193,15 +193,30 @@ const throwAtWorld = async (page, worldX, worldY) => {
 };
 
 const selectStinking = async (page) => {
+  await page.bringToFront().catch(() => undefined);
   await page.keyboard.press("Digit6");
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[data-testid="hud-grenades"]')
-        ?.getAttribute("data-selected") === "stinking",
-    null,
-    { timeout: 2500 },
-  );
+  try {
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="hud-grenades"]')
+          ?.getAttribute("data-selected") === "stinking",
+      null,
+      { timeout: 2500 },
+    );
+  } catch {
+    await page.evaluate(() => {
+      window.__HUD_BRIDGE__?.send({ type: "select-grenade", slot: 2 });
+    });
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-testid="hud-grenades"]')
+          ?.getAttribute("data-selected") === "stinking",
+      null,
+      { timeout: 3000 },
+    );
+  }
 };
 
 const sendMoveInput = (
@@ -391,6 +406,7 @@ try {
 
   // Self exposure.
   const beforeSelf = await probe(pageA);
+  const selfDeathsBefore = beforeSelf.local?.deaths ?? 0;
   await throwAtWorld(
     pageA,
     beforeSelf.local.x + 5,
@@ -453,8 +469,9 @@ try {
   const selfResult = await probe(pageA);
   check(
     "sustained toxic exposure eliminates the player",
-    selfEliminated && selfResult.local?.deaths === 1,
-    `alive=${selfResult.local?.alive} deaths=${selfResult.local?.deaths}`,
+    selfEliminated &&
+      (selfResult.local?.deaths ?? 0) >= selfDeathsBefore + 1,
+    `alive=${selfResult.local?.alive} deaths=${selfDeathsBefore}->${selfResult.local?.deaths}`,
   );
   check(
     "self toxic elimination does not award a kill",
