@@ -7,6 +7,7 @@ Mobile control, viewport and countdown correction is merged and frontend-deploye
 ## Done
 
 - Mobile correction on `main`: combined aim + fire, render scale split from world zoom, match viewport lock, animated authoritative countdown, portrait hub scrolling. Frontend only, so the backend stays on `af205b9`. No server, simulation or protocol file changed.
+- Frontend `dpl_4tJYbdVTVvRHsrvrxgez2VZNUZBi` from `eb23704`. Public practice smoke and `verify-release` with `NO_GUEST=1` passed.
 - Gates: `verify:mobile` 129/129, `verify:playability` 109/109, unit 212 pass. Traces in `artifacts/playability/mobile/`.
 - Backend release `af205b9` on `~/apps/vibe-militia-releases/af205b9`, live on loopback 2767. Rollback: point the symlink at `eebd97b` and restart `vibe-militia.service`.
 - Frontend `dpl_7tm9h71jGNk7RCHo7ftYe3AVLG6P` from `e3c4f28`. Previous code deployment: `dpl_FDvQ89MUKGketaeBWfuYpRaQRNHt`.
