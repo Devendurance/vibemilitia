@@ -452,6 +452,7 @@ Last verification against the production build:
 
 - `npm run typecheck`: pass
 - `npm test`: 179 tests pass across 23 files, with 7 Neon PostgreSQL tests skipped when `TEST_DATABASE_URL` is absent
+- `npm run test:postgres`: 7/7 pass on the rerun against the disposable test branch after one transient Neon connection failure
 - `npm run lint`: pass
 - `npm run build`: pass
 - `npm run verify:browser`: 37/37 checks pass on the final rerun against `/practice`
