@@ -7410,10 +7410,19 @@ a:focus-visible {
 /* ---------- Portrait hub: scrolls, with room for thumbs ---------- */
 
 @media (orientation: portrait) and (max-width: 900px) {
+  /* A stack, so content sets the height and the hub scrolls instead of squeezing. */
   .hub {
-    grid-template-rows: 50px minmax(190px, 30vh) auto auto auto;
+    display: flex;
+    flex-direction: column;
   }
+  .hub > * { flex: none; }
+  .hub-top { order: 1; min-height: 50px; }
+  .hub-hero { order: 2; height: max(190px, 30vh); }
+  .hub-profile { order: 3; }
+  .hub-mode { order: 4; }
+  .hub-footer { order: 5; }
   .hub__scene { position: fixed; }
+  .hub-mode__body { flex: none; }
   .hub-hero { overflow: clip; }
   .hub-nav__item { height: 36px; }
   .hub-edit { height: 32px; padding: 0 10px; font-size: 9px; }
@@ -7424,6 +7433,10 @@ a:focus-visible {
   .hub-footer__links button { min-height: 32px; font-size: 8px; }
   .hub-footer__status .mono-label { font-size: 8px; }
   .hub-hero__change { height: 36px; font-size: 9px; }
+}
+
+@media (orientation: portrait) and (max-width: 400px) {
+  .hub-brand__type { display: none; }
 }
 
 /* ---------- Match viewport lock ---------- */

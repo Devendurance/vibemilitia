@@ -628,7 +628,7 @@ try {
         };
       });
       check(`15 ${width}x${height}: no horizontal overflow`, audit.horizontal <= 0, audit.horizontal);
-      const ids = ["hub-mode-online", "hub-mode-practice", "hub-play", "hub-edit-profile", "hub-tab-rankings"];
+      const ids = ["hub-mode-online", "hub-mode-practice", "hub-online-quick", "hub-online-create", "hub-play", "hub-edit-profile", "hub-tab-rankings", "hub-settings"];
       const hidden = [];
       for (const id of ids) {
         const element = page.locator(`[data-testid="${id}"]`).first();
@@ -637,6 +637,14 @@ try {
         const rect = await element.boundingBox();
         if (!rect || rect.y < -1 || rect.y + rect.height > height + 1) hidden.push(`${id} off screen`);
         else if (Math.min(rect.height, rect.width) < 24) hidden.push(`${id} tiny`);
+        else {
+          const covered = await element.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+            return !(hit && (hit === node || node.contains(hit)));
+          });
+          if (covered) hidden.push(`${id} covered`);
+        }
       }
       check(`15 ${width}x${height}: every section can be reached`, hidden.length === 0, hidden.join(", ") || `content ${audit.scrollHeight}, view ${audit.clientHeight}`);
       if (audit.scrollHeight > audit.clientHeight) {
@@ -650,7 +658,8 @@ try {
         await touch(cdp, "touchEnd", []);
         await page.waitForTimeout(350);
         const scrolled = await page.evaluate(() => document.querySelector(".hub").scrollTop);
-        check(`15 ${width}x${height}: a real finger drag scrolls the hub`, scrolled > hubBefore + 40, `scrollTop ${scrolled}`);
+        const reach = Math.min(40, audit.scrollHeight - audit.clientHeight - 2);
+        check(`15 ${width}x${height}: a real finger drag scrolls the hub`, scrolled >= hubBefore + reach, `scrollTop ${scrolled} of ${audit.scrollHeight - audit.clientHeight}`);
       }
       await page.screenshot({ path: `${out}/portrait-${width}x${height}.png` });
       await page.goto(`${stack.baseUrl}/online`, { waitUntil: "load" });
