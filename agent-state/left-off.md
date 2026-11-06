@@ -2,10 +2,11 @@
 
 ## Current task
 
-Approved sprite art is on branch `feat/approved-sprite-art`, pushed and not merged or deployed. It waits on owner review and a physical phone test.
+Approved sprite art is merged and frontend-deployed. Next is a physical phone test and a real-player beta.
 
 ## Done
 
+- Frontend `dpl_Fc9XxSRLMo6s1dn4XQRJXaRbHZq2` from `fac7d8b`, with the sprite art. Previous code deployment: `dpl_Bm2SdBeH83tKeyJZX5fx6T1LNRnu`. Backend stays on `af205b9`. Public practice smoke and `verify-release` with `NO_GUEST=1` passed.
 - Art: guns, akimbo layers, grenades, medkit, projectiles and HUD, hub and touch icons replace the procedural art. Medkit and grenade pickups have no dark tag, only the glow ring. 248 KB in `public/sprites/{loadout,projectiles,icons}`. Sources backed up in the ignored `artifacts/sprite-sources/`.
 - Art measurement `npm run measure:art`, results in `artifacts/art/{baseline,after}.json`: no FPS or p95 change.
 - Mobile correction on `main`: combined aim + fire, render scale split from world zoom, match viewport lock, animated authoritative countdown, portrait hub scrolling. Frontend only, so the backend stays on `af205b9`. No server, simulation or protocol file changed.
@@ -18,7 +19,7 @@ Approved sprite art is on branch `feat/approved-sprite-art`, pushed and not merg
 
 ## Next
 
-0. Owner reviews the art branch, tests it on a physical phone, then merge and deploy. Frontend only.
+0. Owner tests the live art on a physical phone. Rerun `verify:mobile` countdown timing on a quiet machine.
 1. Test on physical iOS and Android. Everything mobile so far is Chromium emulation.
 2. Decide the route. From Nigeria the tunnel measures p50 467 ms against 201 ms direct to the VPS, because traffic detours through NBO or JNB. Options, needing owner approval: a direct TLS hostname on the VPS, then a London or Frankfurt server if players are mostly in Africa or Europe. Player locations are not yet known.
 3. Run the 15-20 player beta from `BETA_TESTING.md`.
