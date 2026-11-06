@@ -10,11 +10,10 @@ import json
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 SOURCE = Path(sys.argv[1])
 OUT = Path("public/sprites")
-SUPERSAMPLE = 4
 
 GUNS = {
     "vibe-rifle": (152, 60),
@@ -40,12 +39,11 @@ BULLETS = {
     "proj-bullet-heavy": (56, 24),
     "proj-rocket-projectile": (68, 24),
 }
-# Same tag and rim as the procedural pickups: 64x54 at 2x.
 PICKUPS = {
-    "medkit": ("pickup-medkit", (0xF5, 0xF3, 0xEC)),
-    "grenade-contact": ("pickup-grenade-contact", (0xFF, 0x6B, 0x35)),
-    "grenade-frag": ("pickup-grenade-frag", (0xF4, 0xE2, 0x1C)),
-    "grenade-stinking": ("pickup-grenade-stinking", (0x9B, 0xFF, 0x5A)),
+    "medkit": "pickup-medkit",
+    "grenade-contact": "pickup-grenade-contact",
+    "grenade-frag": "pickup-grenade-frag",
+    "grenade-stinking": "pickup-grenade-stinking",
 }
 ICON_HEIGHT = 36
 ICON_WIDTH = 66
@@ -70,25 +68,6 @@ def save(image, path):
     return path.stat().st_size
 
 
-def tag(icon, rim):
-    scale = SUPERSAMPLE
-    width, height = 128, 108
-    layer = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer)
-    box = (4 * scale, 4 * scale, (width - 4) * scale, (height - 4) * scale)
-    draw.rounded_rectangle(
-        box,
-        radius=18 * scale,
-        fill=(0x0C, 0x0D, 0x0F, 209),
-        outline=rim + (255,),
-        width=5 * scale,
-    )
-    baked = layer.resize((width, height), Image.LANCZOS)
-    art = fit(icon, 92, 84)
-    baked.alpha_composite(art, ((width - art.width) // 2, (height - art.height) // 2))
-    return baked
-
-
 def main():
     total = 0
     sizes = {}
@@ -104,8 +83,8 @@ def main():
         art = fit(load(name), width, height)
         total += save(art, OUT / "projectiles" / f"{name}.png")
         sizes[name] = art.size
-    for name, (key, rim) in PICKUPS.items():
-        total += save(tag(load(name), rim), OUT / "loadout" / f"{key}.png")
+    for name, key in PICKUPS.items():
+        total += save(fit(load(name), 96, 96), OUT / "loadout" / f"{key}.png")
 
     for name in [
         "vibe-rifle",

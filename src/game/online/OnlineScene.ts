@@ -51,6 +51,9 @@ import type {
 } from "@/game/multiplayer/protocol";
 
 const HUD_PUBLISH_INTERVAL_MS = 100;
+/** Untagged art is 96 tall. These hold the 50 and 45 unit height of the old tags. */
+const PICKUP_SCALE = 0.52;
+const LOOT_SCALE = 0.47;
 const PROJECTILE_TEXTURES = new Map(
   ALL_PLAYER_WEAPONS.map((weapon) => [weapon.id, weapon.projectileTexture]),
 );
@@ -1207,7 +1210,7 @@ export class OnlineScene extends Phaser.Scene {
                 : weaponDefinition?.weaponTexture ?? "pickup-medkit";
         const image = this.add
           .image(0, weaponDefinition ? -10 : -4, texture)
-          .setScale(weaponDefinition ? 0.9 * ART_SCALE : 0.46);
+          .setScale(weaponDefinition ? 0.9 * ART_SCALE : PICKUP_SCALE);
         const container = this.add
           .container(pickup.x, pickup.y, [glow, image])
           .setDepth(24);
@@ -1292,7 +1295,7 @@ export class OnlineScene extends Phaser.Scene {
           .setDisplaySize(lootGlowSize, lootGlowSize);
         const image = this.add
           .image(0, item.kind === "weapon" ? -14 : -6, texture)
-          .setScale(item.kind === "weapon" ? 1.05 * ART_SCALE : 0.42);
+          .setScale(item.kind === "weapon" ? 1.05 * ART_SCALE : LOOT_SCALE);
         const container = this.add
           .container(item.x, item.y, [beam, glow, image])
           .setDepth(26);
