@@ -147,6 +147,15 @@ VIBER-010 remains the default and fallback, preserved from the original Vibe Vib
 - P5 touch settings are stored under `vibe-militia-touch` and streamed to the control layer through a `vibe-touch-settings` event so changes apply without reloading the match.
 - P5 feedback stores only kind, message, route, app version, optional guest ID and rating. It never stores IP addresses or user agents.
 
+## UX overhaul verification
+
+- Public UX matrix 49/49 with zero browser errors at ten sizes; hub, drawers, practice, focused online lobby, two humans and reload recovery.
+- Public production regression 50/50, including HTTPS/WSS, PostgreSQL, guest API, two browser contexts, countdown join, live round, replay, reconnect, XP settlement and mobile guard.
+- Local P1 37/37, P4 35/35, P5 42/42, online match 25/25, online bots 32/32, pickups 28/28, loot 41/41, clean matchmaking 11/11. Characters 34/35 on the final timing run; the miss is the documented late-join bot skin collision.
+- Unit 179 pass, 7 PostgreSQL tests skipped without `TEST_DATABASE_URL`; typecheck, lint and build pass.
+- Headed perf 46 fps with 1.77 ms average and 5.20 ms p95 under local test load. Headless recovered public match 59 fps.
+- Screenshots and discrepancy log are under `artifacts/ux-final/` and `artifacts/ux-production/`.
+
 ## Verification
 
 - `npm run verify:production`: 50/50 checks against the live public beta with real browsers and no test hooks

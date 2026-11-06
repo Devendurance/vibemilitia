@@ -2,32 +2,29 @@
 
 ## Current task
 
-UX overhaul milestone: hub, onboarding/leaderboard, practice difficulty, focused online lobby, mobile v2 controls, 30s reload recovery, production deploy and verification. P6 not started.
+UX overhaul milestone is implemented, committed, deployed and verified. P6 not started.
 
 ## Done
 
-- `/` is now the Sector 07 game hub. `/practice?difficulty=...` is the local P1 drill. `/online` is the focused matchmaking lobby.
-- Hub has hero Viber, compact profile, online/practice switch, four difficulties, starter loadout preview, character/profile/rankings/settings/loadout drawers and SVG Sector 07 backdrop.
-- Onboarding captures editable callsign, optional self-declared X handle and leaderboard opt-in. No name uniqueness claim, no X verification claim.
-- Server schema v3 adds `x_handle`, `x_public`, `leaderboard_visible`. `GET /api/leaderboard` is server-derived and opt-in. Guest limit is 30/min.
-- Local practice bots have four real tuning profiles. Practice never touches XP, profiles or leaderboard.
-- Mobile v2 thin HUD, 4-way left pad with thrust, round aim/fire pad, compact grenade/throw/reload/weapon/medkit/pickup, fullscreen via settings, portrait guard, camera zoom `height/680`.
-- Reconnect: `RECONNECT_GRACE_SECONDS` defaults 30. Tab-scoped single-use resume handle + `POST /api/resume`; P4 35/35 and browser reload/expiry verified.
-- P5 41/42 on last run; only feedback close race failed, fixed by 700ms close. Rerun pending.
-- `verify:ux` script added: 49/51 on dev; remaining two were test formula issues (local camera width fields) and headless FPS threshold, both patched.
-- Single global stylesheet: `globals.css` now contains hub/online/touch styles. Do not add a second global CSS import; Turbopack dropped the first sheet.
+- Final commit: `e9d3ea1`. Earlier milestone commits: `21f4ff2` (server identity/rankings/reload recovery), `eebd97b` (hub/practice/mobile overhaul).
+- Frontend: Vercel production `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs`, `https://vibemilitia-oeu7oj914-endy-s-winning-szn.vercel.app`, aliased to `https://vibemilitia.vercel.app`. Git automatic deployment works from `main`.
+- Backend: `https://vibemilitia-game.endyos.xyz`, release `~/apps/vibe-militia-releases/eebd97b`, symlink `~/apps/vibe-militia`, loopback `127.0.0.1:2767`.
+- `/api/config` live: `reconnectGraceSeconds=30`, `matchCountdownMs=20000`, `persistence=postgres`.
+- Public UX: `verify:ux` 49/49 with zero browser errors across the ten-size matrix, drawers, practice, reload recovery and a two-human room.
+- Public regression: `verify:production` 50/50 against the live URL, including PostgreSQL, two browsers, join, live round, replay, reconnect, XP settlement and mobile guard.
+- Local regressions: P1 37/37, P4 35/35, P5 42/42, online match 25/25, online bots 32/32, pickups 28/28, loot 41/41, clean matchmaking 11/11, characters 34/35 (one timing-only bot skin collision on a late human join; separate run passed the same area), unit 179 pass, typecheck/lint/build pass.
+- Headed perf: 46 fps, 1.77 ms average server tick, 5.20 ms p95 while other local test processes were active. Headless UX of the recovered public match measured 59 fps.
+- Screenshots and discrepancy log: `artifacts/ux-final/` and `artifacts/ux-production/`. Public regression logs: `artifacts/production-ux11/`.
 
 ## Next
 
-1. Rerun P5, P1 browser, characters, match, and `verify:ux` on a production build.
-2. Commit/push to `origin/main`.
-3. Deploy backend to `endy-vps` release dir, update env `RECONNECT_GRACE_SECONDS=30`, restart only `vibe-militia.service`.
-4. Deploy frontend (inspect/fix Vercel Git; manual `vercel --prod` fallback).
-5. Run `npm run verify:production`, update docs/state and final report.
+1. Run the 15-20 player beta from `BETA_TESTING.md`.
+2. Physical iOS and Android testing.
+3. Re-measure headed FPS on an idle host; the 46 fps run was under load.
 
 ## Known issues
 
-- Physical iOS/Android hardware not available. Mobile evidence is emulated Chromium.
-- Practice local P1 has no grenades/medkits/pickups and uses drone bots; online uses full Viber bots and all utilities.
-- Vercel automatic Git deploys need inspection; manual production deploy is available.
-- Headless Chrome FPS is 23-30; use HEADED=1 for the real performance number.
+- Physical phone hardware was unavailable. Mobile evidence is Chromium emulation and CDP multi-touch.
+- Practice is the local P1 drone arena and has no online grenades, medkits, advanced caches or loot.
+- The production verify script uses one active browser tab for the long combat phase because headless Chrome throttles background tabs. Two-browser room, join and shared-room checks happen before that phase.
+- A second tab cannot redeem a live seat because resume context is sessionStorage-scoped.
