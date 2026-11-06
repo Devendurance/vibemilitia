@@ -6,8 +6,8 @@ UX overhaul milestone is implemented, committed, deployed and verified. P6 not s
 
 ## Done
 
-- Final commit: `e9d3ea1`. Earlier milestone commits: `21f4ff2` (server identity/rankings/reload recovery), `eebd97b` (hub/practice/mobile overhaul).
-- Frontend: Vercel production `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs`, `https://vibemilitia-oeu7oj914-endy-s-winning-szn.vercel.app`, aliased to `https://vibemilitia.vercel.app`. Git automatic deployment works from `main`.
+- Final commit: `0744a75`. Earlier milestone commits: `21f4ff2` (server identity/rankings/reload recovery), `eebd97b` (hub/practice/mobile overhaul), `e9d3ea1` (verification hardening).
+- Frontend: latest Vercel production `dpl_FDvQ89MUKGketaeBWfuYpRaQRNHt`, `https://vibemilitia-kkew73l45-endy-s-winning-szn.vercel.app`, aliased to `https://vibemilitia.vercel.app`. Git automatic deployment works from `main`. The app-code deployment for the UX overhaul was `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs` from `e9d3ea1`; later deploys were docs and verification scripts only.
 - Backend: `https://vibemilitia-game.endyos.xyz`, release `~/apps/vibe-militia-releases/eebd97b`, symlink `~/apps/vibe-militia`, loopback `127.0.0.1:2767`.
 - `/api/config` live: `reconnectGraceSeconds=30`, `matchCountdownMs=20000`, `persistence=postgres`.
 - Public UX: `verify:ux` 49/49 with zero browser errors across the ten-size matrix, drawers, practice, reload recovery and a two-human room.

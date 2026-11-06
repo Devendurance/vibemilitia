@@ -231,11 +231,12 @@
 ## Production facts
 
 - Frontend: `https://vibemilitia.vercel.app`, Vercel project `vibemilitia`, team `endy-s-winning-szn`, framework Next.js, Node 24.x, production branch `main`. Git automatic deployment from `main` works.
-- UX overhaul production deployment: `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs` (`https://vibemilitia-oeu7oj914-endy-s-winning-szn.vercel.app`) from commit `e9d3ea1`.
+- UX overhaul production deployment: `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs` (`https://vibemilitia-oeu7oj914-endy-s-winning-szn.vercel.app`) from commit `e9d3ea1`. Latest docs/script deployment: `dpl_FDvQ89MUKGketaeBWfuYpRaQRNHt` from `0744a75`.
 - UX overhaul backend release: `~/apps/vibe-militia-releases/eebd97b`, symlink `~/apps/vibe-militia`.
 - Live `/api/config`: grace 30, countdown 20000, PostgreSQL. Live `GET /api/leaderboard?limit=3` returns real opt-in rows.
 - Public UX verification: 49/49, zero browser errors, `artifacts/ux-production/ux-report.json`.
 - Public beta verification: 50/50 on `artifacts/production-ux11/run.log`.
+- Additional clean regressions: pickups 28/28, loot 41/41, matchmaking 11/11.
 - Headed perf on a loaded host: 46 fps, 1.77 ms average tick, 5.20 ms p95.
 - Game server: `https://vibemilitia-game.endyos.xyz` on host `endy-vps` (`hermes.endyos.xyz`), user `endy`.
 - systemd user units: `vibe-militia.service` (loopback `127.0.0.1:2767`) and `vibe-militia-tunnel.service` (Cloudflare named tunnel `vibe-militia-game`). Linger is enabled.
