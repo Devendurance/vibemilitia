@@ -6,7 +6,15 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
-## Mobile control correction (current milestone)
+## Approved sprite art (current milestone)
+
+- `LoadoutArt.ts` loads all gun, grenade, pickup and projectile PNGs in `preload`. `TextureFactory` no longer draws those keys, and keeps sparks, voxels, drone, muzzle flash, baked rings and `bullet-drone`.
+- `scripts/export-sprites.py` trims and downscales the sources at 2x. Art draws at `ART_SCALE` 0.5. `WEAPON_ANCHORS` holds origin and barrel tip per gun, measured from pixels.
+- Akimbo is two layers, `weapon-akimbo` and `weapon-akimbo-b`.
+- Online and practice bullets are a pooled image per shot in `drawProjectiles`, plus the existing soft streak. They were Graphics dots before.
+- HUD, hub and touch icons are small PNGs through `LoadoutIcon`. Selected slots use a lime outline.
+
+## Mobile control correction (previous milestone)
 
 - Right pad: fire is "thumb down", aim is "thumb has a direction". Tap keeps the retained aim, drag or a 140 ms hold takes the thumb direction. Pad state writes straight to the DOM.
 - Packets: a press latches into the next packet, and the rest of that frame sends no fire so a slow-frame tap stays one shot.

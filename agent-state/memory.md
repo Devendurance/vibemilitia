@@ -276,3 +276,11 @@
 - The stack `screen` must be set in Playwright to separate a toolbar change from a real resize.
 - `verify-online-characters` needs 9 s of countdown, or the guest can join after bots took its skin.
 
+## Sprite art facts
+
+- Texture order: `preloadLoadoutArt` must run in `preload`, because `createGameTextures` runs in `create` and no longer draws those keys. A scene that skips it shows Phaser's missing texture box. Each scene that shows loadout art calls it, currently `OnlineScene` and `ArenaScene`.
+- `bullet-*` textures were only used by the legacy drill. Online and practice drew Graphics dots until the art change.
+- Arcade body size is `sourceWidth * scale`, so a 0.5 scale bullet passes twice the wanted size to `setSize`.
+- Source files here can be CRLF. A regex reading them needs `\r?\n`. One such regex made a mobile weapon check pass with 0 of 0 weapons.
+- Don't stop a background suite and trust timing right after. Compare against the previous build before calling a timing failure a regression.
+

@@ -48,7 +48,7 @@ const browser = await chromium.launch({
 });
 
 const PHONE = { width: 844, height: 390 };
-const ALL_WEAPONS = [...readFileSync("src/game/config/gameplay.ts", "utf8").matchAll(/^\s+id: "([a-z-]+)",\n\s+slot: \d/gm)].map((match) => match[1]);
+const ALL_WEAPONS = [...readFileSync("src/game/config/gameplay.ts", "utf8").matchAll(/^\s+id: "([a-z-]+)",\r?\n\s+slot: \d/gm)].map((match) => match[1]);
 const newPage = async (viewport = PHONE, dpr = 3, screen = viewport) => {
   const context = await browser.newContext({
     viewport,
@@ -881,7 +881,7 @@ try {
       if (after.ammo < before.ammo) fired += 1;
       else console.log("NO SHOT", weaponId, before.weaponId, before.ammo, after.ammo);
     }
-    check("20 touch pad fires every tested weapon", fired === weapons.length, `${fired}/${weapons.length}`);
+    check("20 touch pad fires every tested weapon", weapons.length === 7 && fired === 7, `${fired}/${weapons.length}`);
     const grenades = await page.evaluate(() => {
       const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
       return { contact: p.hud.grenadeContact, frag: p.hud.grenadeFrag, stinking: p.hud.grenadeStinking };
