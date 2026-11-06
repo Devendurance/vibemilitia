@@ -14,7 +14,7 @@ Playability rescue is deployed. Next is physical phone testing and a real-player
 ## Next
 
 1. Test on physical iOS and Android. Everything mobile so far is Chromium emulation.
-2. Decide on the Cloudflare path. Direct SSH to the VPS measured about 250 ms from Nairobi, the tunnel 360 to 560 ms. A closer region or a direct WSS origin is the only real latency fix.
+2. Decide the route. From Nigeria the tunnel measures p50 467 ms against 201 ms direct to the VPS, because traffic detours through NBO or JNB. Options, needing owner approval: a direct TLS hostname on the VPS, then a London or Frankfurt server if players are mostly in Africa or Europe. Player locations are not yet known.
 3. Run the 15-20 player beta from `BETA_TESTING.md`.
 
 ## Known issues

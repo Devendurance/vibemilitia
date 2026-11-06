@@ -258,7 +258,9 @@
 
 ## Playability rescue facts
 
-- Public RTT from Nairobi is 360 to 560 ms through Cloudflare (NBO edge, tunnel connectors in Toronto and Montreal). Direct SSH is about 250 ms. Treat 550/80 as a real test profile.
+- The owner plays from Nigeria (Cloudflare `loc=NG`). Traffic enters Cloudflare at NBO or JNB, then crosses to tunnel connectors in Toronto and Montreal. The VPS is in Montreal, AS26832 Rica Web Services. Public RTT through the tunnel is 360 to 560 ms. Treat 550/80 as a real test profile.
+- Route legs measured 2026-11-06 from Nigeria: Cloudflare edge p50 195 ms, VPS direct TCP p50 201 ms, tunnel app RTT p50 467 ms. Candidate regions by TCP connect: Cape Town 81, London 127, Milan 131, Frankfurt 137, Ireland 140, Virginia 195, Montreal 205, UAE 233, Mumbai 335. One vantage point only.
+- Only port 22 is public on `endy-vps`, and no web server runs there. Neon is in us-east-2, which is only touched at join and match settlement.
 - A killed suite can orphan its server and Next children. `test-stack.mjs` now clears ports first.
 - The latency proxy must keep one FIFO per direction. Per-chunk timers reorder bytes.
 - Never run a local proxy in the same process as `spawnSync`. It freezes the proxy.

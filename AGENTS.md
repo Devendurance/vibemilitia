@@ -82,7 +82,7 @@
 
 - Movement is a pure function of the input stream. Keep it that way: the server consumes one client tick per server tick and holds a player whose input is late. Never compare a predicted position directly with a snapshot, because a snapshot is RTT old. Reconcile with `LocalPredictor.reconcile` only.
 - Wire changes stay version-gated by `netProtocol`. Old tabs must keep receiving the full `snapshot` message, because tabs stay open across a deploy. Deploy the backend before the frontend.
-- A real public RTT from Nairobi is ~550 ms. Test netcode at 550/80 as well as 100-250 ms, using `scripts/lib/latency-proxy.mjs`. Devtools throttling does not reliably apply to WebSockets.
+- A real public RTT from Nigeria through the Cloudflare tunnel is 360 to 560 ms. Test netcode at 550/80 as well as 100-250 ms, using `scripts/lib/latency-proxy.mjs`. Devtools throttling does not reliably apply to WebSockets.
 - Never add a per-frame Phaser `Arc`, `Ellipse` or stroked shape to a match. Each one re-tessellates every frame. Bake a texture in `makeBakedEffects`. Never use `backdrop-filter` over the live canvas.
 - Practice is `GameSimulation` in a worker behind `PracticeRoom`. Add rules to the simulation, never to a practice copy. The older drone drill stays at `/practice?engine=legacy` for the P1 suite only.
 - `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
