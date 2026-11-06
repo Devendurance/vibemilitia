@@ -10,6 +10,7 @@ function PracticeQuery() {
   return (
     <PracticeRoute
       difficulty={getPracticeDifficulty(params.get("difficulty"))}
+      legacyDrill={params.get("engine") === "legacy"}
     />
   );
 }

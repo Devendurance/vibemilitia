@@ -83,7 +83,8 @@ async function prepareLane(page) {
       cursor = Math.max(cursor, to);
     }
     window.__laneSpan = best;
-    probe.testHooks.teleport((best[0] + best[1]) / 2, lane.y);
+    // Start near the left end so the camera has room to travel too.
+    probe.testHooks.teleport(best[0] + 60, lane.y);
   });
   await page.waitForTimeout(1200);
 }
@@ -294,7 +295,7 @@ async function measureProfile(browser, stack, profile) {
   if (samplesPreview) {
     writeFileSync(
       `${outDir}/${label}-trace-${profile.rttMs}.json`,
-      JSON.stringify({ keys, lane: await page.evaluate(() => window.__laneSpan), samples: samples.map(({ bots: _bots, ...rest }) => rest) }),
+      JSON.stringify({ keys, lane: await page.evaluate(() => window.__laneSpan), samples: samples.map((sample) => ({ ...sample, bots: undefined })) }),
     );
   }
   const frameMs = samples.slice(1).map((s, index) => s.t - samples[index].t);

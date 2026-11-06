@@ -920,7 +920,7 @@ export class OnlineScene extends Phaser.Scene {
                 : weaponDefinition?.weaponTexture ?? "pickup-medkit";
         const image = this.add
           .image(0, weaponDefinition ? -10 : -4, texture)
-          .setScale(weaponDefinition ? 0.9 : 1);
+          .setScale(weaponDefinition ? 0.9 : 0.46);
         const container = this.add
           .container(pickup.x, pickup.y, [glow, image])
           .setDepth(24);
@@ -1005,7 +1005,7 @@ export class OnlineScene extends Phaser.Scene {
           .setDisplaySize(lootGlowSize, lootGlowSize);
         const image = this.add
           .image(0, item.kind === "weapon" ? -14 : -6, texture)
-          .setScale(item.kind === "weapon" ? 1.05 : 0.9);
+          .setScale(item.kind === "weapon" ? 1.05 : 0.42);
         const container = this.add
           .container(item.x, item.y, [beam, glow, image])
           .setDepth(26);

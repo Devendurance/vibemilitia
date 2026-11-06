@@ -2,11 +2,7 @@ import { Client, CloseCode, Room } from "colyseus";
 import { getCharacterSkin } from "../src/game/characters/roster";
 import { GameSimulation } from "../src/game/multiplayer/GameSimulation";
 import {
-  encodeFast,
-  encodeSelf,
-  encodeSlow,
-  selfChangeKey,
-  slowChangeKey,
+  CompactSnapshotStream,
   SNAPSHOT_FAST,
   SNAPSHOT_SELF,
   SNAPSHOT_SLOW,
@@ -61,9 +57,7 @@ export class FFARoom extends Room {
   private rewardsByPlayer = new Map<string, MatchReward>();
   private reservations = new Set<string>();
   private compactClients = new Set<string>();
-  private lastSlowKey = "";
-  private lastSlowSentAt = 0;
-  private lastSelfKeys = new Map<string, string>();
+  private snapshotStream = new CompactSnapshotStream();
   private lastResyncAt = new Map<string, number>();
 
   async onCreate(options: JoinOptions & { roomName?: string }): Promise<void> {
@@ -355,7 +349,7 @@ export class FFARoom extends Room {
   private releaseClient(sessionId: string): void {
     this.rateBuckets.delete(sessionId);
     this.compactClients.delete(sessionId);
-    this.lastSelfKeys.delete(sessionId);
+    this.snapshotStream.forget(sessionId);
     this.lastResyncAt.delete(sessionId);
     resumeRegistry.dropSession(this.roomId, sessionId);
     if (!this.simulation) return;
@@ -376,7 +370,7 @@ export class FFARoom extends Room {
     this.simulation = null;
     this.rateBuckets.clear();
     this.compactClients.clear();
-    this.lastSelfKeys.clear();
+    this.snapshotStream.clear();
     this.lastResyncAt.clear();
     this.reservations.clear();
     this.rewardsByPlayer.clear();
@@ -440,27 +434,15 @@ export class FFARoom extends Room {
     for (const client of legacy) client.send("snapshot", full);
     if (compact.length === 0) return;
 
-    const slow = encodeSlow(full);
-    const slowKey = slowChangeKey(slow);
-    if (
-      force ||
-      now - this.lastSlowSentAt >= 1000 ||
-      (slowKey !== this.lastSlowKey && now - this.lastSlowSentAt >= 100)
-    ) {
-      this.lastSlowKey = slowKey;
-      this.lastSlowSentAt = now;
-      this.broadcast(SNAPSHOT_SLOW, slow, { except: legacy });
+    const frame = this.snapshotStream.frame(full, now, force);
+    if (frame.slow) {
+      this.broadcast(SNAPSHOT_SLOW, frame.slow, { except: legacy });
     }
     for (const client of compact) {
-      const self = encodeSelf(full, client.sessionId);
-      if (!self) continue;
-      const selfKey = selfChangeKey(self);
-      if (force || this.lastSelfKeys.get(client.sessionId) !== selfKey) {
-        this.lastSelfKeys.set(client.sessionId, selfKey);
-        client.send(SNAPSHOT_SELF, self);
-      }
+      const self = this.snapshotStream.selfFor(full, client.sessionId, force);
+      if (self) client.send(SNAPSHOT_SELF, self);
     }
-    this.broadcast(SNAPSHOT_FAST, encodeFast(full), { except: legacy });
+    this.broadcast(SNAPSHOT_FAST, frame.fast, { except: legacy });
   }
 
   private queueMatchSettlement(): void {

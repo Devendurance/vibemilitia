@@ -93,7 +93,7 @@ export function TouchSettingsPanel() {
         onChange={(value) => update({ aimSensitivity: value })}
       />
       <TouchRow
-        label="AUTO FIRE"
+        label="FIRE AFTER DRAG"
         value={settings.aimFireThreshold}
         min={0.3}
         max={0.98}

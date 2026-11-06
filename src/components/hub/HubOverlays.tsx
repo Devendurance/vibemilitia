@@ -24,6 +24,12 @@ import type { IdentityInput } from "@/components/hub/usePlayerIdentity";
 
 function useDialogFocus(onClose: () => void) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  // Runs once per dialog. Depending on `onClose` re-ran this on every render
+  // for inline handlers, so each keystroke moved focus back to the first field.
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
@@ -34,7 +40,7 @@ function useDialogFocus(onClose: () => void) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
       if (event.key !== "Tab" || !panel) return;
       const nodes = [
@@ -58,7 +64,7 @@ function useDialogFocus(onClose: () => void) {
       document.removeEventListener("keydown", onKey);
       previous?.focus?.();
     };
-  }, [onClose]);
+  }, []);
   return panelRef;
 }
 
@@ -273,7 +279,7 @@ export function ProfileDrawer({
           </small>
         </label>
         <label className="hub-field">
-          <span>X HANDLE (OPTIONAL)</span>
+          <span>X HANDLE (OPTIONAL, UNVERIFIED)</span>
           <input
             value={xHandle}
             maxLength={16}
@@ -428,7 +434,7 @@ export function OnboardingDialog({
               </small>
             </label>
             <label className="hub-field">
-              <span>X HANDLE (OPTIONAL)</span>
+              <span>X HANDLE (OPTIONAL, UNVERIFIED)</span>
               <input
                 value={xHandle}
                 maxLength={16}

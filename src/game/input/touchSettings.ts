@@ -14,11 +14,11 @@ export const DEFAULT_TOUCH_SETTINGS: TouchSettings = {
   rightDeadZone: 0.14,
   aimSensitivity: 1,
   aimFireEnabled: true,
-  aimFireThreshold: 0.62,
+  aimFireThreshold: 0.3,
   thrustThreshold: 0.45,
 };
 
-const STORAGE_KEY = "vibe-militia-touch";
+const STORAGE_KEY = "vibe-militia-touch-v2";
 let cached: TouchSettings | null = null;
 
 function clamp(value: number, min: number, max: number): number {
@@ -57,7 +57,7 @@ export function loadTouchSettings(): TouchSettings {
         parsed.aimFireEnabled ?? DEFAULT_TOUCH_SETTINGS.aimFireEnabled,
       aimFireThreshold: clamp(
         parsed.aimFireThreshold ?? DEFAULT_TOUCH_SETTINGS.aimFireThreshold,
-        0.3,
+        0.15,
         0.98,
       ),
       thrustThreshold: clamp(
@@ -77,7 +77,7 @@ export function saveTouchSettings(settings: TouchSettings): TouchSettings {
     leftDeadZone: clamp(settings.leftDeadZone, 0.05, 0.4),
     rightDeadZone: clamp(settings.rightDeadZone, 0.05, 0.4),
     aimSensitivity: clamp(settings.aimSensitivity, 0.5, 1.6),
-    aimFireThreshold: clamp(settings.aimFireThreshold, 0.3, 0.98),
+    aimFireThreshold: clamp(settings.aimFireThreshold, 0.15, 0.98),
     thrustThreshold: clamp(settings.thrustThreshold, 0.25, 0.8),
   };
   if (typeof window !== "undefined") {

@@ -442,6 +442,82 @@ function makeBakedEffects(scene: Phaser.Scene): void {
   });
 }
 
+/**
+ * Pickup art, baked at 2x so it stays crisp at phone density. Every item sits
+ * on a dark tag with a bright rim and has its own silhouette, so a medkit, the
+ * three grenades and the arena's sky, grass and copper never read alike.
+ */
+function makePickupArt(scene: Phaser.Scene): void {
+  const S = 2;
+  const W = 64;
+  const H = 54;
+  const replace = (
+    key: string,
+    rim: number,
+    draw: (g: Phaser.GameObjects.Graphics) => void,
+  ) => {
+    if (scene.textures.exists(key)) scene.textures.remove(key);
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x0c0d0f, 0.82);
+    g.fillRoundedRect(2 * S, 2 * S, (W - 4) * S, (H - 4) * S, 9 * S);
+    g.lineStyle(2.5 * S, rim, 1);
+    g.strokeRoundedRect(2 * S, 2 * S, (W - 4) * S, (H - 4) * S, 9 * S);
+    draw(g);
+    g.generateTexture(key, W * S, H * S);
+    g.destroy();
+  };
+  const cx = (W / 2) * S;
+  const cy = (H / 2) * S;
+
+  replace("pickup-medkit", 0xf5f3ec, (g) => {
+    g.fillStyle(0xf5f3ec, 1);
+    g.fillRoundedRect(cx - 21 * S, cy - 13 * S, 42 * S, 30 * S, 4 * S);
+    g.lineStyle(3 * S, 0xc7692f, 1);
+    g.strokeRoundedRect(cx - 8 * S, cy - 20 * S, 16 * S, 9 * S, 3 * S);
+    g.fillStyle(0xe5484d, 1);
+    g.fillRect(cx - 4 * S, cy - 9 * S, 8 * S, 22 * S);
+    g.fillRect(cx - 11 * S, cy - 2 * S, 22 * S, 8 * S);
+  });
+  replace("pickup-grenade-contact", 0xff6b35, (g) => {
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(cx - 4 * S, cy - 19 * S, 8 * S, 6 * S);
+    g.fillStyle(0xe5484d, 1);
+    g.fillCircle(cx, cy + 3 * S, 15 * S);
+    g.fillStyle(0xff8a3d, 1);
+    g.fillCircle(cx - 4 * S, cy - 2 * S, 7 * S);
+    g.fillStyle(0xffd166, 1);
+    g.fillCircle(cx - 6 * S, cy - 4 * S, 3 * S);
+    g.lineStyle(2 * S, 0xf5f3ec, 0.9);
+    g.strokeCircle(cx, cy + 3 * S, 15 * S);
+  });
+  replace("pickup-grenade-frag", 0xf4e21c, (g) => {
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(cx - 4 * S, cy - 20 * S, 8 * S, 6 * S);
+    g.fillStyle(0xf4e21c, 1);
+    g.fillRect(cx + 4 * S, cy - 19 * S, 9 * S, 3 * S);
+    g.fillStyle(0x6f8a3a, 1);
+    g.fillRoundedRect(cx - 12 * S, cy - 14 * S, 24 * S, 32 * S, 8 * S);
+    g.fillStyle(0x2f3a1d, 1);
+    for (const y of [-7, 1, 9]) g.fillRect(cx - 12 * S, cy + y * S, 24 * S, 2.5 * S);
+    g.fillRect(cx - 5 * S, cy - 14 * S, 2.5 * S, 32 * S);
+    g.fillRect(cx + 3 * S, cy - 14 * S, 2.5 * S, 32 * S);
+  });
+  replace("pickup-grenade-stinking", 0x9bff5a, (g) => {
+    g.fillStyle(0x9bff5a, 0.5);
+    g.fillCircle(cx - 15 * S, cy - 10 * S, 4 * S);
+    g.fillCircle(cx + 15 * S, cy - 13 * S, 5 * S);
+    g.fillCircle(cx + 18 * S, cy - 3 * S, 3 * S);
+    g.fillStyle(0xc7692f, 1);
+    g.fillRect(cx - 5 * S, cy - 19 * S, 10 * S, 5 * S);
+    g.fillStyle(0x6fbe2e, 1);
+    g.fillRoundedRect(cx - 11 * S, cy - 14 * S, 22 * S, 32 * S, 10 * S);
+    g.fillStyle(0xd7ff2e, 1);
+    g.fillRoundedRect(cx - 7 * S, cy - 10 * S, 14 * S, 9 * S, 4 * S);
+    g.fillStyle(0x2f4a16, 1);
+    g.fillRect(cx - 11 * S, cy + 5 * S, 22 * S, 3 * S);
+  });
+}
+
 export function createGameTextures(scene: Phaser.Scene): void {
   makeBakedEffects(scene);
   makeSpark(scene, "spark-lime", 0xd7ff2e, 6);
@@ -474,6 +550,7 @@ export function createGameTextures(scene: Phaser.Scene): void {
   makeDrone(scene);
   makeMedkitPickup(scene);
   makeGrenadeAssets(scene);
+  makePickupArt(scene);
 }
 
 function makeMedkitPickup(scene: Phaser.Scene): void {

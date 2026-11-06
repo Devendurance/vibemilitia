@@ -67,7 +67,7 @@ const findVisibleTarget = (snapshot) =>
     )[0] ?? null;
 
 try {
-  await page.goto(`${baseUrl}/practice?difficulty=normal`, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/practice?difficulty=normal&engine=legacy`, { waitUntil: "networkidle" });
   await page.waitForFunction(() => Boolean(window.__VIBE_MILITIA__), null, { timeout: 30000 });
   await page.waitForFunction(
     () => document.querySelector(".boot-overlay")?.classList.contains("is-hidden"),

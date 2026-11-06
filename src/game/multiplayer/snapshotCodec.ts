@@ -258,6 +258,52 @@ export function selfChangeKey(self: SelfSnapshot): string {
   });
 }
 
+/** Decides which compact sections are due. Shared by rooms and practice. */
+export class CompactSnapshotStream {
+  private lastSlowKey = "";
+  private lastSlowSentAt = 0;
+  private lastSelfKeys = new Map<string, string>();
+
+  frame(
+    full: OnlineSnapshot,
+    now: number,
+    force: boolean,
+  ): { fast: FastSnapshot; slow: SlowSnapshot | null } {
+    const slow = encodeSlow(full);
+    const key = slowChangeKey(slow);
+    const due =
+      force ||
+      now - this.lastSlowSentAt >= 1000 ||
+      (key !== this.lastSlowKey && now - this.lastSlowSentAt >= 100);
+    if (due) {
+      this.lastSlowKey = key;
+      this.lastSlowSentAt = now;
+    }
+    return { fast: encodeFast(full), slow: due ? slow : null };
+  }
+
+  selfFor(
+    full: OnlineSnapshot,
+    sessionId: string,
+    force: boolean,
+  ): SelfSnapshot | null {
+    const self = encodeSelf(full, sessionId);
+    if (!self) return null;
+    const key = selfChangeKey(self);
+    if (!force && this.lastSelfKeys.get(sessionId) === key) return null;
+    this.lastSelfKeys.set(sessionId, key);
+    return self;
+  }
+
+  forget(sessionId: string): void {
+    this.lastSelfKeys.delete(sessionId);
+  }
+
+  clear(): void {
+    this.lastSelfKeys.clear();
+  }
+}
+
 /** Rebuilds full snapshots on the client from the three compact messages. */
 export class SnapshotAssembler {
   private slow: SlowSnapshot | null = null;
