@@ -255,3 +255,12 @@
 - Preserve original NFT artwork. The game must never regenerate or restyle the character without a fidelity review.
 - Keep game rules in `src/game/core`, AI navigation in `src/game/ai` and shared multiplayer rules in `src/game/multiplayer` free of Phaser imports.
 - Commit and push meaningful checkpoints. `origin` is `https://github.com/Devendurance/vibemilitia.git` and `main` tracks `origin/main`.
+
+## Playability rescue facts
+
+- Public RTT from Nairobi is 360 to 560 ms through Cloudflare (NBO edge, tunnel connectors in Toronto and Montreal). Direct SSH is about 250 ms. Treat 550/80 as a real test profile.
+- A killed suite can orphan its server and Next children. `test-stack.mjs` now clears ports first.
+- The latency proxy must keep one FIFO per direction. Per-chunk timers reorder bytes.
+- Never run a local proxy in the same process as `spawnSync`. It freezes the proxy.
+- `verify:production` writes guest profiles and fills seats. Use `scripts/verify-release.mjs` with `NO_GUEST=1` on production and prove XP on `p5-test`.
+- Git Bash heredocs choke on apostrophes here. Write patch scripts with the file tool.

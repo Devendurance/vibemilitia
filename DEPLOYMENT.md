@@ -341,3 +341,12 @@ ssh endy-vps 'systemctl --user restart vibe-militia.service'
 
 The suite uses real Chromium sessions and no test hooks. It covers HTTPS endpoints, PostgreSQL readiness, guest creation, the character picker, countdown join, bot fill, movement sync between two browsers, firing, grenades, cache collection, match completion, replay, reconnect, mobile landscape layout and WSS handling. XP needs a full-length round, so the suite plays a second human-only match to clear the 45 second participation floor.
 
+## Release checks without production writes
+
+`npm run verify:production` creates guest profiles and fills seats with SDK clients. Use it only when that is acceptable. For a routine release:
+
+1. Run the new release beside production on a spare loopback port against the Neon test branch, with no test hooks, and prove XP there with `node scripts/verify-release.mjs`.
+2. Confirm no live rooms, swap the symlink and restart. Deploy the backend before the frontend.
+3. Run `BASE_URL=https://vibemilitia.vercel.app NO_GUEST=1 node scripts/verify-release.mjs`. It blocks guest creation and writes nothing.
+4. `node scripts/probe-public-network.mjs` reports public RTT and snapshot health with no profile.
+

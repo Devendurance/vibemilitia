@@ -6,11 +6,19 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
-## UX overhaul (current milestone)
+## Playability rescue (current milestone)
+
+- Netcode: the server consumes one client tick per server tick and holds a player whose input is late, so `LocalPredictor` replay lands exactly. `RemoteInterpolator` plays remotes from a timestamped buffer with a monotonic clock.
+- Snapshots: version 2 clients get fast, slow and self sections (`snapshotCodec.ts`), about 650 B instead of 10 KB. Older tabs keep the full message.
+- Practice: `GameSimulation` in a worker behind `PracticeRoom`, with `SIM_BOT_TUNING` per difficulty. Works offline once loaded, never has a profile id, so cannot earn XP.
+- HUD: slim edge strip, clock, bottom loadout, scoreboard on Tab or tap. Eliminated replaces SIGNAL LOST. Results have PLAY AGAIN, LOBBY and BACK TO HUB.
+- Touch: hybrid right pad (drag aims and fires, tap fires, release stops and keeps aim), separate FIRE mode, camera look-ahead, 2x render scale with adaptive fallback.
+
+## UX overhaul (previous milestone)
 
 - `/` is the game hub: Sector 07 SVG skydeck, selected Viber hero, compact level/XP card, 10-character drawer, preview loadout, online/practice switch, Easy/Normal/Hard/Merciless, primary CTA, rankings/profile/settings/loadout drawers.
 - First-visit onboarding captures an editable, non-unique display name, optional self-declared X handle and leaderboard opt-in. No fake verification. Practice is never ranked.
-- `/practice?difficulty=...` is the deliberate local P1 route. Practice bots use real difficulty profiles for reaction, cadence, burst, aim error, movement, standoff, repath, projectile speed and damage.
+- `/practice?difficulty=...` was the local P1 route, now replaced by the shared simulation. Practice bots use real difficulty profiles for reaction, cadence, burst, aim error, movement, standoff, repath, projectile speed and damage.
 - `/online` is one fixed viewport: callsign, quick match, create room, join code, compact operator rail, rooms, compact profile, invite banner. No long roster/profile/audio document.
 - Global all-time leaderboard: Neon/SQLite schema v3 (`x_handle`, `x_public`, `leaderboard_visible`), `GET /api/leaderboard?limit=25`, server-derived XP/wins/K/D only, opt-in, X handle public only when explicitly enabled.
 - 30-second reconnect default. `POST /api/resume` exchanges a tab-scoped, single-use, identity-bound handle for the Colyseus reconnection token. Reload/navigation recovers the same room and seat; second tabs and grace expiry cannot take the live seat.
