@@ -7418,9 +7418,9 @@ a:focus-visible {
   .hub > * { flex: none; }
   .hub-top { order: 1; min-height: 50px; }
   .hub-hero { order: 2; height: max(190px, 30vh); }
-  .hub-profile { order: 3; }
+  .hub-profile { order: 3; align-self: stretch; }
   .hub-mode { order: 4; }
-  .hub-footer { order: 5; }
+  .hub-footer { order: 5; margin-top: auto; }
   .hub__scene { position: fixed; }
   .hub-mode__body { flex: none; }
   .hub-hero { overflow: clip; }
