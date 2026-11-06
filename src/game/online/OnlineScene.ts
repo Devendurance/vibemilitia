@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import type { Room } from "@colyseus/sdk";
 import { ARENA } from "@/game/arena/arena";
 import { buildArena, type ArenaBuildResult } from "@/game/arena/ArenaBuilder";
 import { CHARACTER_ROSTER } from "@/game/characters/roster";
@@ -22,11 +21,23 @@ import { InputController, type ControlFrame } from "@/game/systems/InputControll
 import { touchInput } from "@/game/input/touchInput";
 import { audio } from "@/game/audio/AudioEngine";
 import { CombatantView } from "@/game/online/CombatantView";
+import { LocalPredictor, type AuthoritativeMotion } from "@/game/online/LocalPredictor";
+import { SnapshotClock } from "@/game/online/RemoteInterpolator";
+import type { MatchRoom } from "@/game/online/matchRoom";
+import type { RenderScaler } from "@/game/online/renderScale";
 import {
-  createHumanKinematics,
-  stepHumanKinematics,
-  type HumanKinematics,
-} from "@/game/multiplayer/humanMovement";
+  INPUT_TICKS_PER_PACKET,
+  SERVER_TICK_MS,
+} from "@/game/multiplayer/protocol";
+import {
+  SNAPSHOT_FAST,
+  SNAPSHOT_SELF,
+  SNAPSHOT_SLOW,
+  SnapshotAssembler,
+  type FastSnapshot,
+  type SelfSnapshot,
+  type SlowSnapshot,
+} from "@/game/multiplayer/snapshotCodec";
 import type {
   OnlineEvent,
   OnlineGrenadeSnapshot,
@@ -38,9 +49,30 @@ import type {
   OnlineToxicCloudSnapshot,
 } from "@/game/multiplayer/protocol";
 
+const HUD_PUBLISH_INTERVAL_MS = 100;
+const WEAPON_PIVOT_X = 28;
+const WEAPON_PIVOT_Y = 58;
+const TOUCH_RETICLE_RANGE = 300;
+
+function motionFrom(local: OnlineCombatantSnapshot): AuthoritativeMotion {
+  return {
+    x: local.x,
+    y: local.y,
+    vx: local.vx,
+    vy: local.vy,
+    grounded: local.grounded,
+    thrusting: local.thrusting,
+    fuel: local.fuel,
+    coyoteMs: local.coyoteMs,
+    thrustIdleMs: local.thrustIdleMs,
+    ackSeq: local.lastProcessedInputSeq,
+    ackTicks: local.lastProcessedInputTicks,
+  };
+}
+
 interface PickupView {
   container: Phaser.GameObjects.Container;
-  glow: Phaser.GameObjects.Arc;
+  glow: Phaser.GameObjects.Image;
   baseY: number;
   phase: number;
   texture: string;
@@ -49,7 +81,7 @@ interface PickupView {
 
 interface LootView {
   container: Phaser.GameObjects.Container;
-  glow: Phaser.GameObjects.Arc;
+  glow: Phaser.GameObjects.Image;
   beam: Phaser.GameObjects.Rectangle;
   baseY: number;
   phase: number;
@@ -150,7 +182,7 @@ interface OnlineProbe {
 }
 
 export class OnlineScene extends Phaser.Scene {
-  private room: Room;
+  private room: MatchRoom;
   private bridge: GameBridge;
   private playerName: string;
   private arenaBuild!: ArenaBuildResult;
@@ -174,10 +206,21 @@ export class OnlineScene extends Phaser.Scene {
   private testAimAngle: number | null = null;
   private testFireFrames = 0;
   private testReloadFrames = 0;
-  private predictor: HumanKinematics | null = null;
+  private predictor: LocalPredictor | null = null;
+  private assembler: SnapshotAssembler;
+  private snapshotClock = new SnapshotClock();
+  private renderScaler: RenderScaler | null;
+  private movementWorld!: { width: number; height: number; platforms: readonly { x: number; y: number; width: number; height: number }[] };
   private lastFrame: ControlFrame | null = null;
-  private sendAccumulator = 0;
+  private packetTick = 0;
+  private packet: { seq: number; moveX: number; jump: boolean; jumpHeld: boolean } | null = null;
   private inputSeq = 0;
+  private renderedLocal: { x: number; y: number } | null = null;
+  private cameraFocus: { x: number; y: number } | null = null;
+  private lookX = 0;
+  private lookY = 0;
+  private snapshotGapEma = 50;
+  private frameMsEma = 16.7;
   private wasFiring = false;
   private pendingJump = false;
   private pendingReload = false;
@@ -210,11 +253,18 @@ export class OnlineScene extends Phaser.Scene {
   private commandUnsubscribe: (() => void) | null = null;
   private probe: OnlineProbe;
 
-  constructor(room: Room, bridge: GameBridge, playerName: string) {
+  constructor(
+    room: MatchRoom,
+    bridge: GameBridge,
+    playerName: string,
+    renderScaler: RenderScaler | null = null,
+  ) {
     super("OnlineScene");
     this.room = room;
     this.bridge = bridge;
     this.playerName = playerName;
+    this.renderScaler = renderScaler;
+    this.assembler = new SnapshotAssembler(room.sessionId);
     this.probe = {
       roomId: room.roomId,
       sessionId: room.sessionId,
@@ -264,23 +314,26 @@ export class OnlineScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(false);
     createGameTextures(this);
     this.arenaBuild = buildArena(this, ARENA);
+    this.movementWorld = {
+      width: ARENA.width,
+      height: ARENA.height,
+      platforms: this.arenaBuild.platformRects,
+    };
     this.effects = new EffectsSystem(this);
     this.bulletGraphics = this.add.graphics().setDepth(38);
     this.debugGraphics = this.add.graphics().setDepth(200);
     this.crosshair = this.add.graphics().setDepth(300);
     this.inputController = new InputController(this);
     const applyCameraScale = () => {
-      const width = this.scale.width;
-      const height = this.scale.height;
+      const pixelScale = this.renderScaler?.scale ?? 1;
+      const width = this.scale.width / pixelScale;
+      const height = this.scale.height / pixelScale;
       const compact = height < 600 || width / Math.max(1, height) > 1.95;
       const zoom = compact
-        ? Math.max(0.5, Math.min(0.86, height / 680))
+        ? Math.max(0.56, Math.min(0.9, height / 620))
         : 1;
-      this.cameras.main.setZoom(zoom);
-      this.cameras.main.setDeadzone(
-        compact ? 140 : 240,
-        compact ? 84 : 150,
-      );
+      this.cameras.main.setZoom(zoom * pixelScale);
+      for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
     };
     applyCameraScale();
     this.resizeHandler = applyCameraScale;
@@ -288,13 +341,27 @@ export class OnlineScene extends Phaser.Scene {
     this.cameras.main.fadeIn(350, 12, 13, 15);
 
     this.roomSubscriptions.push(
-      this.room.onMessage("snapshot", (snapshot: OnlineSnapshot) =>
-        this.onSnapshot(snapshot),
-      ),
+      this.room.onMessage("snapshot", (snapshot: OnlineSnapshot) => {
+        this.assembler.seed(snapshot);
+        this.onSnapshot(snapshot);
+      }),
+      this.room.onMessage(SNAPSHOT_SLOW, (slow: SlowSnapshot) => {
+        this.assembler.applySlow(slow);
+      }),
+      this.room.onMessage(SNAPSHOT_SELF, (self: SelfSnapshot) => {
+        this.assembler.applySelf(self);
+      }),
+      this.room.onMessage(SNAPSHOT_FAST, (fast: FastSnapshot) => {
+        const snapshot = this.assembler.assemble(fast);
+        if (snapshot) this.onSnapshot(snapshot);
+      }),
       this.room.onMessage("events", (events: OnlineEvent[]) =>
         this.onEvents(events),
       ),
     );
+    // The room can start streaming before this scene exists, and change-only
+    // sections sent in that gap are lost. Ask for one full snapshot now.
+    this.room.send("resync");
     this.commandUnsubscribe = this.bridge.onCommand((command) => {
       switch (command.type) {
         case "equip-weapon":
@@ -346,7 +413,23 @@ export class OnlineScene extends Phaser.Scene {
           jumpHeld: touchInput.jumpHeld,
           thrustHeld: touchInput.thrustHeld,
           moveX: touchInput.moveX,
+          aimAngle: touchInput.aimAngle,
+          aimActive: touchInput.aimActive,
         },
+        net: {
+          pendingTicks: this.predictor?.pendingTicks ?? 0,
+          lastCorrectionPx: this.predictor?.lastCorrection ?? 0,
+          snaps: this.predictor?.snaps ?? 0,
+          playbackDelayMs: this.snapshotClock.playbackDelayMs,
+          jitterMs: this.snapshotClock.jitterMs,
+          snapshotAgeMs: performance.now() - this.snapshotAt,
+          snapshotGapMs: this.snapshotGapEma,
+        },
+        render: {
+          scale: this.renderScaler?.scale ?? 1,
+          frameMs: this.frameMsEma,
+        },
+        localAim: this.localAim,
         control: this.lastFrame
           ? {
               fire: this.lastFrame.fire,
@@ -488,15 +571,18 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    const frameMs = Math.min(delta, 250);
     const dtMs = Math.min(delta, 50);
+    this.frameMsEma += (delta - this.frameMsEma) * 0.05;
+    this.renderScaler?.observeFrame(delta);
+    const localView = this.views.get(this.room.sessionId);
     const frame = this.inputController.sample(
       this.cameras.main,
-      this.views.get(this.room.sessionId)?.sprite.x ?? 640,
-      this.views.get(this.room.sessionId)?.sprite.y ?? 1340,
+      this.renderedLocal?.x ?? localView?.sprite.x ?? 640,
+      this.renderedLocal?.y ?? localView?.sprite.y ?? 1340,
     );
     this.lastFrame = frame;
     this.hitFeedbackMs = Math.max(0, this.hitFeedbackMs - dtMs);
-    this.sendAccumulator += dtMs;
     this.hudTimer += dtMs;
 
     if (this.inputController.debugPressed()) {
@@ -507,59 +593,12 @@ export class OnlineScene extends Phaser.Scene {
     const live = this.latestSnapshot?.phase === "live";
     const local = this.localSnapshot();
     if (local?.alive) {
-      if (!this.predictor) {
-        this.predictor = createHumanKinematics(local.x, local.y);
-        this.predictor.vx = local.vx;
-        this.predictor.vy = local.vy;
-        this.predictor.grounded = local.grounded;
-        this.predictor.jetpack.fuel = local.fuel;
-      }
-      if (live) {
-        stepHumanKinematics(
-          this.predictor,
-          {
-            moveX: frame.moveX,
-            jumpPressed: frame.jumpPressed,
-            jumpHeld: frame.jumpHeld,
-          },
-          dtMs,
-          {
-            width: ARENA.width,
-            height: ARENA.height,
-            platforms: this.arenaBuild.platformRects,
-          },
-        );
-      }
-      const aimX = this.predictor.x + 28;
-      const aimY = this.predictor.y - 58;
-      this.localAim =
-        this.testAimAngle ??
-        Math.atan2(
-          frame.aimWorld.y - aimY,
-          frame.aimWorld.x - aimX,
-        );
+      this.predictor ??= new LocalPredictor(motionFrom(local), this.movementWorld);
     } else {
       this.predictor = null;
+      this.renderedLocal = null;
+      this.packetTick = 0;
     }
-
-    if (
-      live &&
-      local?.alive &&
-      frame.fire &&
-      !this.wasFiring &&
-      this.predictor
-    ) {
-      const active = local.weapons[local.equippedSlot] ?? null;
-      if (active?.owned && active.ammo > 0 && !active.reloading) {
-        const localView = this.views.get(this.room.sessionId);
-        localView?.onShot();
-        const muzzleX = this.predictor.x + 28 + Math.cos(this.localAim) * 66;
-        const muzzleY = this.predictor.y - 58 + Math.sin(this.localAim) * 66;
-        this.effects.muzzle(muzzleX, muzzleY);
-        this.cameras.main.shake(30, 0.0007, true);
-      }
-    }
-    this.wasFiring = frame.fire;
 
     if (live) {
       this.pendingJump ||= frame.jumpPressed;
@@ -574,63 +613,59 @@ export class OnlineScene extends Phaser.Scene {
       this.pendingGrenadeThrow ||= frame.grenadeThrowPressed;
       this.pendingSwap ||= frame.swapPressed;
     } else {
-      this.pendingJump = false;
-      this.pendingReload = false;
-      this.pendingWeapon = null;
-      this.pendingMedkit = false;
-      this.pendingGrenadeSlot = null;
-      this.pendingGrenadeThrow = false;
-      this.pendingSwap = false;
+      this.clearPendingInput();
     }
 
-    if (
-      this.latestSnapshot &&
-      live &&
-      this.sendAccumulator >= 33 &&
-      local
-    ) {
-      this.sendAccumulator = 0;
-      this.inputSeq += 1;
-      const payload: OnlineInputPayload = {
-        seq: this.inputSeq,
-        moveX: frame.moveX,
-        jump: this.pendingJump,
-        jumpHeld: frame.jumpHeld,
-        fire: frame.fire || this.testFireFrames > 0,
-        reload: this.pendingReload || this.testReloadFrames > 0,
-        weapon: this.pendingWeapon,
-        aim: this.localAim,
-        useMedkit: this.pendingMedkit,
-        grenadeSlot: this.pendingGrenadeSlot,
-        throwGrenade: this.pendingGrenadeThrow,
-        swapWeapon: this.pendingSwap,
-      };
-      this.room.send("input", payload);
-      if (this.testFireFrames > 0) this.testFireFrames -= 1;
-      if (this.testReloadFrames > 0) this.testReloadFrames -= 1;
-      this.pendingJump = false;
-      this.pendingReload = false;
-      this.pendingWeapon = null;
-      this.pendingMedkit = false;
-      this.pendingGrenadeSlot = null;
-      this.pendingGrenadeThrow = false;
-      this.pendingSwap = false;
+    if (live && this.predictor) {
+      const due = this.predictor.bank(frameMs);
+      for (let tick = 0; tick < due; tick += 1) this.stepLocalTick(frame);
     }
+    if (this.predictor) {
+      this.renderedLocal = this.predictor.render(frameMs);
+      const aimX = this.renderedLocal.x + WEAPON_PIVOT_X;
+      const aimY = this.renderedLocal.y - WEAPON_PIVOT_Y;
+      this.localAim =
+        this.testAimAngle ??
+        frame.aimAngle ??
+        Math.atan2(frame.aimWorld.y - aimY, frame.aimWorld.x - aimX);
+    }
+
+    if (live && local?.alive && frame.fire && !this.wasFiring && this.renderedLocal) {
+      const active = local.weapons[local.equippedSlot] ?? null;
+      if (active?.owned && active.ammo > 0 && !active.reloading) {
+        localView?.onShot();
+        const muzzleX =
+          this.renderedLocal.x + WEAPON_PIVOT_X + Math.cos(this.localAim) * 66;
+        const muzzleY =
+          this.renderedLocal.y - WEAPON_PIVOT_Y + Math.sin(this.localAim) * 66;
+        this.effects.muzzle(muzzleX, muzzleY);
+        this.cameras.main.shake(30, 0.0007, true);
+      }
+    }
+    this.wasFiring = frame.fire;
 
     if (this.latestSnapshot) {
       const localId = this.room.sessionId;
+      const playback = this.snapshotClock.playbackTime(performance.now());
       for (const participant of this.latestSnapshot.participants) {
         const view = this.views.get(participant.id);
         if (view) {
-          const predicted =
-            participant.id === localId && participant.alive && this.predictor
-              ? { x: this.predictor.x, y: this.predictor.y }
-              : undefined;
+          const isLocal = participant.id === localId && participant.alive;
+          const kinematics = isLocal ? this.predictor?.kinematics : undefined;
           view.update(
             participant,
             dtMs,
-            participant.id === localId && participant.alive ? this.localAim : null,
-            predicted,
+            isLocal ? this.localAim : null,
+            isLocal && this.renderedLocal && kinematics
+              ? {
+                  x: this.renderedLocal.x,
+                  y: this.renderedLocal.y,
+                  grounded: kinematics.grounded,
+                  thrusting: kinematics.thrusting,
+                  vx: kinematics.vx,
+                }
+              : undefined,
+            playback,
           );
         }
       }
@@ -639,14 +674,14 @@ export class OnlineScene extends Phaser.Scene {
       this.animateGrenades(dtMs);
       this.animateToxicClouds(time);
       this.drawProjectiles();
-      this.clampCameraToArena();
+      this.updateCamera(dtMs, frame);
       this.drawCrosshair(frame);
       this.drawDebug();
     }
 
-    if (this.hudTimer >= 100) {
+    if (this.hudTimer >= HUD_PUBLISH_INTERVAL_MS) {
       this.hudTimer = 0;
-      this.publishHud(false);
+      this.publishHud(true);
     }
 
     const snapshot = this.latestSnapshot;
@@ -665,27 +700,151 @@ export class OnlineScene extends Phaser.Scene {
     );
   }
 
+  private clearPendingInput(): void {
+    this.pendingJump = false;
+    this.pendingReload = false;
+    this.pendingWeapon = null;
+    this.pendingMedkit = false;
+    this.pendingGrenadeSlot = null;
+    this.pendingGrenadeThrow = false;
+    this.pendingSwap = false;
+  }
+
+  /**
+   * Runs one fixed movement tick. Each packet covers a fixed number of ticks
+   * and is sent as it opens, so the server simulates the same inputs for the
+   * same number of ticks and replay after a snapshot lands exactly.
+   */
+  private stepLocalTick(frame: ControlFrame): void {
+    const predictor = this.predictor;
+    if (!predictor) return;
+    if (this.packetTick === 0) {
+      this.inputSeq += 1;
+      this.packet = {
+        seq: this.inputSeq,
+        moveX: frame.moveX,
+        jump: this.pendingJump,
+        jumpHeld: frame.jumpHeld,
+      };
+      const payload: OnlineInputPayload = {
+        seq: this.inputSeq,
+        ticks: INPUT_TICKS_PER_PACKET,
+        moveX: frame.moveX,
+        jump: this.pendingJump,
+        jumpHeld: frame.jumpHeld,
+        fire: frame.fire || this.testFireFrames > 0,
+        reload: this.pendingReload || this.testReloadFrames > 0,
+        weapon: this.pendingWeapon,
+        aim: this.localAim,
+        useMedkit: this.pendingMedkit,
+        grenadeSlot: this.pendingGrenadeSlot,
+        throwGrenade: this.pendingGrenadeThrow,
+        swapWeapon: this.pendingSwap,
+      };
+      this.room.send("input", payload);
+      if (this.testFireFrames > 0) this.testFireFrames -= 1;
+      if (this.testReloadFrames > 0) this.testReloadFrames -= 1;
+      this.clearPendingInput();
+    }
+    const packet = this.packet;
+    if (!packet) return;
+    predictor.step(packet.seq, this.packetTick, {
+      moveX: packet.moveX,
+      jumpPressed: this.packetTick === 0 && packet.jump,
+      jumpHeld: packet.jumpHeld,
+    });
+    this.packetTick = (this.packetTick + 1) % INPUT_TICKS_PER_PACKET;
+  }
+
+  /**
+   * Time-based follow with restrained aim look-ahead. Replaces Phaser follow,
+   * whose per-frame lerp changes with frame rate and whose rounded scroll
+   * shimmers at non-integer zoom.
+   */
+  private updateCamera(dtMs: number, frame: ControlFrame): void {
+    const camera = this.cameras.main;
+    const target =
+      this.renderedLocal ??
+      this.views.get(this.room.sessionId)?.sprite ??
+      null;
+    if (!target) return;
+    const visibleWidth = camera.width / Math.max(0.01, camera.zoom);
+    const visibleHeight = camera.height / Math.max(0.01, camera.zoom);
+    const dt = dtMs / 1000;
+
+    let desiredLookX = 0;
+    let desiredLookY = 0;
+    if (this.renderedLocal) {
+      if (frame.aimAngle !== null) {
+        if (touchInput.aimActive) {
+          desiredLookX = Math.cos(frame.aimAngle) * Math.min(150, visibleWidth * 0.18);
+          desiredLookY = Math.sin(frame.aimAngle) * Math.min(64, visibleHeight * 0.12);
+        }
+      } else {
+        const fromPlayerX = frame.aimWorld.x - this.renderedLocal.x;
+        const fromPlayerY = frame.aimWorld.y - this.renderedLocal.y;
+        desiredLookX = Math.max(-80, Math.min(80, fromPlayerX * 0.12));
+        desiredLookY = Math.max(-44, Math.min(44, fromPlayerY * 0.12));
+      }
+    }
+    const lookBlend = 1 - Math.exp(-dt * (desiredLookX || desiredLookY ? 5 : 2.5));
+    this.lookX += (desiredLookX - this.lookX) * lookBlend;
+    this.lookY += (desiredLookY - this.lookY) * lookBlend;
+
+    const desiredX = target.x + this.lookX;
+    const desiredY = target.y - 70 + this.lookY;
+    if (!this.cameraFocus) {
+      this.cameraFocus = { x: desiredX, y: desiredY };
+    } else if (Math.hypot(desiredX - this.cameraFocus.x, desiredY - this.cameraFocus.y) > 900) {
+      this.cameraFocus.x = desiredX;
+      this.cameraFocus.y = desiredY;
+    } else {
+      const follow = 1 - Math.exp(-dt * 10);
+      this.cameraFocus.x += (desiredX - this.cameraFocus.x) * follow;
+      this.cameraFocus.y += (desiredY - this.cameraFocus.y) * follow;
+    }
+
+    const halfWidth = visibleWidth / 2;
+    const halfHeight = visibleHeight / 2;
+    const focusX =
+      ARENA.width <= visibleWidth
+        ? ARENA.width / 2
+        : Math.max(halfWidth, Math.min(ARENA.width - halfWidth, this.cameraFocus.x));
+    const focusY =
+      ARENA.height <= visibleHeight
+        ? ARENA.height / 2
+        : Math.max(halfHeight, Math.min(ARENA.height - halfHeight, this.cameraFocus.y));
+    camera.scrollX = focusX - camera.width / 2;
+    camera.scrollY = focusY - camera.height / 2;
+  }
+
   private onSnapshot(snapshot: OnlineSnapshot): void {
     const first = this.latestSnapshot === null;
+    const now = performance.now();
+    if (!first) {
+      this.snapshotGapEma += (now - this.snapshotAt - this.snapshotGapEma) * 0.1;
+    }
     this.latestSnapshot = snapshot;
-    this.snapshotAt = performance.now();
+    this.snapshotAt = now;
     this.probe.snapshot = snapshot;
+    const serverMs = snapshot.tick * SERVER_TICK_MS;
+    this.snapshotClock.observe(serverMs, now);
     const present = new Set(snapshot.participants.map((p) => p.id));
 
     for (const participant of snapshot.participants) {
       const isLocal = participant.id === this.room.sessionId;
       if (!this.views.has(participant.id)) {
         const view = new CombatantView(this, participant, isLocal);
+        const pixelScale = this.renderScaler?.scale ?? 1;
+        view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
         this.views.set(participant.id, view);
-        if (isLocal && participant.kind === "human") {
-          this.cameras.main.startFollow(view.sprite, true, 0.08, 0.08);
-          this.cameras.main.setDeadzone(240, 150);
-        }
+      }
+      if (!isLocal) {
+        this.views.get(participant.id)?.pushSample(serverMs, participant);
       }
     }
     for (const [id, view] of this.views) {
       if (!present.has(id)) {
-        if (id === this.room.sessionId) this.cameras.main.stopFollow();
         view.destroy();
         this.views.delete(id);
       }
@@ -701,26 +860,9 @@ export class OnlineScene extends Phaser.Scene {
     if (!local || !local.alive) {
       this.predictor = null;
     } else if (!this.predictor) {
-      this.predictor = createHumanKinematics(local.x, local.y);
-      this.predictor.vx = local.vx;
-      this.predictor.vy = local.vy;
-      this.predictor.grounded = local.grounded;
-      this.predictor.jetpack.fuel = local.fuel;
+      this.predictor = new LocalPredictor(motionFrom(local), this.movementWorld);
     } else {
-      const error = Math.hypot(local.x - this.predictor.x, local.y - this.predictor.y);
-      if (error > 280) {
-        this.predictor.x = local.x;
-        this.predictor.y = local.y;
-        this.predictor.vx = local.vx;
-        this.predictor.vy = local.vy;
-        this.predictor.grounded = local.grounded;
-      } else if (error > 0.5) {
-        this.predictor.x += (local.x - this.predictor.x) * 0.22;
-        this.predictor.y += (local.y - this.predictor.y) * 0.22;
-      }
-      this.predictor.jetpack.fuel = local.fuel;
-      this.predictor.grounded = local.grounded;
-      this.predictor.thrusting = local.thrusting;
+      this.predictor.reconcile(motionFrom(local));
     }
 
     if (first) {
@@ -735,17 +877,12 @@ export class OnlineScene extends Phaser.Scene {
       this.localDamageSeq = 0;
     }
     if (this.previousPhase === "countdown" && snapshot.phase === "live") {
-      this.pendingJump = false;
-      this.pendingReload = false;
-      this.pendingWeapon = null;
-      this.pendingMedkit = false;
-      this.pendingGrenadeSlot = null;
-      this.pendingGrenadeThrow = false;
-      this.pendingSwap = false;
+      this.clearPendingInput();
       this.wasFiring = false;
     }
+    const phaseChanged = this.previousPhase !== snapshot.phase;
     this.previousPhase = snapshot.phase;
-    this.publishHud(true);
+    if (first || phaseChanged) this.publishHud(true);
   }
 
   private syncPickupViews(pickups: OnlinePickupSnapshot[]): void {
@@ -770,8 +907,9 @@ export class OnlineScene extends Phaser.Scene {
                     : 0x9bd8f2
                   : 0xd7ff2e;
         const glow = this.add
-          .circle(0, 8, 22, color, 0.08)
-          .setStrokeStyle(1, color, 0.3);
+          .image(0, 8, "fx-pickup-ring")
+          .setTint(color)
+          .setDisplaySize(50, 50);
         const texture =
           pickup.type === "contact-grenade"
             ? "pickup-grenade-contact"
@@ -818,7 +956,10 @@ export class OnlineScene extends Phaser.Scene {
       if (!pickup.active || !onScreen) continue;
       pickup.container.y =
         pickup.baseY + Math.sin(time / 420 + pickup.phase) * 3;
-      pickup.glow.setScale(1 + Math.sin(time / 520 + pickup.phase) * 0.08);
+      pickup.glow.setDisplaySize(
+        50 + Math.sin(time / 520 + pickup.phase) * 4,
+        50 + Math.sin(time / 520 + pickup.phase) * 4,
+      );
     }
   }
 
@@ -857,9 +998,11 @@ export class OnlineScene extends Phaser.Scene {
         const beam = this.add
           .rectangle(0, 2, 3, item.kind === "weapon" ? 54 : 42, color, 0.18)
           .setOrigin(0.5, 1);
+        const lootGlowSize = item.kind === "weapon" ? 58 : 48;
         const glow = this.add
-          .circle(0, 6, item.kind === "weapon" ? 26 : 21, color, 0.1)
-          .setStrokeStyle(1, color, 0.42);
+          .image(0, 6, "fx-pickup-ring")
+          .setTint(color)
+          .setDisplaySize(lootGlowSize, lootGlowSize);
         const image = this.add
           .image(0, item.kind === "weapon" ? -14 : -6, texture)
           .setScale(item.kind === "weapon" ? 1.05 : 0.9);
@@ -904,7 +1047,9 @@ export class OnlineScene extends Phaser.Scene {
       const drop = age < 260 ? -18 * (1 - age / 260) : 0;
       view.container.y =
         view.baseY + drop + Math.sin(time / 360 + view.phase) * 2.4;
-      view.glow.setScale(1 + Math.sin(time / 460 + view.phase) * 0.1);
+      const lootPulse = view.kind === "weapon" ? 58 : 48;
+      const lootSize = lootPulse + Math.sin(time / 460 + view.phase) * 5;
+      view.glow.setDisplaySize(lootSize, lootSize);
       const remaining = view.expiresAtLocal - time;
       view.container.setAlpha(
         remaining < 3000
@@ -1694,7 +1839,7 @@ export class OnlineScene extends Phaser.Scene {
   private drawProjectiles(): void {
     this.bulletGraphics.clear();
     if (!this.latestSnapshot) return;
-    const extrapolate = Math.min(0.055, (performance.now() - this.snapshotAt) / 1000);
+    const extrapolate = Math.min(0.08, (performance.now() - this.snapshotAt) / 1000);
     for (const projectile of this.latestSnapshot.projectiles) {
       const x = projectile.x + projectile.vx * extrapolate;
       const y = projectile.y + projectile.vy * extrapolate;
@@ -1784,18 +1929,23 @@ export class OnlineScene extends Phaser.Scene {
       ALL_PLAYER_WEAPONS[0];
     const spread = 7 + Math.min(24, definition.spreadRadians * 100);
     const color = this.hitFeedbackMs > 0 ? 0xf5f3ec : 0xd7ff2e;
+    const origin = this.renderedLocal ?? local;
+    const pivotX = origin.x + WEAPON_PIVOT_X;
+    const pivotY = origin.y - WEAPON_PIVOT_Y;
+    const usesTouchAim = frame.aimAngle !== null;
+    const reticleRange = this.testAimAngle !== null ? 400 : TOUCH_RETICLE_RANGE;
     const target =
-      this.testAimAngle !== null
+      this.testAimAngle !== null || usesTouchAim
         ? {
-            x: local.x + Math.cos(this.testAimAngle) * 400,
-            y: local.y - 58 + Math.sin(this.testAimAngle) * 400,
+            x: pivotX + Math.cos(this.localAim) * reticleRange,
+            y: pivotY + Math.sin(this.localAim) * reticleRange,
           }
         : frame.aimWorld;
     const muzzle = {
-      x: local.x + 28 + Math.cos(this.localAim) * 66,
-      y: local.y - 58 + Math.sin(this.localAim) * 66,
+      x: pivotX + Math.cos(this.localAim) * 66,
+      y: pivotY + Math.sin(this.localAim) * 66,
     };
-    this.crosshair.lineStyle(1, color, 0.09);
+    this.crosshair.lineStyle(usesTouchAim ? 2 : 1, color, usesTouchAim ? 0.28 : 0.09);
     this.crosshair.lineBetween(muzzle.x, muzzle.y, target.x, target.y);
     this.crosshair.lineStyle(2, color, 0.92);
     for (const [sx, sy] of [
@@ -1822,20 +1972,6 @@ export class OnlineScene extends Phaser.Scene {
       this.crosshair.lineBetween(target.x - 16, target.y + 16, target.x - 8, target.y + 8);
       this.crosshair.lineBetween(target.x + 16, target.y + 16, target.x + 8, target.y + 8);
     }
-  }
-
-  private clampCameraToArena(): void {
-    const camera = this.cameras.main;
-    const visibleWidth = camera.width / Math.max(0.01, camera.zoom);
-    const visibleHeight = camera.height / Math.max(0.01, camera.zoom);
-    camera.scrollX = Math.max(
-      0,
-      Math.min(camera.scrollX, ARENA.width - visibleWidth),
-    );
-    camera.scrollY = Math.max(
-      0,
-      Math.min(camera.scrollY, ARENA.height - visibleHeight),
-    );
   }
 
   private drawDebug(): void {

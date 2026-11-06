@@ -17,7 +17,10 @@ import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import { ProfilePanel } from "@/components/online/ProfilePanel";
 import { BetaFeedback } from "@/components/online/BetaFeedback";
 import { OnlineGameCanvas } from "@/components/online/OnlineGameCanvas";
-import type { OnlineRoomMetadata } from "@/game/multiplayer/protocol";
+import {
+  NET_PROTOCOL_VERSION,
+  type OnlineRoomMetadata,
+} from "@/game/multiplayer/protocol";
 import { audio } from "@/game/audio/AudioEngine";
 import {
   ensureGuestProfile,
@@ -817,12 +820,14 @@ export function OnlineShell() {
               name: guest,
               skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
+              netProtocol: NET_PROTOCOL_VERSION,
             })
           : await client.create("ffa", {
               name: guest,
               roomName: "SECTOR 07",
               skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
+              netProtocol: NET_PROTOCOL_VERSION,
             });
         await adoptRoom(room);
       } catch (joinError) {
@@ -860,6 +865,7 @@ export function OnlineShell() {
             skinId: identity.skinId,
             open: true,
             guestToken: guestToken() ?? undefined,
+            netProtocol: NET_PROTOCOL_VERSION,
           });
         } catch (attemptError) {
           const message =
@@ -879,6 +885,7 @@ export function OnlineShell() {
           roomName: "SECTOR 07",
           skinId: identity.skinId,
           guestToken: guestToken() ?? undefined,
+          netProtocol: NET_PROTOCOL_VERSION,
         });
       }
       await adoptRoom(room);

@@ -212,49 +212,6 @@ function drawBackground(scene: Phaser.Scene): void {
     .setDisplaySize(4300, 320)
     .setScrollFactor(0.42)
     .setDepth(-890);
-
-  bakeLayer(
-    scene,
-    "arena-billboard",
-    500,
-    160,
-    0.34,
-    -870,
-    (billboard) => {
-      billboard.fillStyle(0x0c0d0f, 0.35);
-      billboard.fillRect(15, 15, 420, 120);
-      billboard.fillStyle(0x16181c, 0.92);
-      billboard.fillRect(0, 0, 420, 120);
-      billboard.fillStyle(0x2e333a, 1);
-      billboard.fillRect(2, 2, 416, 4);
-      billboard.fillStyle(0xd7ff2e, 1);
-      billboard.fillRect(10, 12, 10, 78);
-      billboard.fillStyle(0xc7692f, 1);
-      billboard.fillRect(0, 108, 420, 12);
-    },
-    910,
-    510,
-  );
-
-  scene.add
-    .text(944, 536, "SECTOR 07", {
-      fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-      fontSize: "31px",
-      fontStyle: "bold",
-      color: "#f5f3ec",
-      letterSpacing: 4,
-    })
-    .setScrollFactor(0.34)
-    .setDepth(-866);
-  scene.add
-    .text(946, 580, "FREE FOR ALL // SECTOR 07", {
-      fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-      fontSize: "13px",
-      color: "#d7ff2e",
-      letterSpacing: 2,
-    })
-    .setScrollFactor(0.34)
-    .setDepth(-866);
 }
 
 function drawBlock(
@@ -476,13 +433,14 @@ function createArenaDecorActors(scene: Phaser.Scene, arena: ArenaDefinition): vo
   ];
   for (const lamp of lamps) {
     const glow = scene.add
-      .circle(lamp.x, lamp.y - 56, 22, 0xd7ff2e, 0.1)
+      .image(lamp.x, lamp.y - 56, "fx-glow")
+      .setTint(0xd7ff2e)
+      .setDisplaySize(52, 52)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(7);
     scene.tweens.add({
       targets: glow,
-      alpha: { from: 0.04, to: 0.15 },
-      scale: { from: 0.9, to: 1.2 },
+      alpha: { from: 0.3, to: 0.9 },
       duration: 1700 + hash01(lamp.x) * 700,
       yoyo: true,
       repeat: -1,
@@ -556,13 +514,14 @@ export function buildArena(scene: Phaser.Scene, arena: ArenaDefinition): ArenaBu
 
   const spawn = arena.playerSpawn;
   const spawnGlow = scene.add
-    .ellipse(spawn.x, spawn.y, 132, 24, 0xd7ff2e, 0.12)
+    .image(spawn.x, spawn.y, "fx-glow")
+    .setTint(0xd7ff2e)
+    .setDisplaySize(140, 26)
     .setBlendMode(Phaser.BlendModes.ADD)
     .setDepth(8);
   scene.tweens.add({
     targets: spawnGlow,
-    alpha: { from: 0.05, to: 0.18 },
-    scaleX: { from: 0.8, to: 1.15 },
+    alpha: { from: 0.3, to: 0.8 },
     duration: 1500,
     yoyo: true,
     repeat: -1,

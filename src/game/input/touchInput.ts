@@ -20,6 +20,10 @@ export interface MutableTouchInput extends TouchFrame {
   aimFire: boolean;
   buttonJumpHeld: boolean;
   thrustHeld: boolean;
+  /** True while a thumb is on the aim pad, used for camera look-ahead. */
+  aimActive: boolean;
+  /** Tap-fire latch, so a tap shorter than one packet still reaches the server. */
+  tapFireUntil: number;
 }
 
 export const touchInput: MutableTouchInput = {
@@ -32,6 +36,8 @@ export const touchInput: MutableTouchInput = {
   jumpHeld: false,
   buttonJumpHeld: false,
   thrustHeld: false,
+  aimActive: false,
+  tapFireUntil: 0,
   jumpPressed: false,
   reloadPressed: false,
   weaponSlotPressed: null,
@@ -54,6 +60,8 @@ export function resetTouchInput(): void {
   touchInput.jumpHeld = false;
   touchInput.buttonJumpHeld = false;
   touchInput.thrustHeld = false;
+  touchInput.aimActive = false;
+  touchInput.tapFireUntil = 0;
   touchInput.jumpPressed = false;
   touchInput.reloadPressed = false;
   touchInput.weaponSlotPressed = null;
@@ -70,6 +78,15 @@ export function setTouchMove(moveX: number): void {
 export function setTouchAim(angle: number | null): void {
   touchInput.aimAngle =
     angle === null || !Number.isFinite(angle) ? null : angle;
+}
+
+export function setTouchAimActive(active: boolean): void {
+  touchInput.aimActive = active;
+}
+
+/** Holds fire long enough for one packet to carry it, for a quick tap. */
+export function queueTouchTapFire(durationMs = 90): void {
+  touchInput.tapFireUntil = performance.now() + durationMs;
 }
 
 export function setTouchFireButton(fire: boolean): void {
@@ -121,7 +138,7 @@ export function consumeTouchFrame(): TouchFrame | null {
   const frame: TouchFrame = {
     moveX: touchInput.moveX,
     aimAngle: touchInput.aimAngle,
-    fire: touchInput.fire,
+    fire: touchInput.fire || performance.now() < touchInput.tapFireUntil,
     jumpHeld: touchInput.jumpHeld,
     jumpPressed: touchInput.jumpPressed,
     reloadPressed: touchInput.reloadPressed,

@@ -399,7 +399,51 @@ function makeDrone(scene: Phaser.Scene): void {
   g.destroy();
 }
 
+/**
+ * Baked rings and shadows. These replace per-frame Arc and Ellipse shapes, so
+ * dozens of glows cost one quad each instead of a re-tessellated stroked path.
+ */
+function makeBakedEffects(scene: Phaser.Scene): void {
+  const bake = (
+    key: string,
+    width: number,
+    height: number,
+    draw: (graphics: Phaser.GameObjects.Graphics) => void,
+  ) => {
+    if (scene.textures.exists(key)) return;
+    const graphics = scene.make.graphics({ x: 0, y: 0 }, false);
+    draw(graphics);
+    graphics.generateTexture(key, width, height);
+    graphics.destroy();
+  };
+  bake("fx-pickup-ring", 96, 96, (g) => {
+    g.fillStyle(0xffffff, 0.12);
+    g.fillCircle(48, 48, 44);
+    g.lineStyle(3, 0xffffff, 0.55);
+    g.strokeCircle(48, 48, 44);
+  });
+  bake("fx-shield-ring", 128, 128, (g) => {
+    g.lineStyle(4, 0xd7ff2e, 0.85);
+    g.strokeCircle(64, 64, 60);
+  });
+  bake("fx-ground-ring", 128, 40, (g) => {
+    g.lineStyle(4, 0xd7ff2e, 0.9);
+    g.strokeEllipse(64, 20, 120, 32);
+  });
+  bake("fx-shadow", 96, 28, (g) => {
+    g.fillStyle(0x0c0d0f, 0.26);
+    g.fillEllipse(48, 14, 92, 24);
+  });
+  bake("fx-glow", 64, 64, (g) => {
+    for (let radius = 30; radius > 2; radius -= 4) {
+      g.fillStyle(0xffffff, 0.05);
+      g.fillCircle(32, 32, radius);
+    }
+  });
+}
+
 export function createGameTextures(scene: Phaser.Scene): void {
+  makeBakedEffects(scene);
   makeSpark(scene, "spark-lime", 0xd7ff2e, 6);
   makeSpark(scene, "spark-mint", 0x9bd8f2, 6);
   makeSpark(scene, "spark-copper", 0xc7692f, 6);

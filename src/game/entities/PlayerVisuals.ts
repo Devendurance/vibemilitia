@@ -36,13 +36,13 @@ interface PlayerVisualsOptions {
 export class PlayerVisuals {
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Sprite;
-  private shadow: Phaser.GameObjects.Ellipse;
+  private shadow: Phaser.GameObjects.Image;
   private weapon: Phaser.GameObjects.Container;
   private weaponImage: Phaser.GameObjects.Image;
   private weaponImage2: Phaser.GameObjects.Image;
   private muzzle: Phaser.GameObjects.Image;
   private muzzle2: Phaser.GameObjects.Image;
-  private shield: Phaser.GameObjects.Arc;
+  private shield: Phaser.GameObjects.Image;
   private jetLeft: Phaser.GameObjects.Particles.ParticleEmitter;
   private jetRight: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter | null;
@@ -58,8 +58,11 @@ export class PlayerVisuals {
     this.scene = scene;
     this.sprite = sprite;
 
+    // Baked images. Phaser Arc and Ellipse shapes rebuild their path every
+    // frame, which was the largest script cost of a full online match.
     this.shadow = scene.add
-      .ellipse(sprite.x, sprite.y + 2, 64, 16, 0x0c0d0f, 0.26)
+      .image(sprite.x, sprite.y + 2, "fx-shadow")
+      .setDisplaySize(68, 18)
       .setDepth(12);
 
     const exhaustConfig: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig = {
@@ -98,8 +101,8 @@ export class PlayerVisuals {
     this.weapon.add([this.weaponImage2, this.weaponImage, this.muzzle, this.muzzle2]);
 
     this.shield = scene.add
-      .circle(sprite.x, sprite.y - 58, 47, 0x000000, 0)
-      .setStrokeStyle(2, 0xd7ff2e, 0.8)
+      .image(sprite.x, sprite.y - 58, "fx-shield-ring")
+      .setDisplaySize(100, 100)
       .setDepth(29)
       .setVisible(false);
 
@@ -162,8 +165,8 @@ export class PlayerVisuals {
     }
 
     this.shadow.setPosition(state.x, state.y + 1);
-    this.shadow.setAlpha(state.grounded ? 0.26 : 0.09);
-    this.shadow.setScale(state.grounded ? 1 : 0.8);
+    this.shadow.setAlpha(state.grounded ? 1 : 0.35);
+    this.shadow.setDisplaySize(state.grounded ? 68 : 54, state.grounded ? 18 : 14);
 
     const px = state.x + PIVOT_X - Math.cos(state.aimAngle) * state.recoil * 4;
     const py = state.y - PIVOT_Y - Math.sin(state.aimAngle) * state.recoil * 4;
@@ -210,7 +213,7 @@ export class PlayerVisuals {
     this.shield.setVisible(state.shield);
     if (state.shield) {
       const pulse = 1 + Math.sin(this.scene.time.now * 0.009) * 0.045;
-      this.shield.setScale(pulse);
+      this.shield.setDisplaySize(100 * pulse, 100 * pulse);
       this.shield.setPosition(state.x, state.y - 58);
       this.shield.setAlpha(0.35 + pulse * 0.2);
     }

@@ -6,7 +6,9 @@ import {
   MATCH_CONFIG,
   DRONE_CONFIG,
   DRONE_WEAPON,
+  DEFAULT_SIM_BOT_TUNING,
   findPlayerWeaponById,
+  type SimBotTuning,
   type PlayerWeapon,
 } from "@/game/config/gameplay";
 import { ARENA } from "@/game/arena/arena";
@@ -279,6 +281,14 @@ interface HumanRuntime {
   akimboBarrel: 0 | 1;
   input: OnlineInputPayload | null;
   lastInputSeq: number;
+  moveQueue: QueuedMove[];
+  moveDebtTicks: number;
+  moveStarvedTicks: number;
+  moveDepthFloor: number;
+  moveDepthWindow: number;
+  moveCatchUpTicks: number;
+  ackSeq: number;
+  ackTicks: number;
   queuedJump: boolean;
   queuedReload: boolean;
   queuedWeapon: number | null;
@@ -378,7 +388,27 @@ interface SimulationOptions {
   botsEnabled?: boolean;
   countdownMs?: number;
   skinSeed?: number;
+  /** Practice-only bot tuning. Online rooms always use the default. */
+  botTuning?: SimBotTuning;
 }
+
+/** Movement covered by one client packet, simulated one tick per server tick. */
+interface QueuedMove {
+  seq: number;
+  moveX: number;
+  jump: boolean;
+  jumpHeld: boolean;
+  total: number;
+  remaining: number;
+  started: boolean;
+}
+
+/** Most movement a client may have banked: 500ms. Limits buffering and abuse. */
+const MAX_QUEUED_MOVE_TICKS = 30;
+/** After this long with no input, treat the player as idle. */
+const MAX_STARVED_MOVE_TICKS = 30;
+/** How long a backlog must persist before banked ticks are spent. */
+const MOVE_DEPTH_WINDOW_TICKS = 60;
 
 function createRng(seed: number): () => number {
   let state = seed >>> 0;
@@ -487,6 +517,7 @@ export class GameSimulation {
   private skinRng: () => number;
   private botsEnabled: boolean;
   private botsWeaponCuriosity = true;
+  private botTuning: SimBotTuning;
   private botsLootPaused = false;
   private lootCollectionPaused = false;
 
@@ -498,6 +529,7 @@ export class GameSimulation {
       0,
       options.countdownMs ?? DEFAULT_MATCH_COUNTDOWN_MS,
     );
+    this.botTuning = options.botTuning ?? DEFAULT_SIM_BOT_TUNING;
     this.skinRng = createRng(
       options.skinSeed ?? seedFromString(options.roomId),
     );
@@ -638,6 +670,7 @@ export class GameSimulation {
     human.connected = connected;
     if (!connected) {
       human.input = null;
+      this.clearMoveQueue(human);
       human.queuedJump = false;
       human.queuedReload = false;
       human.queuedWeapon = null;
@@ -659,6 +692,7 @@ export class GameSimulation {
     human.id = newId;
     human.connected = true;
     human.input = null;
+    this.clearMoveQueue(human);
     this.humans.set(newId, human);
     return true;
   }
@@ -703,6 +737,23 @@ export class GameSimulation {
 
     human.inputsReceived += 1;
 
+    const tickCount =
+      typeof payload.ticks === "number" && Number.isFinite(payload.ticks)
+        ? Math.max(1, Math.min(8, Math.floor(payload.ticks)))
+        : 0;
+    if (tickCount > 0) {
+      human.moveQueue.push({
+        seq,
+        moveX: Math.max(-1, Math.min(1, payload.moveX)),
+        jump: Boolean(payload.jump),
+        jumpHeld: Boolean(payload.jumpHeld),
+        total: tickCount,
+        remaining: tickCount,
+        started: false,
+      });
+      this.trimMoveQueue(human);
+    }
+
     human.input = {
       seq,
       moveX: Math.max(-1, Math.min(1, payload.moveX)),
@@ -717,7 +768,7 @@ export class GameSimulation {
       aim: normalizeAim(payload.aim),
     };
     human.lastInputSeq = seq;
-    human.queuedJump ||= Boolean(payload.jump);
+    if (tickCount === 0) human.queuedJump ||= Boolean(payload.jump);
     human.queuedReload ||= Boolean(payload.reload);
     human.queuedMedkit ||= Boolean(payload.useMedkit);
     if (payload.weapon !== null && payload.weapon !== undefined) {
@@ -778,6 +829,7 @@ export class GameSimulation {
       human.weaponEliminations = {};
       human.lastKillerName = null;
       human.input = null;
+      this.clearMoveQueue(human);
       this.resetHumanForRespawn(human);
     }
     this.fillBots();
@@ -1036,6 +1088,14 @@ export class GameSimulation {
       akimboBarrel: 0,
       input: null,
       lastInputSeq: 0,
+      moveQueue: [],
+      moveDebtTicks: 0,
+      moveStarvedTicks: 0,
+      moveDepthFloor: Number.POSITIVE_INFINITY,
+      moveDepthWindow: 0,
+      moveCatchUpTicks: 0,
+      ackSeq: 0,
+      ackTicks: 0,
       queuedJump: false,
       queuedReload: false,
       queuedWeapon: null,
@@ -1159,6 +1219,7 @@ export class GameSimulation {
     human.invulnerableRemainingMs = PLAYER_CONFIG.invulnerabilityMs;
     human.respawnRemainingMs = 0;
     human.lastDamageMs = PLAYER_CONFIG.damageRegenDelayMs;
+    this.clearMoveQueue(human);
     human.queuedJump = false;
     human.queuedReload = false;
     human.queuedWeapon = null;
@@ -1248,6 +1309,96 @@ export class GameSimulation {
     });
   }
 
+  /**
+   * Movement is consumed one client tick per server tick, so simulated movement
+   * is a pure function of the input stream however packets arrive. That is what
+   * lets client replay land exactly through TCP jitter.
+   *
+   * When input is late the player holds still for that tick and the tick is
+   * banked. A stall therefore cannot be followed by a correction, and the
+   * backlog it leaves acts as a jitter buffer. If the backlog stays deeper than
+   * needed, banked ticks are spent to catch up, never exceeding real time.
+   */
+  private nextHumanMovement(human: HumanRuntime): {
+    moveX: number;
+    jumpPressed: boolean;
+    jumpHeld: boolean;
+  } | null {
+    const carriedJump = human.queuedJump;
+    human.queuedJump = false;
+    const usesTickedInput = human.ackSeq > 0 || human.moveQueue.length > 0;
+    if (!usesTickedInput) {
+      const input = human.input;
+      return input
+        ? { moveX: input.moveX, jumpPressed: carriedJump, jumpHeld: input.jumpHeld }
+        : { moveX: 0, jumpPressed: false, jumpHeld: false };
+    }
+
+    const frame = human.moveQueue[0];
+    if (!frame) {
+      human.moveStarvedTicks += 1;
+      if (human.moveStarvedTicks > MAX_STARVED_MOVE_TICKS) {
+        // A silent client: stop banking and let gravity and friction apply.
+        human.moveDebtTicks = 0;
+        return { moveX: 0, jumpPressed: false, jumpHeld: false };
+      }
+      human.moveDebtTicks = Math.min(
+        MAX_QUEUED_MOVE_TICKS,
+        human.moveDebtTicks + 1,
+      );
+      human.queuedJump = carriedJump;
+      return null;
+    }
+
+    const jumpPressed = carriedJump || (!frame.started && frame.jump);
+    frame.started = true;
+    frame.remaining -= 1;
+    human.ackSeq = frame.seq;
+    human.ackTicks = frame.total - frame.remaining;
+    human.moveStarvedTicks = 0;
+    if (frame.remaining <= 0) human.moveQueue.shift();
+    return { moveX: frame.moveX, jumpPressed, jumpHeld: frame.jumpHeld };
+  }
+
+  /** Spends banked ticks when the backlog has stayed deeper than jitter needs. */
+  private shouldCatchUp(human: HumanRuntime): boolean {
+    const depth = human.moveQueue.reduce((sum, move) => sum + move.remaining, 0);
+    human.moveDepthFloor = Math.min(human.moveDepthFloor, depth);
+    human.moveDepthWindow += 1;
+    if (human.moveDepthWindow >= MOVE_DEPTH_WINDOW_TICKS) {
+      human.moveCatchUpTicks = Math.max(0, human.moveDepthFloor - 2);
+      human.moveDepthFloor = Number.POSITIVE_INFINITY;
+      human.moveDepthWindow = 0;
+    }
+    if (human.moveCatchUpTicks <= 0 || human.moveDebtTicks <= 0 || depth <= 0) {
+      return false;
+    }
+    human.moveCatchUpTicks -= 1;
+    human.moveDebtTicks -= 1;
+    return true;
+  }
+
+  private trimMoveQueue(human: HumanRuntime): void {
+    let banked = human.moveQueue.reduce((sum, move) => sum + move.remaining, 0);
+    while (banked > MAX_QUEUED_MOVE_TICKS && human.moveQueue.length > 1) {
+      const dropped = human.moveQueue.shift();
+      if (!dropped) break;
+      banked -= dropped.remaining;
+      if (!dropped.started && dropped.jump) human.queuedJump = true;
+      human.ackSeq = dropped.seq;
+      human.ackTicks = dropped.total;
+    }
+  }
+
+  private clearMoveQueue(human: HumanRuntime): void {
+    human.moveQueue = [];
+    human.moveDebtTicks = 0;
+    human.moveStarvedTicks = 0;
+    human.moveDepthFloor = Number.POSITIVE_INFINITY;
+    human.moveDepthWindow = 0;
+    human.moveCatchUpTicks = 0;
+  }
+
   private stepHuman(human: HumanRuntime, dtMs: number): void {
     if (!human.alive) {
       human.respawnRemainingMs = Math.max(0, human.respawnRemainingMs - dtMs);
@@ -1278,24 +1429,17 @@ export class GameSimulation {
     if (input) {
       human.aimAngle = input.aim;
     }
-    const jump = human.queuedJump;
-    human.queuedJump = false;
-
-    const movement = input
-      ? {
-          moveX: input.moveX,
-          jumpPressed: jump,
-          jumpHeld: input.jumpHeld,
-        }
-      : { moveX: 0, jumpPressed: false, jumpHeld: false };
-
-    const result = stepHumanKinematics(human.kin, movement, dtMs, {
+    const moveWorld = {
       width: ARENA.width,
       height: ARENA.height,
       platforms: this.platforms,
-    });
-    if (result.jumped) {
-      human.kin.grounded = false;
+    };
+    const stepsDue = this.shouldCatchUp(human) ? 2 : 1;
+    for (let step = 0; step < stepsDue; step += 1) {
+      const movement = this.nextHumanMovement(human);
+      if (!movement) continue;
+      const result = stepHumanKinematics(human.kin, movement, dtMs, moveWorld);
+      if (result.jumped) human.kin.grounded = false;
     }
 
     if (human.queuedWeapon !== null) {
@@ -2767,9 +2911,16 @@ export class GameSimulation {
     const targetVX = target.kind === "human" ? target.kin.vx : target.vx;
     const targetVY = target.kind === "human" ? target.kin.vy : target.vy;
     bot.aimAngle = Math.atan2(
-      position.aimY + targetVY * flightTime * 0.35 - origin.y,
-      position.x + targetVX * flightTime * 0.35 - origin.x,
+      position.aimY +
+        targetVY * flightTime * this.botTuning.leadFactor -
+        origin.y,
+      position.x + targetVX * flightTime * this.botTuning.leadFactor - origin.x,
     );
+    if (this.botTuning.aimErrorRadians > 0) {
+      bot.aimAngle +=
+        Math.sin(this.elapsedMs * 0.0031 + bot.phase * 7) *
+        this.botTuning.aimErrorRadians;
+    }
 
     const distance = Math.hypot(position.x - bot.x, position.y - bot.y);
     const hasLoS = !this.platforms.some((platform) =>
@@ -2792,7 +2943,7 @@ export class GameSimulation {
     let direct = false;
     if (hasLoS && distance < 520 && distance > 140) {
       const desired = {
-        x: position.x + bot.strafeSign * DRONE_CONFIG.standoffDistance,
+        x: position.x + bot.strafeSign * this.botTuning.standoffDistance,
         y: position.aimY - 120 + Math.sin(this.elapsedMs * 0.002 + bot.phase) * 28,
       };
       if (lineClear({ x: bot.x, y: bot.y }, desired, this.navGrid.obstacles)) {
@@ -2811,7 +2962,7 @@ export class GameSimulation {
       bot.path = findPath(this.navGrid, { x: bot.x, y: bot.y }, navGoal) ?? [];
       bot.pathIndex = 0;
       bot.pathLength = bot.path.length;
-      bot.repathMs = DRONE_CONFIG.repathMs;
+      bot.repathMs = this.botTuning.repathMs;
       bot.lastGoal = navGoal;
     }
 
@@ -2862,7 +3013,8 @@ export class GameSimulation {
     const dx = desiredX - bot.x;
     const dy = desiredY - bot.y;
     const length = Math.max(1, Math.hypot(dx, dy));
-    const speed = direct ? DRONE_CONFIG.hoverSpeed : DRONE_CONFIG.hoverSpeed * 1.05;
+    const hoverSpeed = this.botTuning.hoverSpeed;
+    const speed = direct ? hoverSpeed : hoverSpeed * 1.05;
     const desiredVX =
       bot.cloudAvoidRemainingMs > 0
         ? bot.cloudAvoidDirection * speed * 1.2
@@ -2903,18 +3055,24 @@ export class GameSimulation {
             bot.aimAngle,
           );
           bot.burstRemaining -= 1;
-          bot.burstTimerMs = DRONE_CONFIG.burstSpacingMs;
-          if (bot.burstRemaining <= 0) bot.fireCooldownMs = DRONE_CONFIG.fireIntervalMs;
+          bot.burstTimerMs = this.botTuning.burstSpacingMs;
+          if (bot.burstRemaining <= 0) {
+            bot.fireCooldownMs = this.botTuning.fireIntervalMs;
+          }
         }
       } else if (bot.fireCooldownMs <= 0) {
-        bot.burstRemaining = DRONE_CONFIG.burstCount;
-        bot.burstTimerMs = 70;
+        bot.burstRemaining = this.botTuning.burstCount;
+        bot.burstTimerMs = this.botTuning.reactionMs;
       }
     } else {
       bot.burstRemaining = 0;
     }
 
-    if (hasLoS && distance >= BOT_SUPPLY_CONFIG.grenadeMinRange) {
+    if (
+      this.botTuning.grenades &&
+      hasLoS &&
+      distance >= BOT_SUPPLY_CONFIG.grenadeMinRange
+    ) {
       this.stepBotGrenade(bot, target, distance);
     }
   }
@@ -3195,6 +3353,7 @@ export class GameSimulation {
     const clampedX = Math.max(40, Math.min(ARENA.width - 40, x));
     const clampedY = Math.max(80, Math.min(ARENA.groundY, y));
     if (combatant.kind === "human") {
+      this.clearMoveQueue(combatant);
       combatant.kin.x = clampedX;
       combatant.kin.y = clampedY;
       combatant.kin.vx = 0;
@@ -3332,7 +3491,10 @@ export class GameSimulation {
       aimAngle: human?.aimAngle ?? bot?.aimAngle ?? 0,
       invulnerable: combatant.invulnerableRemainingMs,
       respawnIn: combatant.respawnRemainingMs / 1000,
-      lastProcessedInputSeq: human?.lastInputSeq ?? 0,
+      lastProcessedInputSeq: human?.ackSeq || human?.lastInputSeq || 0,
+      lastProcessedInputTicks: human?.ackTicks ?? 0,
+      coyoteMs: human?.kin.coyoteMs ?? 0,
+      thrustIdleMs: human?.kin.jetpack.msSinceThrust ?? 0,
       fuel: human?.kin.jetpack.fuel ?? 0,
       maxFuel: JETPACK_CONFIG.maxFuel,
       weaponId: human ? equippedId ?? "" : bot!.weaponId,

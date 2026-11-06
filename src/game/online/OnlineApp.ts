@@ -1,28 +1,30 @@
 import Phaser from "phaser";
-import type { Room } from "@colyseus/sdk";
 import type { GameBridge } from "@/game/bridge";
 import { OnlineScene } from "@/game/online/OnlineScene";
+import type { MatchRoom } from "@/game/online/matchRoom";
+import { RenderScaler } from "@/game/online/renderScale";
 
 export function createOnlineGame(
   parent: HTMLElement,
-  room: Room,
+  room: MatchRoom,
   bridge: GameBridge,
   playerName: string,
 ): Phaser.Game {
-  const width = Math.max(320, parent.clientWidth || 1440);
-  const height = Math.max(240, parent.clientHeight || 810);
+  const renderScaler = new RenderScaler(parent);
+  const { width, height } = renderScaler.gameSize();
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent,
     width,
     height,
     backgroundColor: "#0c0d0f",
-    scene: [new OnlineScene(room, bridge, playerName)],
+    scene: [new OnlineScene(room, bridge, playerName, renderScaler)],
     scale: {
-      mode: Phaser.Scale.RESIZE,
+      mode: Phaser.Scale.NONE,
       autoCenter: Phaser.Scale.NO_CENTER,
       width,
       height,
+      zoom: 1 / renderScaler.scale,
     },
     physics: {
       default: "arcade",
@@ -40,5 +42,7 @@ export function createOnlineGame(
     },
     disableContextMenu: true,
   };
-  return new Phaser.Game(config);
+  const game = new Phaser.Game(config);
+  renderScaler.attach(game);
+  return game;
 }

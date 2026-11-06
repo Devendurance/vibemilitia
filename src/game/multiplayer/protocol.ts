@@ -8,6 +8,16 @@ export const SNAPSHOT_INTERVAL_MS = 50;
 export const SERVER_TICK_MS = 1000 / 60;
 export const DEFAULT_MATCH_COUNTDOWN_MS = 10_000;
 
+/**
+ * Wire format revision. Clients that join with `netProtocol >= 2` receive the
+ * compact split snapshot stream and may send tick-counted input. Anything else
+ * keeps the original full `snapshot` message, so tabs already open during a
+ * deploy keep working.
+ */
+export const NET_PROTOCOL_VERSION = 2;
+/** Fixed simulation ticks covered by one client input packet (30 packets/s). */
+export const INPUT_TICKS_PER_PACKET = 2;
+
 export type MatchPhase = "countdown" | "live" | "ended";
 export type EndReason = "time" | "score" | null;
 export type PlayerKind = "human" | "bot";
@@ -70,6 +80,12 @@ export interface OnlineCombatantSnapshot {
   invulnerable: number;
   respawnIn: number;
   lastProcessedInputSeq: number;
+  /** Ticks of `lastProcessedInputSeq` already simulated. Absent on older servers. */
+  lastProcessedInputTicks?: number;
+  /** Prediction seed: remaining coyote time. Absent on older servers. */
+  coyoteMs?: number;
+  /** Prediction seed: jetpack idle timer. Absent on older servers. */
+  thrustIdleMs?: number;
   fuel: number;
   maxFuel: number;
   weaponId: string;
@@ -349,6 +365,12 @@ export type OnlineEvent =
 
 export interface OnlineInputPayload {
   seq: number;
+  /**
+   * Fixed ticks this packet's movement covers. When present the server queues
+   * movement and simulates exactly one tick per server tick, which keeps
+   * prediction in lockstep through TCP jitter. Bounded on the server.
+   */
+  ticks?: number;
   moveX: number;
   jump: boolean;
   jumpHeld: boolean;
@@ -368,6 +390,7 @@ export interface JoinOptions {
   skinId?: string;
   open?: boolean;
   guestToken?: string;
+  netProtocol?: number;
 }
 
 export interface OnlineHumanMatchResult {
