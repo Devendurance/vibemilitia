@@ -719,7 +719,6 @@ try {
       await page.waitForTimeout(40);
       await touch(cdp, "touchEnd", []);
       await page.waitForSelector('[data-testid="match-countdown"][data-digit="2"]', { timeout: 5000 });
-      await page.screenshot({ path: `${out}/countdown-practice-2.png` });
       const backdrop = await page.evaluate(() => {
         const element = document.querySelector('[data-testid="match-backdrop"]');
         const elementCss = element ? getComputedStyle(element) : null;
@@ -733,9 +732,7 @@ try {
       const before = await state(page);
       await startTrace(page);
       await waitLive(page);
-      await page.waitForTimeout(50);
-      await page.screenshot({ path: `${out}/countdown-practice-go.png` });
-      await page.waitForTimeout(900);
+      await page.waitForTimeout(950);
       await touch(cdp, "touchEnd", []);
       const trace = await stopTrace(page, "countdown-hold-move");
       const log = await page.evaluate(() => window.__cd);
@@ -750,6 +747,15 @@ try {
       check("16 backdrop removed on GO", backdropGone === 0);
       check("practice countdown has no page errors", errors.length === 0, errors[0] ?? "");
       await context.close();
+
+      // Screenshots stall the page, so they get their own run.
+      const shots = await newPage();
+      await shots.page.goto(`${stack.baseUrl}/practice?difficulty=easy`, { waitUntil: "load" });
+      await shots.page.waitForSelector('[data-testid="match-countdown"][data-digit="2"]', { timeout: 15_000 });
+      await shots.page.screenshot({ path: `${out}/countdown-practice-2.png` });
+      await shots.page.waitForSelector('[data-testid="match-countdown"][data-stage="go"]', { timeout: 5000 });
+      await shots.page.screenshot({ path: `${out}/countdown-practice-go.png` });
+      await shots.context.close();
     }
     // Online, two clients, one room, at real-world latency.
     {

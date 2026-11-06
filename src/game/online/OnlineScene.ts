@@ -671,6 +671,7 @@ export class OnlineScene extends Phaser.Scene {
     this.wasFiring = frame.fire;
 
     if (this.latestSnapshot) {
+      this.createNextRemoteView();
       const localId = this.room.sessionId;
       const playback = this.snapshotClock.playbackTime(performance.now());
       for (const participant of this.latestSnapshot.participants) {
@@ -887,6 +888,26 @@ export class OnlineScene extends Phaser.Scene {
     };
   }
 
+  private createView(participant: OnlineCombatantSnapshot, isLocal: boolean): void {
+    const view = new CombatantView(this, participant, isLocal);
+    const pixelScale = this.renderScaler?.scale ?? 1;
+    view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
+    this.views.set(participant.id, view);
+  }
+
+  /**
+   * Bots join at the moment a match goes live. Building all seven in one task
+   * stalled the first live frames by 150 ms on a PC and 800 ms on a slow phone,
+   * so GO appeared late and input went dead. One per frame is invisible.
+   */
+  private createNextRemoteView(): void {
+    const missing = this.latestSnapshot?.participants.find(
+      (participant) =>
+        participant.id !== this.room.sessionId && !this.views.has(participant.id),
+    );
+    if (missing) this.createView(missing, false);
+  }
+
   private clearPendingInput(): void {
     this.pendingJump = false;
     this.pendingReload = false;
@@ -1044,11 +1065,8 @@ export class OnlineScene extends Phaser.Scene {
 
     for (const participant of snapshot.participants) {
       const isLocal = participant.id === this.room.sessionId;
-      if (!this.views.has(participant.id)) {
-        const view = new CombatantView(this, participant, isLocal);
-        const pixelScale = this.renderScaler?.scale ?? 1;
-        view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
-        this.views.set(participant.id, view);
+      if (isLocal && !this.views.has(participant.id)) {
+        this.createView(participant, true);
       }
       if (!isLocal) {
         this.views.get(participant.id)?.pushSample(serverMs, participant);

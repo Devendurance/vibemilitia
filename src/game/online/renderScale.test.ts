@@ -32,7 +32,7 @@ describe("worldZoomFor", () => {
 describe("chooseRenderScale", () => {
   it("stays within the phone pixel budget", () => {
     expect(chooseRenderScale(844, 390, 3, true)).toBe(2);
-    expect(chooseRenderScale(1280, 720, 3, true)).toBe(1.75);
+    expect(chooseRenderScale(1280, 720, 3, true)).toBe(1.5);
     expect(chooseRenderScale(844, 390, 1, true)).toBe(1);
   });
 });

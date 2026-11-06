@@ -6,8 +6,10 @@ const MAX_PIXELS_DESKTOP = 3_700_000;
 const MAX_SCALE = 2;
 const SLOW_FRAME_MS = 24;
 const WINDOW_FRAMES = 100;
-/** A drop must buy at least this much, or the device is not fill-rate limited. */
+/** Below this gain a drop bought nothing. */
 const MIN_DROP_GAIN = 0.08;
+/** Vsync hides small gains, so one step alone proves little. */
+const TRIAL_STEPS = 2;
 /** Browser toolbars take less height than this, so smaller shrinks are ignored. */
 const TOOLBAR_SHRINK_RATIO = 0.75;
 const HISTORY_LIMIT = 40;
@@ -89,8 +91,8 @@ export class RenderScaler {
   private frameTotal = 0;
   private frameCount = 0;
   private slowWindows = 0;
-  /** Set after a drop: the frame time it has to beat, and where to go back to. */
-  private trial: { averageMs: number; scale: number } | null = null;
+  /** Set after a drop: the frame time it must beat, and where to go back to. */
+  private trial: { averageMs: number; scale: number; steps: number } | null = null;
   private settled = false;
 
   constructor(parent: HTMLElement) {
@@ -217,12 +219,19 @@ export class RenderScaler {
     this.frameCount = 0;
 
     if (this.trial) {
-      const { averageMs, scale } = this.trial;
-      this.trial = null;
-      // A phone pinned to 30 Hz by battery saver stays at 33 ms at any density.
-      if (average > averageMs * (1 - MIN_DROP_GAIN)) {
+      const trial = this.trial;
+      if (average <= trial.averageMs * (1 - MIN_DROP_GAIN)) {
+        this.trial = null;
+      } else if (trial.steps < TRIAL_STEPS && this.scale > 1) {
+        trial.steps += 1;
+        this.scale = Math.max(1, this.scale - 0.25);
+        this.apply("adaptive");
+        return;
+      } else {
+        // A phone pinned to 30 Hz by battery saver stays at 33 ms at any density.
+        this.trial = null;
         this.settled = true;
-        this.scale = scale;
+        this.scale = trial.scale;
         this.apply("restore");
         return;
       }
@@ -231,7 +240,7 @@ export class RenderScaler {
     this.slowWindows = average > SLOW_FRAME_MS ? this.slowWindows + 1 : 0;
     if (this.slowWindows >= 2) {
       this.slowWindows = 0;
-      this.trial = { averageMs: average, scale: this.scale };
+      this.trial = { averageMs: average, scale: this.scale, steps: 1 };
       this.scale = Math.max(1, this.scale - 0.25);
       this.apply("adaptive");
     }
