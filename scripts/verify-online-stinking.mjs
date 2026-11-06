@@ -422,10 +422,13 @@ try {
   );
   check(
     "the stinking canister is synchronized",
-    afterThrow.grenades.length === 1 &&
-      afterThrow.grenades[0].type === "stinking" &&
-      (afterThrow.grenades[0].activationRemainingMs ?? 0) > 0,
-    `grenades=${afterThrow.grenades.length}`,
+    // Bots replaced a moment ago can still have grenades in the air.
+    afterThrow.grenades.some(
+      (grenade) =>
+        grenade.type === "stinking" &&
+        (grenade.activationRemainingMs ?? 0) > 0,
+    ),
+    `grenades=${afterThrow.grenades.map((grenade) => grenade.type).join(",")}`,
   );
   await pageA.waitForTimeout(1200);
   const cloudState = await probe(pageA);

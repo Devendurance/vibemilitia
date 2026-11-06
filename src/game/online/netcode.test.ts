@@ -112,6 +112,31 @@ describe("tick-counted server input", () => {
     expect(start - self(flooded).x).toBeLessThanOrEqual(start - self(honest).x + 1);
   });
 
+  it("spends a backlog left by a server stall instead of dropping movement", () => {
+    const stalled = liveSim();
+    const steady = liveSim();
+    let seq = 0;
+    for (let index = 0; index < 12; index += 1) {
+      seq += 1;
+      send(stalled, seq, -1);
+      send(steady, seq, -1);
+      steady.tick(FIXED_TICK_MS);
+      steady.tick(FIXED_TICK_MS);
+    }
+    stalled.creditStall(400);
+    for (let tick = 0; tick < 200; tick += 1) {
+      if (tick % 2 === 0) {
+        seq += 1;
+        send(stalled, seq, -1);
+        send(steady, seq, -1);
+      }
+      stalled.tick(FIXED_TICK_MS);
+      steady.tick(FIXED_TICK_MS);
+    }
+    expect(seq - self(stalled).lastProcessedInputSeq).toBeLessThanOrEqual(3);
+    expect(Math.abs(self(stalled).x - self(steady).x)).toBeLessThan(40);
+  });
+
   it("stops a player whose input stream goes silent", () => {
     const sim = liveSim();
     for (let seq = 1; seq <= 30; seq += 1) {

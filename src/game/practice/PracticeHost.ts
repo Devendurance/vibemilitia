@@ -17,8 +17,8 @@ import {
 
 export const PRACTICE_SESSION_ID = "practice-player";
 const PRACTICE_COUNTDOWN_MS = 3000;
-/** Local link, so snapshots can arrive more often than the online 20 Hz. */
-const SNAPSHOT_INTERVAL_MS = 33;
+/** Same cadence as online. Every snapshot costs main-thread work on a phone. */
+const SNAPSHOT_INTERVAL_MS = 50;
 
 export interface PracticeOptions {
   difficulty: PracticeDifficulty;

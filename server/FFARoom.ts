@@ -380,6 +380,7 @@ export class FFARoom extends Room {
   private gameLoop(deltaMs: number): void {
     if (!this.simulation) return;
     this.accumulator += Math.min(deltaMs, 100);
+    if (deltaMs > 100) this.simulation.creditStall(deltaMs - 100);
     let iterations = 0;
     while (this.accumulator >= 1000 / 60 && iterations < 5) {
       this.simulation.tick(1000 / 60);

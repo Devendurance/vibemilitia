@@ -57,9 +57,19 @@ async function launchBrowser() {
 }
 
 async function joinRoom(page, baseUrl) {
-  await page.goto(`${baseUrl}/online`, { waitUntil: "load" });
-  await page.waitForSelector('[data-testid="create-room"]:not([disabled])', { timeout: 30_000 });
+  // The older build can hang on a lost lobby handshake, so reload if it does.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.goto(`${baseUrl}/online`, { waitUntil: "load" });
+    const ready = await page
+      .waitForSelector('[data-testid="create-room"]:not([disabled])', { timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (ready) break;
+    console.log("lobby stall, reloading");
+  }
   await page.waitForTimeout(600);
+  const guide = page.locator('[data-testid="onboarding-dismiss"]');
+  if (await guide.isVisible().catch(() => false)) await guide.click();
   await page.locator('[data-testid="create-room"]').click();
   await page.waitForFunction(() => window.__VIBE_MILITIA_ONLINE__?.getProbe().ready === true, null, { timeout: 30_000 });
   await page.waitForFunction(() => window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.phase === "live", null, { timeout: 30_000 });
@@ -371,10 +381,11 @@ async function measureLoad({
   } else {
     await page.goto(url, { waitUntil: "load" });
     await page.waitForSelector("canvas", { timeout: 30_000 });
-    await page.waitForTimeout(3500);
+    // Past the countdown and first-use shader compilation, so this is steady play.
+    await page.waitForTimeout(12_000);
   }
   if (cpuThrottle > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(join ? 6000 : 800);
   const before = (await cdp.send("Performance.getMetrics")).metrics;
   const started = Date.now();
   const frames = await page.evaluate(
@@ -425,6 +436,8 @@ const stack = await startStack({ countdownMs: 800 });
 const browser = await launchBrowser();
 const results = { label, at: new Date().toISOString(), headed, network: [], loads: [] };
 try {
+  // A throwaway run warms the server JIT, which otherwise penalises the first profile.
+  await measureProfile(browser, stack, { rttMs: 0, jitterMs: 0 });
   for (const profile of profiles) {
     const result = await measureProfile(browser, stack, profile);
     results.network.push(result);

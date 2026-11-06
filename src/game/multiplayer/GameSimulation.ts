@@ -1366,7 +1366,9 @@ export class GameSimulation {
     human.moveDepthFloor = Math.min(human.moveDepthFloor, depth);
     human.moveDepthWindow += 1;
     if (human.moveDepthWindow >= MOVE_DEPTH_WINDOW_TICKS) {
-      human.moveCatchUpTicks = Math.max(0, human.moveDepthFloor - 2);
+      human.moveCatchUpTicks = Number.isFinite(human.moveDepthFloor)
+        ? Math.max(0, human.moveDepthFloor - 2)
+        : 0;
       human.moveDepthFloor = Number.POSITIVE_INFINITY;
       human.moveDepthWindow = 0;
     }
@@ -1376,6 +1378,23 @@ export class GameSimulation {
     human.moveCatchUpTicks -= 1;
     human.moveDebtTicks -= 1;
     return true;
+  }
+
+  /**
+   * The room caps how much time one loop may simulate, so a stalled server
+   * loses real time. Clients keep sending through a stall. Without this credit
+   * that backlog could never be spent and the queue trim would discard real
+   * movement. Only time that really passed is credited, so it cannot be abused.
+   */
+  creditStall(ms: number): void {
+    if (!Number.isFinite(ms) || ms <= 0) return;
+    const ticks = Math.floor(ms / (1000 / 60));
+    for (const human of this.humans.values()) {
+      human.moveDebtTicks = Math.min(
+        MAX_QUEUED_MOVE_TICKS,
+        human.moveDebtTicks + ticks,
+      );
+    }
   }
 
   private trimMoveQueue(human: HumanRuntime): void {
