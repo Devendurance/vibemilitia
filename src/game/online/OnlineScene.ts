@@ -15,6 +15,7 @@ import {
   ownsWeapon,
 } from "@/game/core/weaponInventory";
 import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } from "@/game/bridge";
+import { ART_SCALE, WEAPON_ANCHORS, preloadLoadoutArt } from "@/game/systems/LoadoutArt";
 import { createGameTextures } from "@/game/systems/TextureFactory";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController, type ControlFrame } from "@/game/systems/InputController";
@@ -332,6 +333,7 @@ export class OnlineScene extends Phaser.Scene {
     for (const skin of CHARACTER_ROSTER) {
       this.load.image(skin.textureKey, skin.cutoutPath);
     }
+    preloadLoadoutArt(this);
   }
 
   create(): void {
@@ -753,10 +755,11 @@ export class OnlineScene extends Phaser.Scene {
     const akimbo = definition.mechanic === "akimbo";
     if (akimbo) this.localBarrel = this.localBarrel === 0 ? 1 : 0;
     localView?.onShot(akimbo ? (this.localBarrel as 0 | 1) : 0);
+    const reach = WEAPON_ANCHORS[definition.weaponTexture]?.muzzleX ?? 66;
     const muzzleX =
-      this.renderedLocal.x + WEAPON_PIVOT_X + Math.cos(this.localAim) * 66;
+      this.renderedLocal.x + WEAPON_PIVOT_X + Math.cos(this.localAim) * reach;
     const muzzleY =
-      this.renderedLocal.y - WEAPON_PIVOT_Y + Math.sin(this.localAim) * 66;
+      this.renderedLocal.y - WEAPON_PIVOT_Y + Math.sin(this.localAim) * reach;
     this.playMuzzle(definition.id, muzzleX, muzzleY);
     this.playWeaponSound(definition.id, true);
     this.cameras.main.shake(30, 0.0007, true);
@@ -1200,7 +1203,7 @@ export class OnlineScene extends Phaser.Scene {
                 : weaponDefinition?.weaponTexture ?? "pickup-medkit";
         const image = this.add
           .image(0, weaponDefinition ? -10 : -4, texture)
-          .setScale(weaponDefinition ? 0.9 : 0.46);
+          .setScale(weaponDefinition ? 0.9 * ART_SCALE : 0.46);
         const container = this.add
           .container(pickup.x, pickup.y, [glow, image])
           .setDepth(24);
@@ -1285,7 +1288,7 @@ export class OnlineScene extends Phaser.Scene {
           .setDisplaySize(lootGlowSize, lootGlowSize);
         const image = this.add
           .image(0, item.kind === "weapon" ? -14 : -6, texture)
-          .setScale(item.kind === "weapon" ? 1.05 : 0.42);
+          .setScale(item.kind === "weapon" ? 1.05 * ART_SCALE : 0.42);
         const container = this.add
           .container(item.x, item.y, [beam, glow, image])
           .setDepth(26);
@@ -1365,7 +1368,7 @@ export class OnlineScene extends Phaser.Scene {
             : grenade.type === "frag"
               ? "grenade-frag"
               : "grenade-stinking",
-        );
+        ).setScale(ART_SCALE);
         const children: Phaser.GameObjects.GameObject[] = [shadow, body];
         let fuseDot: Phaser.GameObjects.Arc | null = null;
         let fuseRing: Phaser.GameObjects.Arc | null = null;

@@ -39,6 +39,7 @@ import { audio } from "@/game/audio/AudioEngine";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController } from "@/game/systems/InputController";
 import { ProjectileSystem } from "@/game/systems/ProjectileSystem";
+import { preloadLoadoutArt } from "@/game/systems/LoadoutArt";
 import { createGameTextures } from "@/game/systems/TextureFactory";
 
 export class ArenaScene extends Phaser.Scene {
@@ -90,6 +91,7 @@ export class ArenaScene extends Phaser.Scene {
   preload(): void {
     const skin = getCharacterSkin(this.skinId);
     this.load.image("player-viber", skin.cutoutPath);
+    preloadLoadoutArt(this);
   }
 
   create(): void {
