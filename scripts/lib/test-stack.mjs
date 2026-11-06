@@ -6,7 +6,7 @@
  * proxy port (see scripts/build-test-frontend.mjs). SQLite is forced so that
  * no suite can write synthetic data into a Neon database by accident.
  */
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,6 +45,35 @@ function launch(command, args, env) {
   return child;
 }
 
+/**
+ * A suite killed by a timeout can orphan its children. A later run would then
+ * silently talk to the stale server, so ports are always cleared first.
+ */
+function freePorts() {
+  if (process.platform !== "win32") return;
+  const ports = Object.values(TEST_PORTS);
+  let listing = "";
+  try {
+    listing = execSync("netstat -ano -p TCP", { encoding: "utf8" });
+  } catch {
+    return;
+  }
+  const pids = new Set();
+  for (const line of listing.split("\n")) {
+    if (!line.includes("LISTENING")) continue;
+    if (ports.some((port) => line.includes(`:${port} `))) {
+      pids.add(line.trim().split(/\s+/).at(-1));
+    }
+  }
+  for (const pid of pids) {
+    try {
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 function killTree(child) {
   if (!child?.pid) return;
   if (process.platform === "win32") {
@@ -61,6 +90,7 @@ export async function startStack({
   reconnectGraceSeconds = 30,
   testHooks = true,
 } = {}) {
+  freePorts();
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "vibe-militia-stack-"));
   const baseEnv = { ...process.env };
   delete baseEnv.TEST_DATABASE_URL;

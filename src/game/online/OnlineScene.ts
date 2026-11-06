@@ -219,6 +219,7 @@ export class OnlineScene extends Phaser.Scene {
   private cameraFocus: { x: number; y: number } | null = null;
   private lookX = 0;
   private lookY = 0;
+  private lastLocalAlive = false;
   private snapshotGapEma = 50;
   private frameMsEma = 16.7;
   private wasFiring = false;
@@ -882,7 +883,10 @@ export class OnlineScene extends Phaser.Scene {
     }
     const phaseChanged = this.previousPhase !== snapshot.phase;
     this.previousPhase = snapshot.phase;
-    if (first || phaseChanged) this.publishHud(true);
+    const localAlive = Boolean(local?.alive);
+    const aliveChanged = localAlive !== this.lastLocalAlive;
+    this.lastLocalAlive = localAlive;
+    if (first || phaseChanged || aliveChanged) this.publishHud(true);
   }
 
   private syncPickupViews(pickups: OnlinePickupSnapshot[]): void {
@@ -1318,6 +1322,12 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   private onEvents(events: OnlineEvent[]): void {
+    this.applyEvents(events);
+    // Events are sparse and players feel them, so the HUD does not wait a tick.
+    this.publishHud(true);
+  }
+
+  private applyEvents(events: OnlineEvent[]): void {
     let batchFeedback: {
       text: string;
       detail: string;

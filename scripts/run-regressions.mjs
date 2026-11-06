@@ -13,20 +13,20 @@ import { startStack, TEST_PORTS } from "./lib/test-stack.mjs";
 
 const SUITES = [
   ["verify-browser", { countdownMs: 0 }],
-  ["verify-online-match", { countdownMs: 0, reconnectGraceSeconds: 5 }],
+  ["verify-online-match", { countdownMs: 6000, reconnectGraceSeconds: 5 }],
   ["verify-online-pickups", { countdownMs: 0 }],
   ["verify-online-grenades", { countdownMs: 0 }],
   ["verify-online-stinking", { countdownMs: 0 }],
   ["verify-online-loot", { countdownMs: 0 }],
   ["verify-online-arsenal", { countdownMs: 0 }],
   ["verify-online-matchmaking", { countdownMs: 4000 }],
-  ["verify-online-bots", { countdownMs: 0 }],
+  ["verify-online-bots", { countdownMs: 0, reconnectGraceSeconds: 2 }],
   ["verify-online-characters", { countdownMs: 4000 }],
   ["verify-online-countdown", { countdownMs: 10000 }],
   ["verify-online-rooms", { countdownMs: 4000 }],
   ["verify-online-p4", { countdownMs: 4000, reconnectGraceSeconds: 5 }],
   ["verify-online-p5", { countdownMs: 0, reconnectGraceSeconds: 5 }],
-  ["verify-hub-ux", { countdownMs: 4000, reconnectGraceSeconds: 5 }],
+  ["verify-hub-ux", { countdownMs: 4000, reconnectGraceSeconds: 30 }],
   ["verify-online-perf", { countdownMs: 0 }],
 ];
 

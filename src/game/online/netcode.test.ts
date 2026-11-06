@@ -349,6 +349,18 @@ describe("compact snapshot stream", () => {
     );
   });
 
+  it("does not publish an empty loadout before the player's own section", () => {
+    const sim = new GameSimulation({ roomId: "codec", roomName: "CODEC", countdownMs: 0 });
+    sim.addHuman("a", "ALPHA");
+    sim.tick(FIXED_TICK_MS);
+    const full = sim.snapshot();
+    const assembler = new SnapshotAssembler("a");
+    assembler.applySlow(encodeSlow(full));
+    expect(assembler.assemble(encodeFast(full))).toBeNull();
+    assembler.applySelf(encodeSelf(full, "a")!);
+    expect(assembler.assemble(encodeFast(full))).not.toBeNull();
+  });
+
   it("does not assemble before the slow section is known", () => {
     const sim = new GameSimulation({ roomId: "codec", roomName: "CODEC", countdownMs: 0 });
     sim.addHuman("a", "ALPHA");
@@ -382,6 +394,20 @@ describe("remote playback", () => {
     remote.push(50, 110, 0, 0, 0, 0);
     remote.push(100, 2500, 0, 0, 0, 0);
     expect(remote.sample(90)!.x).toBe(2500);
+  });
+
+  it("never runs playback time backwards while adapting", () => {
+    const clock = new SnapshotClock();
+    let previous = -Infinity;
+    for (let index = 0; index < 400; index += 1) {
+      const local = index * 16.7;
+      const server = Math.floor(local / 50) * 50;
+      const spike = index > 100 && index < 120 ? 180 : 0;
+      clock.observe(server, local + 30 + spike);
+      const playback = clock.playbackTime(local)!;
+      expect(playback).toBeGreaterThanOrEqual(previous);
+      previous = playback;
+    }
   });
 
   it("widens the playback delay on a jittery link", () => {

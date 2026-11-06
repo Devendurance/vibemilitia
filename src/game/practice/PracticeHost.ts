@@ -116,6 +116,8 @@ export class PracticeHost {
         this.sendFull();
         return;
       case "rematch":
+        // Practice may restart at any time. Online rooms only rematch at the end.
+        if (this.simulation.phase === "live") this.simulation.debugEndMatch();
         if (this.simulation.rematch().ok) this.sendFull();
         return;
       case "pause":

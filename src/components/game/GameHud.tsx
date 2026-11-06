@@ -591,6 +591,7 @@ export function GameHud({
                 >
                   <Keycap>{slot.slot}</Keycap>
                   <WeaponIcon weaponId={empty ? "" : slot.id} />
+                  <span className="sr-only">{empty ? "EMPTY" : slot.shortName}</span>
                   <span className="hud-weapon-slot__ammo">
                     {empty
                       ? "--"

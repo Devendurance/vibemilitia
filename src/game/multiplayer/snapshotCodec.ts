@@ -331,6 +331,9 @@ export class SnapshotAssembler {
   assemble(fast: FastSnapshot): OnlineSnapshot | null {
     const slow = this.slow;
     if (!slow) return null;
+    // A joining client has no inventory until its own section lands. Wait for
+    // it rather than publish a frame with an empty loadout.
+    if (!this.self && fast.p.some((row) => row[0] === this.sessionId)) return null;
     const rosterById = new Map(slow.roster.map((entry) => [entry.id, entry]));
     const aged = Math.max(0, fast.el - slow.atMs);
     const selfAged = this.self ? Math.max(0, fast.el - this.self.atMs) : 0;
@@ -408,7 +411,8 @@ export class SnapshotAssembler {
       ),
       loot: slow.loot.map((item) => ({
         ...item,
-        remainingMs: Math.max(0, item.remainingMs - aged),
+        // Still listed means still live. Removal arrives with the next section.
+        remainingMs: Math.max(1, item.remainingMs - aged),
       })),
       standings: slow.standings.map((entry) => {
         const live = liveById.get(entry.id);

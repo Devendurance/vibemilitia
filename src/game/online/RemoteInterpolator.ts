@@ -1,6 +1,8 @@
 const MIN_DELAY_MS = 100;
 const MAX_DELAY_MS = 260;
-const MAX_EXTRAPOLATION_MS = 50;
+const MAX_EXTRAPOLATION_MS = 25;
+/** A bigger step back than this is a real clock reset, not adaptation. */
+const MAX_HELD_REWIND_MS = 400;
 const TELEPORT_DISTANCE = 300;
 const MAX_SAMPLES = 16;
 
@@ -29,6 +31,7 @@ export class SnapshotClock {
   private offset: number | null = null;
   private jitter = 0;
   private delayMs = MIN_DELAY_MS;
+  private lastPlayback: number | null = null;
 
   observe(serverMs: number, localMs: number): void {
     const sample = serverMs - localMs;
@@ -55,7 +58,19 @@ export class SnapshotClock {
 
   /** Server time to draw remote players at, for this local instant. */
   playbackTime(localMs: number): number | null {
-    return this.offset === null ? null : localMs + this.offset - this.delayMs;
+    if (this.offset === null) return null;
+    const wanted = localMs + this.offset - this.delayMs;
+    // Adapting the clock must never run remote players backwards. Hold until
+    // real time catches up instead.
+    if (
+      this.lastPlayback !== null &&
+      wanted < this.lastPlayback &&
+      this.lastPlayback - wanted < MAX_HELD_REWIND_MS
+    ) {
+      return this.lastPlayback;
+    }
+    this.lastPlayback = wanted;
+    return wanted;
   }
 
   get playbackDelayMs(): number {

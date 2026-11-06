@@ -59,6 +59,8 @@ const SERVER_URL =
   process.env.NEXT_PUBLIC_COLYSEUS_URL ??
   "http://localhost:2567";
 const SKIN_STORAGE_KEY = "vibe-militia-skin";
+const LOBBY_ATTEMPTS = 5;
+const LOBBY_ATTEMPT_MS = 6000;
 
 interface LobbyRoomLike extends AvailableRoom {
   roomId: string;
@@ -735,9 +737,29 @@ export function OnlineShell() {
         localClient = new Client(SERVER_URL);
         if (cancelled) return;
         clientRef.current = localClient;
-        localLobby = await localClient.joinOrCreate("lobby", {
-          filter: { name: "ffa" },
-        });
+        // A lost handshake never rejects, so a slow link could sit on CONNECTING
+        // forever. Bound each attempt and try again.
+        for (let attempt = 0; attempt < LOBBY_ATTEMPTS && !localLobby; attempt += 1) {
+          const joining = localClient.joinOrCreate("lobby", {
+            filter: { name: "ffa" },
+          });
+          const joined = await Promise.race([
+            joining,
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), LOBBY_ATTEMPT_MS);
+            }),
+          ]);
+          if (joined) {
+            localLobby = joined;
+          } else {
+            void joining.then((late) => late.leave()).catch(() => undefined);
+          }
+          if (cancelled) return;
+        }
+        if (!localLobby) {
+          setError("Could not reach the game server. Reload to try again.");
+          return;
+        }
         if (cancelled) {
           await localLobby.leave();
           return;

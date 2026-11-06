@@ -78,9 +78,20 @@
 - `RECONNECT_GRACE_SECONDS=30` is the product default. Reload/navigation recovery uses the tab-scoped resume handle and `POST /api/resume`. Do not move that handle to shared localStorage: a second tab must not redeem a live seat.
 - Public rankings use `GET /api/leaderboard`. Display names are editable and non-unique. X handles are self-declared and must never be rendered as verified.
 
+## NETCODE AND RENDERING
+
+- Movement is a pure function of the input stream. Keep it that way: the server consumes one client tick per server tick and holds a player whose input is late. Never compare a predicted position directly with a snapshot, because a snapshot is RTT old. Reconcile with `LocalPredictor.reconcile` only.
+- Wire changes stay version-gated by `netProtocol`. Old tabs must keep receiving the full `snapshot` message, because tabs stay open across a deploy. Deploy the backend before the frontend.
+- A real public RTT from Nairobi is ~550 ms. Test netcode at 550/80 as well as 100-250 ms, using `scripts/lib/latency-proxy.mjs`. Devtools throttling does not reliably apply to WebSockets.
+- Never add a per-frame Phaser `Arc`, `Ellipse` or stroked shape to a match. Each one re-tessellates every frame. Bake a texture in `makeBakedEffects`. Never use `backdrop-filter` over the live canvas.
+- Practice is `GameSimulation` in a worker behind `PracticeRoom`. Add rules to the simulation, never to a practice copy. The older drone drill stays at `/practice?engine=legacy` for the P1 suite only.
+- `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
+
 ## TESTING
 
 - Use any testing tools and libraries available to the project to test your changes.
+- `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
+- Emulated mobile proves events and layout, never physical device performance. Say so in reports.
 - Never assume your changes work; always test.
 - If the project does not have any testing tools, scripts, MCP tools, or similar resources available for testing, ask the user whether testing should be skipped.
 

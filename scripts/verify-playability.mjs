@@ -33,6 +33,7 @@ const section = async (name, run) => {
 };
 
 const stack = await startStack({ countdownMs: 800, reconnectGraceSeconds: 30 });
+let browserB = null;
 const browser = await chromium.launch({
   channel: "chrome",
   headless: true,
@@ -120,7 +121,25 @@ async function joinOnline(page, baseUrl = stack.baseUrl) {
   const guide = page.locator('[data-testid="onboarding-dismiss"]');
   if (await guide.isVisible().catch(() => false)) await guide.click();
   await page.locator('[data-testid="create-room"]').click();
-  await waitLive(page);
+  await waitLive(page).catch(async (error) => {
+    const state = await page.evaluate(() => {
+      const w = window.__VIBE_MILITIA_ONLINE__;
+      const p = w?.getProbe();
+      return {
+        hasProbe: Boolean(w),
+        ready: p?.ready,
+        phase: p?.snapshot?.phase,
+        tick: p?.snapshot?.tick,
+        net: p?.net,
+        url: location.href,
+        text: document.body.innerText.slice(0, 300),
+      };
+    });
+    console.log("JOIN STALL", JSON.stringify(state));
+    console.log(stack.game.logs.join("").slice(-800));
+    await page.screenshot({ path: `${out}/join-stall.png` });
+    throw error;
+  });
 }
 
 try {
@@ -513,16 +532,87 @@ try {
     }
   });
 
+  await section("aim", async () => {
+    // Render scale changes the canvas size, so pointer mapping must be proven.
+    for (const deviceScaleFactor of [1, 2]) {
+      const context = await browser.newContext({
+        viewport: { width: 1366, height: 768 },
+        deviceScaleFactor,
+      });
+      const page = await context.newPage();
+      await page.goto(`${stack.baseUrl}/practice?difficulty=easy`, { waitUntil: "load" });
+      await waitLive(page);
+      await hooks(page, "guard");
+      await hooks(page, "teleport", 1500, 960);
+      await page.waitForTimeout(1300);
+      let worst = 0;
+      for (const [fx, fy] of [[0.8, 0.3], [0.2, 0.3], [0.5, 0.15], [0.7, 0.7]]) {
+        await page.mouse.move(1366 * fx, 768 * fy);
+        await page.waitForTimeout(450);
+        const state = await page.evaluate(([x, y]) => {
+          const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
+          const me = p.views.find((view) => view.id === p.sessionId);
+          const scale = p.render.scale;
+          const camera = p.camera;
+          const worldX = camera.scrollX + camera.width / 2 + (x * scale - camera.width / 2) / camera.zoom;
+          const worldY = camera.scrollY + camera.height / 2 + (y * scale - camera.height / 2) / camera.zoom;
+          return { aim: p.localAim, want: Math.atan2(worldY - (me.y - 58), worldX - (me.x + 28)), scale };
+        }, [1366 * fx, 768 * fy]);
+        let delta = Math.abs(state.aim - state.want);
+        if (delta > Math.PI) delta = Math.PI * 2 - delta;
+        worst = Math.max(worst, delta);
+      }
+      const scale = await page.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().render.scale);
+      check(`mouse aim is exact at DPR ${deviceScaleFactor}`, worst < 0.03, `${worst.toFixed(4)} rad, render scale ${scale}`);
+      await context.close();
+    }
+
+    const { context, page } = await newTouchPage();
+    await page.goto(`${stack.baseUrl}/practice?difficulty=easy`, { waitUntil: "load" });
+    await waitLive(page);
+    await page.waitForTimeout(400);
+    const size = () =>
+      page.evaluate(() => {
+        const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
+        const box = document.querySelector("canvas").getBoundingClientRect();
+        return { cssW: box.width, cssH: box.height, scale: p.render.scale, camW: p.camera.width, zoom: p.camera.zoom };
+      });
+    const first = await size();
+    await page.setViewportSize({ width: 932, height: 430 });
+    await page.waitForTimeout(500);
+    const second = await size();
+    check("canvas follows a viewport change", second.cssW === 932 && second.cssH === 430, JSON.stringify(second));
+    check("render buffer follows too", Math.abs(second.camW - 932 * second.scale) < 2, `${first.camW} -> ${second.camW}`);
+    await context.close();
+  });
+
   await section("online", async () => {
     stack.proxy.set({ rttMs: 150, jitterMs: 40 });
     const contextA = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const contextB = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    // A second browser, so neither client is a throttled background tab.
+    browserB = await chromium.launch({
+      channel: "chrome",
+      headless: true,
+      args: [
+        "--enable-webgl",
+        "--ignore-gpu-blocklist",
+        "--use-angle=d3d11",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+      ],
+    });
+    const contextB = await browserB.newContext({ viewport: { width: 1366, height: 768 } });
     const a = await contextA.newPage();
     const b = await contextB.newPage();
     const errors = [];
     a.on("pageerror", (error) => errors.push(error.message));
     b.on("pageerror", (error) => errors.push(error.message));
+    const consoleA = [];
+    a.on("console", (message) => consoleA.push(`${message.type()}: ${message.text().slice(0, 160)}`));
     await joinOnline(a);
+    await hooks(a, "guard");
+    await hooks(a, "extendMatch", 600_000);
     const room = await a.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().roomId);
     await b.goto(`${stack.baseUrl}/online?room=${room}`, { waitUntil: "load" });
     await b.waitForSelector('[data-testid="join-invite-room"]:not([disabled])', { timeout: 20_000 });
@@ -537,19 +627,29 @@ try {
         .then(() => true)
         .catch(() => false);
       if (joined) break;
-      console.log("join retry", (await b.locator(".online-invite").allInnerTexts()).join(" | ").slice(0, 200));
+      console.log("join retry", (await b.locator(".online-invite, .online-error, [role=alert]").allInnerTexts()).join(" | ").slice(0, 300));
     }
-    await waitLive(b);
+    await waitLive(b).catch(async (error) => {
+      console.log("B STALL", JSON.stringify(await b.evaluate(() => {
+        const p = window.__VIBE_MILITIA_ONLINE__?.getProbe();
+        return { probe: Boolean(p), ready: p?.ready, phase: p?.snapshot?.phase, net: p?.net, url: location.href, text: document.body.innerText.slice(0, 500) };
+      })));
+      console.log(stack.game.logs.join("").slice(-600));
+      throw error;
+    });
     const idA = await a.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().sessionId);
     check("second independent client shares the room", (await b.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().roomId)) === room);
-    await hooks(a, "guard");
     await hooks(b, "guard");
-    await hooks(a, "extendMatch", 600_000);
     await hooks(a, "teleport", 2400, 1340);
     await hooks(b, "teleport", 2500, 1340);
-    await a.waitForTimeout(900);
+    const settled = (id) => {
+      const view = window.__VIBE_MILITIA_ONLINE__.getProbe().views.find((entry) => entry.id === id);
+      return Boolean(view) && Math.abs(view.x - 2400) < 3 && Math.abs(view.y - 1340) < 3;
+    };
+    await a.waitForFunction(settled, idA, { timeout: 8000 });
+    await b.waitForFunction(settled, idA, { timeout: 8000 });
+    await a.waitForTimeout(300);
 
-    await a.bringToFront();
     await a.keyboard.down("KeyD");
     const seen = [];
     for (let sample = 0; sample < 22; sample += 1) {
@@ -558,9 +658,15 @@ try {
       );
       await b.waitForTimeout(50);
     }
+    const diag = await a.evaluate(() => {
+      const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
+      const me = p.snapshot.participants.find((e) => e.id === p.sessionId);
+      return { moveX: p.control?.moveX, alive: me?.alive, x: me?.x, view: p.views.find((v) => v.id === p.sessionId)?.x, phase: p.snapshot.phase, age: p.net?.snapshotAgeMs, overlay: document.querySelector(".onboarding-overlay, [data-testid=onboarding-dismiss]") ? "guide" : "none", focus: document.activeElement?.tagName };
+    });
     await a.keyboard.up("KeyD");
     await a.waitForTimeout(1200);
     const moved = seen.at(-1) - seen[0];
+    if (moved <= 200) console.log("A diag", JSON.stringify(diag), "seen", seen.slice(0, 3));
     check("client B sees client A run", moved > 200, `${moved.toFixed(0)}px`);
     const backStep = Math.max(0, ...seen.slice(1).map((x, index) => seen[index] - x));
     check("client B never sees A visibly step backwards", backStep < 4, `${backStep.toFixed(2)}px`);
@@ -593,6 +699,11 @@ try {
     await a.waitForSelector('[data-testid="reconnect-overlay"]', { timeout: 6000 }).catch(() => null);
     await a.waitForFunction(() => !document.querySelector('[data-testid="reconnect-overlay"]'), null, { timeout: 25_000 });
     await a.waitForTimeout(1200);
+    if (!(await a.evaluate(() => Boolean(window.__VIBE_MILITIA_ONLINE__)))) {
+      console.log("RECONNECT LOST", JSON.stringify(await a.evaluate(() => ({ url: location.href, text: document.body.innerText.slice(0, 400) }))));
+      console.log(consoleA.slice(-14).join(" | "));
+      console.log(stack.game.logs.join("").slice(-1500));
+    }
     const after = await a.evaluate(() => {
       const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
       return { room: p.roomId, id: p.sessionId, connected: p.snapshot.participants.find((e) => e.id === p.sessionId)?.connected, fire: p.control?.fire, move: p.control?.moveX };
@@ -612,9 +723,31 @@ try {
       return response.ok ? (await response.json()).player?.xp ?? null : null;
     };
     const xpBefore = await xp();
+    await b.waitForFunction(
+      () => !document.querySelector('[data-testid="reconnect-overlay"]') && Boolean(window.__VIBE_MILITIA_ONLINE__),
+      null,
+      { timeout: 25_000 },
+    );
+    const bAfter = await b.evaluate(() => {
+      const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
+      return { room: p.roomId, age: p.net?.snapshotAgeMs, connected: p.snapshot.participants.find((e) => e.id === p.sessionId)?.connected };
+    });
+    check("second client recovers from the same drop", bAfter.room === room && bAfter.connected === true && bAfter.age < 1000, JSON.stringify(bAfter));
     await hooks(a, "endMatch");
-    await a.waitForSelector('.results-overlay.is-visible', { timeout: 8000 });
-    await b.waitForSelector('.results-overlay.is-visible', { timeout: 8000 });
+    await a.waitForSelector('.results-overlay.is-visible', { timeout: 8000 }).catch(async (error) => {
+      console.log("A RESULTS", JSON.stringify(await a.evaluate(() => {
+        const p = window.__VIBE_MILITIA_ONLINE__?.getProbe();
+        return { phase: p?.snapshot?.phase, age: p?.net?.snapshotAgeMs, remaining: p?.snapshot?.remainingMs, hud: p?.hud?.matchPhase, ready: p?.hud?.ready };
+      })));
+      throw error;
+    });
+    await b.waitForSelector('.results-overlay.is-visible', { timeout: 8000 }).catch(async (error) => {
+      console.log("B RESULTS", JSON.stringify(await b.evaluate(() => {
+        const p = window.__VIBE_MILITIA_ONLINE__?.getProbe();
+        return { phase: p?.snapshot?.phase, age: p?.net?.snapshotAgeMs, hud: p?.hud?.matchPhase, ready: p?.hud?.ready };
+      })));
+      throw error;
+    });
     await a.waitForTimeout(1500);
     const xpAfter = await xp();
     check("the online match settles XP once", xpAfter !== null && xpBefore !== null && xpAfter > xpBefore, `${xpBefore} -> ${xpAfter}`);
@@ -650,10 +783,11 @@ try {
     check("no online page errors", errors.length === 0, errors[0] ?? "");
     stack.proxy.set({ rttMs: 0, jitterMs: 0 });
     await contextA.close();
-    await contextB.close();
+    await browserB.close();
   });
 } finally {
   await browser.close();
+  await browserB?.close().catch(() => undefined);
   await stack.stop();
 }
 
