@@ -18,7 +18,7 @@ import { INITIAL_HUD, type GameBridge, type HudSnapshot, type HudWeaponSlot } fr
 import { createGameTextures } from "@/game/systems/TextureFactory";
 import { EffectsSystem } from "@/game/systems/EffectsSystem";
 import { InputController, type ControlFrame } from "@/game/systems/InputController";
-import { touchInput } from "@/game/input/touchInput";
+import { clearTouchFireLatch, touchInput } from "@/game/input/touchInput";
 import { audio } from "@/game/audio/AudioEngine";
 import { CombatantView } from "@/game/online/CombatantView";
 import { LocalPredictor, type AuthoritativeMotion } from "@/game/online/LocalPredictor";
@@ -50,6 +50,15 @@ import type {
 } from "@/game/multiplayer/protocol";
 
 const HUD_PUBLISH_INTERVAL_MS = 100;
+/** A predicted shot the server never echoes stops counting after this long. */
+const CONFIRM_WINDOW_MS = 1500;
+const COUNTDOWN_MAX_EXTRAPOLATION_MS = 250;
+/** Waits out the camera fade so the frozen frame is not black. */
+const BACKDROP_DELAY_MS = 500;
+const BACKDROP_DIVISOR = 10;
+const PREWARM_TEXTURES = 24;
+/** GameHud starts fading the boot screen at 700 ms and shows the digit then. */
+const BOOT_SCREEN_MS = 750;
 const WEAPON_PIVOT_X = 28;
 const WEAPON_PIVOT_Y = 58;
 const TOUCH_RETICLE_RANGE = 300;
@@ -247,6 +256,23 @@ export class OnlineScene extends Phaser.Scene {
   private hitFeedbackMs = 0;
   private localDamageSeq = 0;
   private lastAudioCountdownSecond = -1;
+  /** Monotonic within one countdown, so a late snapshot cannot rewind a digit. */
+  private countdownDisplayMs: number | null = null;
+  private backdrop: HTMLCanvasElement | null = null;
+  private backdropTimer: number | null = null;
+  private sceneReadyTimer: number | null = null;
+  private localShotAt = -Infinity;
+  private latchSentThisFrame = false;
+  private localBarrel = 0;
+  /** Shots shown locally that the server has not echoed yet. */
+  private unconfirmedShots: number[] = [];
+  private lastAimStamp = 0;
+  private lastFireStamp = 0;
+  private aimLatency: number[] = [];
+  private fireLatency: number[] = [];
+  private frameLog: number[] = [];
+  private zoomChanges = 0;
+  private lastWorldZoom = 0;
   private lastAudioMatchId: string | null = null;
   private lastPlayerKill: HudSnapshot["lastPlayerKill"] = null;
   private hudTimer = 0;
@@ -325,20 +351,10 @@ export class OnlineScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(200);
     this.crosshair = this.add.graphics().setDepth(300);
     this.inputController = new InputController(this);
-    const applyCameraScale = () => {
-      const pixelScale = this.renderScaler?.scale ?? 1;
-      const width = this.scale.width / pixelScale;
-      const height = this.scale.height / pixelScale;
-      const compact = height < 600 || width / Math.max(1, height) > 1.95;
-      const zoom = compact
-        ? Math.max(0.56, Math.min(0.9, height / 620))
-        : 1;
-      this.cameras.main.setZoom(zoom * pixelScale);
-      for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
-    };
-    applyCameraScale();
-    this.resizeHandler = applyCameraScale;
-    this.scale.on(Phaser.Scale.Events.RESIZE, applyCameraScale);
+    this.renderScaler?.setChangeListener(() => this.applyCameraScale());
+    this.applyCameraScale();
+    this.resizeHandler = () => this.applyCameraScale();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.resizeHandler);
     this.cameras.main.fadeIn(350, 12, 13, 15);
 
     this.roomSubscriptions.push(
@@ -416,6 +432,7 @@ export class OnlineScene extends Phaser.Scene {
           moveX: touchInput.moveX,
           aimAngle: touchInput.aimAngle,
           aimActive: touchInput.aimActive,
+          fireLatch: touchInput.fireLatch,
         },
         net: {
           pendingTicks: this.predictor?.pendingTicks ?? 0,
@@ -430,6 +447,15 @@ export class OnlineScene extends Phaser.Scene {
           scale: this.renderScaler?.scale ?? 1,
           frameMs: this.frameMsEma,
         },
+        viewport: this.viewportTelemetry(),
+        input: {
+          aimLatencyMs: [...this.aimLatency],
+          fireLatencyMs: [...this.fireLatency],
+          unconfirmedShots: this.unconfirmedShots.length,
+          localShotAt: this.localShotAt,
+          look: { x: this.lookX, y: this.lookY },
+        },
+        frames: [...this.frameLog],
         localAim: this.localAim,
         control: this.lastFrame
           ? {
@@ -505,6 +531,9 @@ export class OnlineScene extends Phaser.Scene {
               Math.max(0.8, Math.min(3, zoom)),
             );
           },
+          setRenderScale: (scale: number) => {
+            this.renderScaler?.debugSetScale(scale);
+          },
           setAim: (x: number, y: number) => {
             const local = this.localSnapshot();
             if (!local) return;
@@ -575,7 +604,10 @@ export class OnlineScene extends Phaser.Scene {
     const frameMs = Math.min(delta, 250);
     const dtMs = Math.min(delta, 50);
     this.frameMsEma += (delta - this.frameMsEma) * 0.05;
+    this.latchSentThisFrame = false;
     this.renderScaler?.observeFrame(delta);
+    this.frameLog.push(Math.round(this.game.loop.rawDelta * 10) / 10);
+    if (this.frameLog.length > 600) this.frameLog.shift();
     const localView = this.views.get(this.room.sessionId);
     const frame = this.inputController.sample(
       this.cameras.main,
@@ -615,6 +647,7 @@ export class OnlineScene extends Phaser.Scene {
       this.pendingSwap ||= frame.swapPressed;
     } else {
       this.clearPendingInput();
+      clearTouchFireLatch();
     }
 
     if (live && this.predictor) {
@@ -629,23 +662,17 @@ export class OnlineScene extends Phaser.Scene {
         this.testAimAngle ??
         frame.aimAngle ??
         Math.atan2(frame.aimWorld.y - aimY, frame.aimWorld.x - aimX);
-    }
-
-    if (live && local?.alive && frame.fire && !this.wasFiring && this.renderedLocal) {
-      const active = local.weapons[local.equippedSlot] ?? null;
-      if (active?.owned && active.ammo > 0 && !active.reloading) {
-        localView?.onShot();
-        const muzzleX =
-          this.renderedLocal.x + WEAPON_PIVOT_X + Math.cos(this.localAim) * 66;
-        const muzzleY =
-          this.renderedLocal.y - WEAPON_PIVOT_Y + Math.sin(this.localAim) * 66;
-        this.effects.muzzle(muzzleX, muzzleY);
-        this.cameras.main.shake(30, 0.0007, true);
+      if (touchInput.aimStamp !== this.lastAimStamp) {
+        this.lastAimStamp = touchInput.aimStamp;
+        this.pushLatency(this.aimLatency, performance.now() - touchInput.aimStamp);
       }
     }
+
+    this.predictLocalShot(live, local, localView, frame);
     this.wasFiring = frame.fire;
 
     if (this.latestSnapshot) {
+      this.createNextRemoteView();
       const localId = this.room.sessionId;
       const playback = this.snapshotClock.playbackTime(performance.now());
       for (const participant of this.latestSnapshot.participants) {
@@ -685,20 +712,231 @@ export class OnlineScene extends Phaser.Scene {
       this.publishHud(true);
     }
 
-    const snapshot = this.latestSnapshot;
-    if (snapshot?.phase === "countdown") {
-      const second = Math.ceil(snapshot.countdownRemainingMs / 1000);
-      if (second !== this.lastAudioCountdownSecond && second >= 0) {
-        this.lastAudioCountdownSecond = second;
-        audio.play("countdown", 0.8);
-      }
-    } else {
-      this.lastAudioCountdownSecond = -1;
-    }
+    this.updateCountdown();
     audio.setJetpackActive(
       Boolean(live && local?.alive && local.thrusting),
       0.8,
     );
+  }
+
+  private pushLatency(list: number[], ms: number): void {
+    list.push(Math.round(ms * 10) / 10);
+    if (list.length > 240) list.shift();
+  }
+
+  /** Shows the shot now. The server still decides whether it was one. */
+  private predictLocalShot(
+    live: boolean,
+    local: ReturnType<OnlineScene["localSnapshot"]>,
+    localView: CombatantView | undefined,
+    frame: ControlFrame,
+  ): void {
+    const now = performance.now();
+    while (
+      this.unconfirmedShots.length > 0 &&
+      now - this.unconfirmedShots[0] > CONFIRM_WINDOW_MS
+    ) {
+      this.unconfirmedShots.shift();
+    }
+    if (!live || !local?.alive || !frame.fire || !this.renderedLocal) return;
+    const active = local.weapons[local.equippedSlot] ?? null;
+    if (!active?.owned || active.reloading) return;
+    if (active.ammo - this.unconfirmedShots.length <= 0) return;
+    const definition = ALL_PLAYER_WEAPONS.find((weapon) => weapon.id === active.id);
+    if (!definition) return;
+    if (now - this.localShotAt < definition.fireIntervalMs) return;
+    const previousShotAt = this.localShotAt;
+    this.localShotAt = now;
+    this.unconfirmedShots.push(now);
+
+    const akimbo = definition.mechanic === "akimbo";
+    if (akimbo) this.localBarrel = this.localBarrel === 0 ? 1 : 0;
+    localView?.onShot(akimbo ? (this.localBarrel as 0 | 1) : 0);
+    const muzzleX =
+      this.renderedLocal.x + WEAPON_PIVOT_X + Math.cos(this.localAim) * 66;
+    const muzzleY =
+      this.renderedLocal.y - WEAPON_PIVOT_Y + Math.sin(this.localAim) * 66;
+    this.playMuzzle(definition.id, muzzleX, muzzleY);
+    this.playWeaponSound(definition.id, true);
+    this.cameras.main.shake(30, 0.0007, true);
+    if (touchInput.fireStamp !== this.lastFireStamp) {
+      this.lastFireStamp = touchInput.fireStamp;
+      // A press during the weapon's own cooldown measures the weapon, not input.
+      if (touchInput.fireStamp - previousShotAt >= definition.fireIntervalMs) {
+        this.pushLatency(this.fireLatency, now - touchInput.fireStamp);
+      }
+    }
+  }
+
+  private playMuzzle(weaponId: string, x: number, y: number): void {
+    if (weaponId === "rocket-launcher") {
+      this.effects.rocketMuzzle(x, y);
+    } else if (weaponId === "heavy-cannon") {
+      this.effects.heavyMuzzle(x, y);
+    } else {
+      this.effects.muzzle(x, y);
+    }
+  }
+
+  /**
+   * Counts down from the authoritative remaining time, extrapolated between
+   * snapshots. Digit and sound change in the same frame. GO is never local: it
+   * comes from the phase change in `onSnapshot`.
+   */
+  private updateCountdown(): void {
+    const snapshot = this.latestSnapshot;
+    if (snapshot?.phase !== "countdown") {
+      this.lastAudioCountdownSecond = -1;
+      this.countdownDisplayMs = null;
+      return;
+    }
+    const age = Math.min(
+      COUNTDOWN_MAX_EXTRAPOLATION_MS,
+      performance.now() - this.snapshotAt,
+    );
+    const remaining = Math.max(0, snapshot.countdownRemainingMs - age);
+    const previous = this.countdownDisplayMs;
+    this.countdownDisplayMs =
+      previous === null || remaining > previous + 1500
+        ? remaining
+        : Math.min(previous, remaining);
+    const second = Math.ceil(this.countdownDisplayMs / 1000);
+    if (second !== this.lastAudioCountdownSecond) {
+      const first = this.lastAudioCountdownSecond === -1;
+      this.lastAudioCountdownSecond = second;
+      if (!first && second >= 1 && second <= 3) audio.play("countdown", 0.8);
+      this.publishHud(true);
+    }
+    this.ensureBackdrop();
+  }
+
+  /**
+   * A live full-screen blur is expensive on a phone GPU. This copies one frame
+   * to a tiny canvas, once, and lets the browser scale it up, which looks like
+   * a blur and costs nothing per frame.
+   */
+  private ensureBackdrop(): void {
+    if (this.backdrop || this.backdropTimer !== null || !this.ready) return;
+    this.backdropTimer = window.setTimeout(() => {
+      this.backdropTimer = null;
+      this.game.events.once(Phaser.Core.Events.POST_RENDER, () => this.captureBackdrop());
+    }, BACKDROP_DELAY_MS);
+  }
+
+  private captureBackdrop(): void {
+    if (this.latestSnapshot?.phase !== "countdown" || this.backdrop) return;
+    const source = this.game.canvas;
+    const parent = source.parentElement;
+    const css = this.renderScaler?.cssSize;
+    if (!parent) return;
+    const width = Math.max(64, Math.round((css?.width ?? source.width) / BACKDROP_DIVISOR));
+    const height = Math.max(36, Math.round((css?.height ?? source.height) / BACKDROP_DIVISOR));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.className = "match-backdrop";
+    canvas.dataset.testid = "match-backdrop";
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(source, 0, 0, width, height);
+    parent.appendChild(canvas);
+    this.backdrop = canvas;
+    this.prewarmBatches();
+  }
+
+  /**
+   * Phaser links a new shader the first time a batch uses a new number of
+   * textures, and bots arriving at GO do that all at once: 259 ms of link time
+   * on a PC. Walking the batch up one texture per frame behind the backdrop pays
+   * for it while nobody is playing.
+   */
+  private prewarmBatches(): void {
+    const local = this.localSnapshot();
+    if (!local) return;
+    const sprites: Phaser.GameObjects.Image[] = [];
+    const textures = CHARACTER_ROSTER.slice(0, PREWARM_TEXTURES);
+    const step = () => {
+      const skin = textures[sprites.length];
+      if (!skin || this.latestSnapshot?.phase !== "countdown") {
+        for (const sprite of sprites) sprite.destroy();
+        return;
+      }
+      sprites.push(
+        this.add
+          .image(local.x, local.y, skin.textureKey)
+          .setDepth(21)
+          .setAlpha(0.02)
+          .setScale(0.05),
+      );
+      this.game.events.once(Phaser.Core.Events.POST_RENDER, step);
+    };
+    step();
+  }
+
+  private clearBackdrop(): void {
+    if (this.backdropTimer !== null) {
+      window.clearTimeout(this.backdropTimer);
+      this.backdropTimer = null;
+    }
+    this.backdrop?.remove();
+    this.backdrop = null;
+  }
+
+  private applyCameraScale(): void {
+    const pixelScale = this.renderScaler?.scale ?? 1;
+    const zoom = this.renderScaler?.worldZoom ?? 1;
+    this.cameras.main.setZoom(zoom * pixelScale);
+    if (this.lastWorldZoom !== 0 && zoom !== this.lastWorldZoom) this.zoomChanges += 1;
+    this.lastWorldZoom = zoom;
+    for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
+  }
+
+  private viewportTelemetry() {
+    const canvas = this.game.canvas;
+    const box = canvas.getBoundingClientRect();
+    const visual = window.visualViewport;
+    return {
+      inner: { width: window.innerWidth, height: window.innerHeight },
+      visual: {
+        width: visual?.width ?? window.innerWidth,
+        height: visual?.height ?? window.innerHeight,
+        scale: visual?.scale ?? 1,
+        offsetLeft: visual?.offsetLeft ?? 0,
+        offsetTop: visual?.offsetTop ?? 0,
+      },
+      canvasCss: { width: box.width, height: box.height, left: box.left, top: box.top },
+      canvasBacking: { width: canvas.width, height: canvas.height },
+      devicePixelRatio: window.devicePixelRatio,
+      renderScale: this.renderScaler?.scale ?? 1,
+      worldZoom: this.renderScaler?.worldZoom ?? 1,
+      cameraZoom: this.cameras.main.zoom,
+      /** What a player sees: CSS pixels per world unit, read from the live page. */
+      apparentScale: this.cameras.main.zoom / Math.max(0.001, canvas.width / Math.max(1, box.width)),
+      zoomChanges: this.zoomChanges,
+      documentWidth: document.documentElement.scrollWidth,
+      history: this.renderScaler ? [...this.renderScaler.history] : [],
+    };
+  }
+
+  private createView(participant: OnlineCombatantSnapshot, isLocal: boolean): void {
+    const view = new CombatantView(this, participant, isLocal);
+    const pixelScale = this.renderScaler?.scale ?? 1;
+    view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
+    this.views.set(participant.id, view);
+  }
+
+  /**
+   * Bots join at the moment a match goes live. Building all seven in one task
+   * stalled the first live frames by 150 ms on a PC and 800 ms on a slow phone,
+   * so GO appeared late and input went dead. One per frame is invisible.
+   */
+  private createNextRemoteView(): void {
+    const missing = this.latestSnapshot?.participants.find(
+      (participant) =>
+        participant.id !== this.room.sessionId && !this.views.has(participant.id),
+    );
+    if (missing) this.createView(missing, false);
   }
 
   private clearPendingInput(): void {
@@ -709,6 +947,21 @@ export class OnlineScene extends Phaser.Scene {
     this.pendingGrenadeSlot = null;
     this.pendingGrenadeThrow = false;
     this.pendingSwap = false;
+  }
+
+  /**
+   * A press reaches the first packet through the latch. The rest of that frame
+   * stays clear, because a slow phone can send several packets in one frame and
+   * the release of a tap cannot be seen until the next one. Every weapon is in
+   * cooldown for those ticks, so a real hold loses nothing.
+   */
+  private packetFire(frame: ControlFrame): boolean {
+    if (!touchInput.enabled) return frame.fire;
+    if (touchInput.fireLatch) {
+      this.latchSentThisFrame = true;
+      return true;
+    }
+    return touchInput.fire && !this.latchSentThisFrame;
   }
 
   /**
@@ -733,7 +986,7 @@ export class OnlineScene extends Phaser.Scene {
         moveX: frame.moveX,
         jump: this.pendingJump,
         jumpHeld: frame.jumpHeld,
-        fire: frame.fire || this.testFireFrames > 0,
+        fire: this.packetFire(frame) || this.testFireFrames > 0,
         reload: this.pendingReload || this.testReloadFrames > 0,
         weapon: this.pendingWeapon,
         aim: this.localAim,
@@ -743,6 +996,7 @@ export class OnlineScene extends Phaser.Scene {
         swapWeapon: this.pendingSwap,
       };
       this.room.send("input", payload);
+      clearTouchFireLatch();
       if (this.testFireFrames > 0) this.testFireFrames -= 1;
       if (this.testReloadFrames > 0) this.testReloadFrames -= 1;
       this.clearPendingInput();
@@ -828,17 +1082,22 @@ export class OnlineScene extends Phaser.Scene {
     this.latestSnapshot = snapshot;
     this.snapshotAt = now;
     this.probe.snapshot = snapshot;
+    if (first && this.room.markSceneReady) {
+      // Practice starts its short sequence once the boot screen has cleared, so
+      // the 3 is not spent behind it. Online time belongs to the server.
+      this.sceneReadyTimer = window.setTimeout(
+        () => this.room.markSceneReady?.(),
+        BOOT_SCREEN_MS,
+      );
+    }
     const serverMs = snapshot.tick * SERVER_TICK_MS;
     this.snapshotClock.observe(serverMs, now);
     const present = new Set(snapshot.participants.map((p) => p.id));
 
     for (const participant of snapshot.participants) {
       const isLocal = participant.id === this.room.sessionId;
-      if (!this.views.has(participant.id)) {
-        const view = new CombatantView(this, participant, isLocal);
-        const pixelScale = this.renderScaler?.scale ?? 1;
-        view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
-        this.views.set(participant.id, view);
+      if (isLocal && !this.views.has(participant.id)) {
+        this.createView(participant, true);
       }
       if (!isLocal) {
         this.views.get(participant.id)?.pushSample(serverMs, participant);
@@ -879,8 +1138,12 @@ export class OnlineScene extends Phaser.Scene {
     }
     if (this.previousPhase === "countdown" && snapshot.phase === "live") {
       this.clearPendingInput();
+      clearTouchFireLatch();
       this.wasFiring = false;
+      this.clearBackdrop();
+      audio.play("matchGo", 0.9);
     }
+    if (snapshot.phase !== "countdown") this.clearBackdrop();
     const phaseChanged = this.previousPhase !== snapshot.phase;
     this.previousPhase = snapshot.phase;
     const localAlive = Boolean(local?.alive);
@@ -1336,8 +1599,11 @@ export class OnlineScene extends Phaser.Scene {
     for (const event of events) {
       switch (event.type) {
         case "shot": {
+          const own = event.ownerId === this.room.sessionId;
+          // A predicted shot already showed this flash and played this sound.
+          const predicted = own && this.unconfirmedShots.shift() !== undefined;
           const view = this.views.get(event.ownerId);
-          view?.onShot(event.barrel === 1 ? 1 : 0);
+          if (!predicted) view?.onShot(event.barrel === 1 ? 1 : 0);
           this.combatLog.push({
             type: "shot",
             weaponId: event.weaponId,
@@ -1348,17 +1614,10 @@ export class OnlineScene extends Phaser.Scene {
             atMs: this.latestSnapshot?.elapsedMs ?? 0,
           });
           if (this.combatLog.length > 80) this.combatLog.shift();
-          if (event.weaponId === "rocket-launcher") {
-            this.effects.rocketMuzzle(event.x, event.y);
-          } else if (event.weaponId === "heavy-cannon") {
-            this.effects.heavyMuzzle(event.x, event.y);
-          } else {
-            this.effects.muzzle(event.x, event.y);
+          if (!predicted) {
+            this.playMuzzle(event.weaponId, event.x, event.y);
+            this.playWeaponSound(event.weaponId, own);
           }
-          this.playWeaponSound(
-            event.weaponId,
-            event.ownerId === this.room.sessionId,
-          );
           break;
         }
         case "hit": {
@@ -1732,7 +1991,7 @@ export class OnlineScene extends Phaser.Scene {
       aimAngle: local?.aimAngle ?? this.localAim,
       matchPhase: snapshot.phase,
       matchTimeRemainingMs: snapshot.remainingMs,
-      matchCountdownMs: snapshot.countdownRemainingMs,
+      matchCountdownMs: this.countdownDisplayMs ?? snapshot.countdownRemainingMs,
       matchCountdownDurationMs: snapshot.countdownDurationMs,
       matchDurationMs: snapshot.durationMs,
       matchScoreLimit: snapshot.scoreLimit,
@@ -2055,6 +2314,10 @@ export class OnlineScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.clearBackdrop();
+    if (this.sceneReadyTimer !== null) window.clearTimeout(this.sceneReadyTimer);
+    this.sceneReadyTimer = null;
+    this.renderScaler?.setChangeListener(null);
     if (this.resizeHandler) {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeHandler);
       this.resizeHandler = null;

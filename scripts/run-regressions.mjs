@@ -21,7 +21,7 @@ const SUITES = [
   ["verify-online-arsenal", { countdownMs: 0 }],
   ["verify-online-matchmaking", { countdownMs: 4000 }],
   ["verify-online-bots", { countdownMs: 0, reconnectGraceSeconds: 2 }],
-  ["verify-online-characters", { countdownMs: 4000 }],
+  ["verify-online-characters", { countdownMs: 9000 }],
   ["verify-online-countdown", { countdownMs: 10000 }],
   ["verify-online-rooms", { countdownMs: 4000 }],
   ["verify-online-p4", { countdownMs: 4000, reconnectGraceSeconds: 5 }],

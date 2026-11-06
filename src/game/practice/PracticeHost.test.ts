@@ -9,6 +9,7 @@ function runMatch(difficulty: PracticeDifficulty, seconds: number) {
     { difficulty, playerName: "ENDY", skinId: "viber-031", debug: true },
     (type, message) => messages.push({ type, message }),
   );
+  host.handle("scene-ready", undefined);
   const ticks = Math.round((seconds * 1000) / SERVER_TICK_MS) + 200;
   for (let tick = 0; tick < ticks; tick += 1) host.advance(SERVER_TICK_MS);
   host.handle("resync", undefined);
@@ -50,12 +51,32 @@ describe("practice match", () => {
     expect(last.remainingMs).toBeGreaterThan(89_000);
   });
 
+  it("holds its countdown until the scene can show it", () => {
+    const messages: Array<{ type: string; message: unknown }> = [];
+    const host = new PracticeHost(
+      { difficulty: "normal", playerName: "ENDY", skinId: "viber-010", debug: false },
+      (type, message) => messages.push({ type, message }),
+    );
+    const remaining = () => {
+      host.handle("resync", undefined);
+      const last = messages.filter((entry) => entry.type === "snapshot").at(-1);
+      return (last?.message as OnlineSnapshot).countdownRemainingMs;
+    };
+    const start = remaining();
+    for (let tick = 0; tick < 600; tick += 1) host.advance(SERVER_TICK_MS);
+    expect(remaining()).toBe(start);
+    host.handle("scene-ready", undefined);
+    for (let tick = 0; tick < 60; tick += 1) host.advance(SERVER_TICK_MS);
+    expect(remaining()).toBeLessThan(start);
+  });
+
   it("ignores debug messages unless enabled", () => {
     const events: unknown[] = [];
     const host = new PracticeHost(
       { difficulty: "normal", playerName: "ENDY", skinId: "viber-010", debug: false },
       (type, message) => events.push([type, message]),
     );
+    host.handle("scene-ready", undefined);
     for (let tick = 0; tick < 300; tick += 1) host.advance(SERVER_TICK_MS);
     host.handle("debug-end-match", undefined);
     for (let tick = 0; tick < 5; tick += 1) host.advance(SERVER_TICK_MS);

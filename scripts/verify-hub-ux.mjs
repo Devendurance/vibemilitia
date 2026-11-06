@@ -362,6 +362,9 @@ try {
     beforeReload.phase === "live" && Boolean(beforeReload.roomId),
     `${beforeReload.roomId} ${beforeReload.phase}`,
   );
+  // Bots kill an idle player during the wait, and a respawn reads as failed input.
+  await online.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard());
+  await online.waitForTimeout(100);
   await online.reload({ waitUntil: "networkidle" });
   await online.waitForTimeout(5000);
   const afterReload = await probeOnline(online);

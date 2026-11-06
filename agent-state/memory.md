@@ -266,3 +266,13 @@
 - Never run a local proxy in the same process as `spawnSync`. It freezes the proxy.
 - `verify:production` writes guest profiles and fills seats. Use `scripts/verify-release.mjs` with `NO_GUEST=1` on production and prove XP on `p5-test`.
 - Git Bash heredocs choke on apostrophes here. Write patch scripts with the file tool.
+
+## Mobile correction facts
+
+- Phaser `resize` skips the canvas style when zoom is exactly 1. Don't use its scale zoom.
+- Phaser 4 links a new shader the first time a batch uses a new texture count. That cost 259 ms at GO. `prewarmBatches` walks 24 textures behind the backdrop.
+- `page.screenshot` stalls the whole browser's rAF, including other pages. Don't take one in a run that measures timing.
+- Next rewrites `<meta name="viewport">` as navigation settles, so a one-time change does not hold.
+- The stack `screen` must be set in Playwright to separate a toolbar change from a real resize.
+- `verify-online-characters` needs 9 s of countdown, or the guest can join after bots took its skin.
+

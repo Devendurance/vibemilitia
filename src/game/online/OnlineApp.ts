@@ -24,7 +24,6 @@ export function createOnlineGame(
       autoCenter: Phaser.Scale.NO_CENTER,
       width,
       height,
-      zoom: 1 / renderScaler.scale,
     },
     physics: {
       default: "arcade",

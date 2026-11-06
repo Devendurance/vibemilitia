@@ -19,6 +19,7 @@ export class PracticeRoom implements MatchRoom {
   private worker: Worker | null = null;
   private host: PracticeHost | null = null;
   private timer: number | null = null;
+  private sceneReady = false;
   private onVisibility = () => {
     this.send("pause", document.hidden);
   };
@@ -47,6 +48,7 @@ export class PracticeRoom implements MatchRoom {
     this.host = new PracticeHost(options, (type, message) =>
       this.dispatch(type, message),
     );
+    if (this.sceneReady) this.host.handle("scene-ready", undefined);
     let last = performance.now();
     this.timer = window.setInterval(() => {
       const now = performance.now();
@@ -72,6 +74,11 @@ export class PracticeRoom implements MatchRoom {
     } else {
       this.host?.handle(type, message);
     }
+  }
+
+  markSceneReady(): void {
+    this.sceneReady = true;
+    this.send("scene-ready");
   }
 
   dispose(): void {
