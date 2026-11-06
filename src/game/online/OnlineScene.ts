@@ -418,6 +418,7 @@ export class OnlineScene extends Phaser.Scene {
     window.__VIBE_MILITIA_ONLINE__ = {
       getProbe: () => ({
         ...this.probe,
+        textureMemory: () => this.textureMemory(),
         ready: this.ready,
         snapshot: this.latestSnapshot,
         hud: this.bridge.getSnapshot(),
@@ -890,6 +891,18 @@ export class OnlineScene extends Phaser.Scene {
     if (this.lastWorldZoom !== 0 && zoom !== this.lastWorldZoom) this.zoomChanges += 1;
     this.lastWorldZoom = zoom;
     for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
+  }
+
+  /** Sum of width x height x 4 over every loaded texture source. */
+  private textureMemory(): { textures: number; bytes: number } {
+    let bytes = 0;
+    const keys = this.textures.getTextureKeys();
+    for (const key of keys) {
+      for (const source of this.textures.get(key).source) {
+        bytes += source.width * source.height * 4;
+      }
+    }
+    return { textures: keys.length, bytes };
   }
 
   private viewportTelemetry() {

@@ -31,6 +31,7 @@
     "verify:ux": "node scripts/verify-hub-ux.mjs",
     "verify:playability": "node scripts/verify-playability.mjs",
     "verify:mobile": "node scripts/verify-mobile-controls.mjs",
+    "measure:art": "node scripts/measure-art.mjs",
     "measure:playability": "node scripts/measure-playability.mjs",
     "verify:production": "node scripts/verify-production-beta.mjs",
     "server:dev": "tsx watch server/index.ts",
