@@ -451,10 +451,10 @@ HEADED=1 npm run verify:online:grenade-perf
 Last verification against the production build:
 
 - `npm run typecheck`: pass
-- `npm test`: 182 tests pass across 23 files, including 7 Neon PostgreSQL tests with `TEST_DATABASE_URL` set
+- `npm test`: 179 tests pass across 23 files, with 7 Neon PostgreSQL tests skipped when `TEST_DATABASE_URL` is absent
 - `npm run lint`: pass
 - `npm run build`: pass
-- `npm run verify:browser`: 37/37 checks pass on the final rerun
+- `npm run verify:browser`: 37/37 checks pass on the final rerun against `/practice`
 - `npm run verify:online:countdown`: 16/16 checks pass
 - `npm run verify:online:matchmaking`: 11/11 checks pass on a clean server
 - `npm run verify:online:characters`: 35/35 checks pass
@@ -468,12 +468,15 @@ Last verification against the production build:
 - `npm run verify:online:rooms`: 16/16 checks pass
 - `npm run verify:online:p4`: 35/35 checks pass against the Neon test branch
 - `npm run verify:online:p5`: 42/42 checks pass against the Neon test branch across four landscape shapes plus portrait guard and desktop
-- `npm run verify:online:perf`: 6/6 checks pass on the final clean run, 56 fps headless, 0.40 ms average tick, 1.43 ms p95
+- `npm run verify:ux`: 49/49 checks pass against the public production site with zero browser errors across ten viewport shapes, drawer interactions, practice, reload recovery and a two-human room
+- `npm run verify:production`: 50/50 checks pass against the public beta, including PostgreSQL, two browser contexts, countdown joins, a live round, replay, reconnect, XP settlement and the mobile landscape guard
+- `npm run verify:online:perf`: 6/6 checks pass on the final headed run, 46 fps, 1.77 ms average tick and 5.20 ms p95 under concurrent local test load
 - `npm run verify:online:grenade-perf`: 15/15 checks pass
 - P0-P4 browser suites were run against a clean SQLite server with `MATCH_COUNTDOWN_MS=10000` to remove host and database latency from their tight timing assumptions. P4 and P5 were run against Neon PostgreSQL.
 - Neon PostgreSQL tests cover guest creation, token hashing, duplicate concurrent match writes, concurrent distinct rewards, reward-delivery idempotency, cosmetics validation, anonymous feedback storage and the `/ready` backend.
 - SQLite-to-PostgreSQL migration validation used a fixture with 2 players, 1 weapon stat, 1 match and 8 cosmetics. Target counts matched and the migrated player retained XP and match count. The SQLite source was not modified or deleted.
-- Mobile verification used Chromium mobile emulation at 1280x720, 844x390, 915x412 and 740x360 with `hasTouch`, real CDP multi-touch events, safe-area CSS and all touch controls. Physical iOS and Android hardware were not available in this environment.
+- Mobile verification used Chromium mobile emulation at 1280x720, 844x390, 915x412 and 740x360 with `hasTouch`, real CDP multi-touch events, safe-area CSS and all touch controls. The hub matrix additionally covers 932x430, 780x360, 360x780 portrait and 1024x768 tablet landscape. Physical iOS and Android hardware were not available in this environment.
+- Reload recovery was verified against the public site: the same room and session ID returned, authoritative ammo was preserved, a second tab could not redeem the first tab's seat, and a 30-second grace expiry returned the player to matchmaking.
 - Original source PNGs, archived NFT sources and the VIBER-010 cutout hash are unchanged. All ten cutouts remain validated.
 
 ## Known limitations
