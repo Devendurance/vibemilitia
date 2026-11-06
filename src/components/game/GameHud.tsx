@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { getCharacterSkin, HUMAN_DEFAULT_SKIN_ID } from "@/game/characters/roster";
+import { LoadoutIcon } from "@/components/game/LoadoutIcon";
 import { MatchCountdown } from "@/components/game/MatchCountdown";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
@@ -30,139 +31,6 @@ interface GameHudProps {
 
 function Keycap({ children }: { children: React.ReactNode }) {
   return <kbd className="keycap">{children}</kbd>;
-}
-
-function WeaponIcon({ weaponId }: { weaponId: string }) {
-  const common = {
-    width: 20,
-    height: 11,
-    viewBox: "0 0 24 12",
-    fill: "currentColor",
-    "aria-hidden": true,
-    className: "hud-weapon-slot__icon",
-  } as const;
-  switch (weaponId) {
-    case "scatter-blaster":
-      return (
-        <svg {...common}>
-          <rect x="2" y="4" width="14" height="5" rx="1" />
-          <rect x="14" y="3" width="8" height="3" />
-          <rect x="14" y="7" width="8" height="3" />
-          <rect x="4" y="8" width="4" height="3" />
-        </svg>
-      );
-    case "vibe-lance":
-      return (
-        <svg {...common}>
-          <rect x="1" y="5" width="20" height="2.4" rx="1" />
-          <rect x="12" y="7" width="2" height="4" />
-          <rect x="6" y="2.5" width="6" height="2.6" rx="1" />
-          <rect x="20" y="4.6" width="3" height="3" />
-        </svg>
-      );
-    case "akimbo-rifles":
-      return (
-        <svg {...common}>
-          <rect x="3" y="1.5" width="12" height="3.2" rx="1" />
-          <rect x="12" y="1" width="8" height="2" />
-          <rect x="3" y="7.3" width="12" height="3.2" rx="1" />
-          <rect x="12" y="9" width="8" height="2" />
-          <rect x="5" y="4" width="3" height="1.5" />
-          <rect x="5" y="6.5" width="3" height="1.5" />
-        </svg>
-      );
-    case "vibe-smg":
-      return (
-        <svg {...common}>
-          <rect x="3" y="3.5" width="13" height="5" rx="1" />
-          <rect x="14" y="4.5" width="7" height="2.4" />
-          <rect x="6" y="8" width="4" height="3" />
-          <rect x="1" y="5" width="3" height="2" />
-        </svg>
-      );
-    case "heavy-cannon":
-      return (
-        <svg {...common}>
-          <rect x="1" y="3" width="15" height="6" rx="1" />
-          <rect x="14" y="2" width="9" height="3.6" />
-          <rect x="14" y="6.4" width="9" height="3.6" />
-          <rect x="4" y="8.5" width="5" height="3" />
-          <rect x="6" y="4.5" width="4" height="2" />
-        </svg>
-      );
-    case "rocket-launcher":
-      return (
-        <svg {...common}>
-          <rect x="1" y="3" width="17" height="6" rx="2" />
-          <rect x="16" y="2" width="5" height="8" rx="1" />
-          <path d="M21 4.5 L24 6 L21 7.5 Z" />
-          <rect x="5" y="8.5" width="4" height="3" />
-          <rect x="7" y="4.5" width="5" height="1.6" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...common}>
-          <rect x="2" y="4" width="14" height="4.6" rx="1" />
-          <rect x="15" y="4.8" width="7" height="2.2" />
-          <rect x="4" y="8.2" width="4" height="3" />
-          <rect x="9" y="3" width="4" height="1.4" />
-        </svg>
-      );
-  }
-}
-
-function ContactGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1.5" width="6" height="4" rx="1" fill="#C7692F" />
-      <circle cx="12" cy="14" r="9" fill="#0C0D0F" />
-      <circle cx="12" cy="14" r="7.5" fill="#E5484D" />
-      <circle cx="9.5" cy="11" r="2.4" fill="#FF8A3D" />
-      <circle cx="9" cy="10.5" r="1.1" fill="#FFD166" />
-      <rect x="10.5" y="22" width="3" height="1.5" fill="#0C0D0F" opacity="0.5" />
-    </svg>
-  );
-}
-
-function FragGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
-      <rect x="5" y="4.5" width="14" height="18" rx="5" fill="#0C0D0F" />
-      <rect x="6.5" y="6" width="11" height="15" rx="4" fill="#566B32" />
-      <rect x="6.5" y="10.5" width="11" height="2.5" fill="#2F3A1D" />
-      <rect x="6.5" y="15" width="11" height="2" fill="#2F3A1D" />
-      <circle cx="9" cy="8" r="1.2" fill="#F4E21C" />
-    </svg>
-  );
-}
-
-function StinkingGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
-      <rect x="5" y="4.5" width="14" height="18" rx="6" fill="#0C0D0F" />
-      <rect x="6.5" y="6" width="11" height="15" rx="5" fill="#6FBE2E" />
-      <rect x="7.5" y="7.5" width="9" height="5" rx="2.5" fill="#D7FF2E" />
-      <rect x="6.5" y="14" width="11" height="2" fill="#2F4A16" />
-      <rect x="6.5" y="18" width="11" height="1.6" fill="#2F4A16" />
-      <circle cx="16" cy="12" r="1.3" fill="#F5F3EC" opacity="0.9" />
-      <circle cx="9" cy="16.5" r="1" fill="#F5F3EC" opacity="0.7" />
-    </svg>
-  );
 }
 
 function placementLabel(placement: number): string {
@@ -597,7 +465,11 @@ export function GameHud({
                   data-owned={slot.owned}
                 >
                   <Keycap>{slot.slot}</Keycap>
-                  <WeaponIcon weaponId={empty ? "" : slot.id} />
+                  {empty ? (
+                    <span className="hud-weapon-slot__icon" aria-hidden="true" />
+                  ) : (
+                    <LoadoutIcon name={slot.id} className="hud-weapon-slot__icon" />
+                  )}
                   <span className="sr-only">{empty ? "EMPTY" : slot.shortName}</span>
                   <span className="hud-weapon-slot__ammo">
                     {empty
@@ -623,11 +495,11 @@ export function GameHud({
               <div className="hud-grenade-slots" role="group" aria-label="Grenade selection">
                 {(
                   [
-                    ["contact", "4", "CONTACT", <ContactGrenadeIcon key="c" />, snapshot.grenadeContact, 0],
-                    ["frag", "5", "FRAG", <FragGrenadeIcon key="f" />, snapshot.grenadeFrag, 1],
-                    ["stinking", "6", "STINK", <StinkingGrenadeIcon key="s" />, snapshot.grenadeStinking, 2],
+                    ["contact", "4", "CONTACT", snapshot.grenadeContact, 0],
+                    ["frag", "5", "FRAG", snapshot.grenadeFrag, 1],
+                    ["stinking", "6", "STINK", snapshot.grenadeStinking, 2],
                   ] as const
-                ).map(([type, key, label, icon, count, slot]) => (
+                ).map(([type, key, label, count, slot]) => (
                   <button
                     key={type}
                     type="button"
@@ -639,7 +511,7 @@ export function GameHud({
                     data-testid={`grenade-select-${type}`}
                   >
                     <Keycap>{key}</Keycap>
-                    {icon}
+                    <LoadoutIcon name={type} className="hud-grenade-icon" />
                     <strong data-testid={`grenade-count-${type}`}>{count}</strong>
                   </button>
                 ))}
@@ -684,7 +556,7 @@ export function GameHud({
                 aria-label={`Use medkit, heals ${MEDKIT_CONFIG.healAmount}. ${snapshot.medkits} of ${snapshot.maxMedkits} carried`}
               >
                 <Keycap>H</Keycap>
-                <span className="hud-medkit-cross" aria-hidden="true" />
+                <LoadoutIcon name="medkit" className="hud-medkit-icon" />
                 <strong>{snapshot.medkits}</strong>
               </button>
             </div>

@@ -151,7 +151,7 @@ export const ADVANCED_WEAPONS: readonly PlayerWeapon[] = [
     projectileLifetimeMs: 1500,
     projectileTexture: "bullet-akimbo",
     weaponTexture: "weapon-akimbo",
-    secondaryWeaponTexture: "weapon-akimbo",
+    secondaryWeaponTexture: "weapon-akimbo-b",
     barrelSeparation: 11,
     muzzleColor: 0xd7ff2e,
     recoil: 0.8,

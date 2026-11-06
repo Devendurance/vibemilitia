@@ -91,6 +91,7 @@
 - Local fire and aim are read straight from `touchInput`. Muzzle flash and sound are predicted and matched against server `shot` events through `unconfirmedShots`. Ammo, damage, cadence and hits stay on the server.
 - GO comes only from the snapshot phase changing to `live`. The digit is extrapolated from authoritative remaining time and holds at 1 until then. Don't use a live blur for the countdown: `match-backdrop` is one cached low-resolution frame.
 - Bot views build one per frame and batch shaders are linked behind the countdown backdrop. Both exist to keep the first live frames clear, so keep them when changing match start.
+- Gun, grenade, pickup and projectile art loads in `preload` through `preloadLoadoutArt` and draws at `ART_SCALE`. Run `scripts/export-sprites.py` to change it, and keep hitboxes and server origins out of art changes. Lime is only for selected or interactive states, never in the art.
 - `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
 
 ## TESTING

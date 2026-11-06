@@ -33,7 +33,7 @@ describe("advanced weapon registry", () => {
       fireIntervalMs: 85,
       reloadMs: 1800,
       mechanic: "akimbo",
-      secondaryWeaponTexture: "weapon-akimbo",
+      secondaryWeaponTexture: "weapon-akimbo-b",
     });
     const smg = ALL_PLAYER_WEAPONS.find(
       (weapon) => weapon.id === "vibe-smg",

@@ -158,7 +158,7 @@ const probe = (page) =>
         document.querySelector('[data-testid="weapon-slot-3"] svg'),
       ),
       weaponSlotIconCount: document.querySelectorAll(
-        '[data-testid^="weapon-slot-"] svg',
+        '[data-testid^="weapon-slot-"] .hud-weapon-slot__icon',
       ).length,
       camera: {
         scrollX: value.camera.scrollX,

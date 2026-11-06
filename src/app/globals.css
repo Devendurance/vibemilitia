@@ -7583,3 +7583,76 @@ html.in-match .settings-card textarea {
     animation-name: none;
   }
 }
+
+/* ---------- Approved loadout art ---------- */
+
+.hud-root .hud-weapon-slot__icon,
+.hud-weapon-slot.is-active .hud-weapon-slot__icon {
+  width: 30px;
+  height: 15px;
+  object-fit: contain;
+  opacity: 1;
+}
+
+/* The icons carry their own color, so selection moved to a lime outline. */
+.hud-root .hud-weapon-slot.is-active {
+  outline: 1px solid var(--lime);
+  outline-offset: -1px;
+}
+
+.hud-root .hud-weapon-slot.is-empty .hud-weapon-slot__icon {
+  visibility: hidden;
+}
+
+.hud-root .hud-grenade-icon,
+.hud-grenade-icon {
+  object-fit: contain;
+}
+
+.hud-root .hud-grenade-slot.is-active {
+  outline: 1px solid var(--lime);
+  outline-offset: -1px;
+}
+
+.hud-medkit-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.game-frame.is-touch .tc-action-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.game-frame.is-touch .tc-weapon__icon {
+  display: block;
+  width: 36px;
+  height: 14px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.hub-loadout-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.hub-loadout-icon--square {
+  width: 24px;
+}
+
+.hub-loadout-row {
+  grid-template-columns: 30px 44px minmax(0, 1fr) auto;
+}
+
+.hub-loadout-row.is-empty {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+}
+

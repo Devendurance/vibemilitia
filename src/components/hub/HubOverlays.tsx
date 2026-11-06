@@ -5,7 +5,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   Check,
-  Crosshair,
   Lock,
   ShieldAlert,
   Sparkles,
@@ -20,6 +19,7 @@ import { AudioSettings } from "@/components/game/AudioSettings";
 import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import type { LeaderboardResult, PlayerProfile } from "@/game/progression/profile";
 import { fetchLeaderboard } from "@/lib/guestProfile";
+import { LoadoutIcon } from "@/components/game/LoadoutIcon";
 import type { IdentityInput } from "@/components/hub/usePlayerIdentity";
 
 function useDialogFocus(onClose: () => void) {
@@ -655,6 +655,7 @@ export function LoadoutDrawer({
         {PLAYER_WEAPONS.map((weapon, index) => (
           <div className="hub-loadout-row" key={weapon.id}>
             <span className="hub-loadout-row__slot">{index + 1}</span>
+            <LoadoutIcon name={weapon.id} className="hub-loadout-icon" />
             <div>
               <strong>{weapon.name}</strong>
               <span className="mono-label">
@@ -682,7 +683,7 @@ export function LoadoutDrawer({
         <div className="hub-grenade-row">
           {GRENADE_SLOT_TYPES.map((type) => (
             <div className="hub-grenade" key={type}>
-              <Crosshair aria-hidden="true" />
+              <LoadoutIcon name={type} className="hub-loadout-icon hub-loadout-icon--square" />
               <strong>{GRENADE_CONFIG[type].name}</strong>
               <span className="mono-label">1 CARRY</span>
             </div>
@@ -691,6 +692,7 @@ export function LoadoutDrawer({
       </div>
       <div className="hub-loadout-detail hub-loadout-detail--compact">
         <span className="mono-label">MEDKITS</span>
+        <LoadoutIcon name="medkit" className="hub-loadout-icon hub-loadout-icon--square" />
         <p>
           Start with zero. Carry up to two from authored caches or elimination
           drops. Healing is server-authoritative.

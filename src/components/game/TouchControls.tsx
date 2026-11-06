@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Gauge, Home, RotateCw, Settings, ShieldPlus, Swords } from "lucide-react";
+import { Gauge, Home, RotateCw, Settings, Swords } from "lucide-react";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
+import { LoadoutIcon } from "@/components/game/LoadoutIcon";
 import { audio } from "@/game/audio/AudioEngine";
 import {
   queueTouchGrenadeSlot,
@@ -499,7 +500,7 @@ export function TouchControls({
           data-testid="touch-grenade"
           aria-label={`Select grenade. Current ${selectedGrenadeLabel}`}
         >
-          <span className={`tc-grenade-dot is-${snapshot.grenadeSelected}`} aria-hidden="true" />
+          <LoadoutIcon name={snapshot.grenadeSelected} className="tc-action-icon" />
           <span>{selectedGrenadeCount}</span>
         </button>
       ) : null}
@@ -534,7 +535,7 @@ export function TouchControls({
           data-testid="touch-medkit"
           aria-label="Use medkit"
         >
-          <ShieldPlus aria-hidden="true" />
+          <LoadoutIcon name="medkit" className="tc-action-icon" />
           <span>{snapshot.medkits}</span>
         </button>
       ) : null}
@@ -562,6 +563,7 @@ export function TouchControls({
           ? snapshot.weaponSlots
           : [1, 2, 3].map((slot) => ({
               slot,
+              id: "",
               owned: false,
               shortName: "EMPTY",
               ammo: 0,
@@ -582,7 +584,10 @@ export function TouchControls({
             }}
           >
             <strong>{slot.slot}</strong>
-            <span>{slot.owned ? `${slot.ammo}` : "—"}</span>
+            {slot.owned && slot.id ? (
+              <LoadoutIcon name={slot.id} className="tc-weapon__icon" />
+            ) : null}
+            <span>{slot.owned ? `${slot.ammo}` : "-"}</span>
           </button>
         ))}
       </div>

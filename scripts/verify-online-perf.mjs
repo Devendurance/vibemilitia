@@ -58,17 +58,25 @@ try {
   }
   await page.keyboard.down("KeyD");
   await page.mouse.down();
-  const fps = await page.evaluate(
+  const { rate: fps, p95: p95FrameMs } = await page.evaluate(
     () =>
       new Promise((resolve) => {
         let frames = 0;
+        let last = 0;
+        const deltas = [];
         const start = performance.now();
         const step = (now) => {
           frames += 1;
+          if (last) deltas.push(now - last);
+          last = now;
           if (now - start < 4000) {
             requestAnimationFrame(step);
           } else {
-            resolve((frames * 1000) / (now - start));
+            deltas.sort((a, b) => a - b);
+            resolve({
+              rate: (frames * 1000) / (now - start),
+              p95: deltas[Math.floor(deltas.length * 0.95)] ?? 0,
+            });
           }
         };
         requestAnimationFrame(step);
@@ -102,9 +110,18 @@ try {
     };
   });
   const roundedFps = Math.round(fps);
+  console.log(
+    `PERF_JSON ${JSON.stringify({
+      fps: roundedFps,
+      fpsExact: Number(fps.toFixed(2)),
+      p95FrameMs: Number(p95FrameMs.toFixed(2)),
+      serverTickAverageMs: Number(averageTick.toFixed(3)),
+    })}`,
+  );
   console.log("PERF", {
     mode: headed ? "headed" : "headless",
     fps: roundedFps,
+    p95FrameMs: Number(p95FrameMs.toFixed(2)),
     serverTickAverageMs: Number(averageTick.toFixed(3)),
     serverTickP95Ms: Number(p95Tick.toFixed(3)),
     serverTickMaxMs: Number(maxTick.toFixed(3)),
