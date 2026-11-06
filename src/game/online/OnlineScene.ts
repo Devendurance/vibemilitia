@@ -56,6 +56,7 @@ const COUNTDOWN_MAX_EXTRAPOLATION_MS = 250;
 /** Waits out the camera fade so the frozen frame is not black. */
 const BACKDROP_DELAY_MS = 500;
 const BACKDROP_DIVISOR = 10;
+const PREWARM_TEXTURES = 24;
 /** GameHud starts fading the boot screen at 700 ms and shows the digit then. */
 const BOOT_SCREEN_MS = 750;
 const WEAPON_PIVOT_X = 28;
@@ -841,6 +842,36 @@ export class OnlineScene extends Phaser.Scene {
     context.drawImage(source, 0, 0, width, height);
     parent.appendChild(canvas);
     this.backdrop = canvas;
+    this.prewarmBatches();
+  }
+
+  /**
+   * Phaser links a new shader the first time a batch uses a new number of
+   * textures, and bots arriving at GO do that all at once: 259 ms of link time
+   * on a PC. Walking the batch up one texture per frame behind the backdrop pays
+   * for it while nobody is playing.
+   */
+  private prewarmBatches(): void {
+    const local = this.localSnapshot();
+    if (!local) return;
+    const sprites: Phaser.GameObjects.Image[] = [];
+    const textures = CHARACTER_ROSTER.slice(0, PREWARM_TEXTURES);
+    const step = () => {
+      const skin = textures[sprites.length];
+      if (!skin || this.latestSnapshot?.phase !== "countdown") {
+        for (const sprite of sprites) sprite.destroy();
+        return;
+      }
+      sprites.push(
+        this.add
+          .image(local.x, local.y, skin.textureKey)
+          .setDepth(21)
+          .setAlpha(0.02)
+          .setScale(0.05),
+      );
+      this.game.events.once(Phaser.Core.Events.POST_RENDER, step);
+    };
+    step();
   }
 
   private clearBackdrop(): void {
