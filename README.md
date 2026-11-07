@@ -13,6 +13,7 @@ A fast-paced, browser-based 2D multiplayer arena shooter with tactical jetpack c
   <a href="https://nextjs.org"><img alt="Next.js 16" src="https://img.shields.io/badge/NEXT.JS-16-2A2E34?style=for-the-badge&logo=nextdotjs&logoColor=D7FF2E&labelColor=16181C"></a>
   <a href="https://www.typescriptlang.org"><img alt="TypeScript" src="https://img.shields.io/badge/TYPESCRIPT-5-2A2E34?style=for-the-badge&logo=typescript&logoColor=D7FF2E&labelColor=16181C"></a>
   <a href="https://colyseus.io"><img alt="Colyseus 0.18" src="https://img.shields.io/badge/COLYSEUS-0.18-2A2E34?style=for-the-badge&labelColor=16181C"></a>
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/LICENSE-MIT-2A2E34?style=for-the-badge&labelColor=16181C"></a>
   <a href="https://github.com/Devendurance/vibemilitia"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Devendurance/vibemilitia?style=for-the-badge&logo=github&logoColor=D7FF2E&labelColor=16181C&color=2A2E34"></a>
 </p>
 
@@ -478,12 +479,12 @@ python scripts/optimize-readme-media.py
 - Report bugs and request features in [GitHub Issues](https://github.com/Devendurance/vibemilitia/issues). Include your browser, device, what you expected and what happened. Do not include tokens or personal details.
 - Gameplay rules belong in `src/game/core` or `src/game/multiplayer`, not in the Phaser scenes. Keep the server authoritative.
 - Run the typecheck, lint and test commands above before you open a change.
-- Until the owner publishes a license, please open an issue before sending code. See the licensing section below.
+- Code contributions are accepted under the MIT License. Do not add artwork, sprites or other assets without confirmed rights. See the licensing section below.
 
 ## Licensing & asset rights
 
-- **Source code.** No open-source license has been published for this repository yet. Until the owner publishes one, copyright law leaves all rights with the owner. Do not assume a license until a `LICENSE` file exists.
-- **Artwork.** The ten Vibe Vibers character images and their derived cutouts, plus the Sector 07 brand art, carry their own rights status. See [ASSET_RIGHTS.md](ASSET_RIGHTS.md) for provenance and what is still unverified.
+- **Source code.** The original source code is licensed under the [MIT License](LICENSE).
+- **Artwork is not covered by the MIT License.** The ten Vibe Vibers character images and their derived cutouts, plus the sprite art, icons and Sector 07 brand art, carry their own rights status. The MIT grant does not extend to them. See [ASSET_RIGHTS.md](ASSET_RIGHTS.md) for provenance and what is still unverified.
 - **Third-party software.** Dependencies such as Phaser, Next.js, React and Colyseus keep their own licenses. See `package-lock.json` and each package's license file.
 - **Names and trademarks.** Mini Militia is named only as an inspiration. Vibe Vibers and its collection names belong to their owners.
 

@@ -1,16 +1,6 @@
-# PROPOSED ONLY. NOT IN EFFECT.
-
-The project owner has not chosen a license for this repository. This file is a draft for review. It is not a `LICENSE` file, and nothing in it applies to the repository until the owner approves it and it is moved to the repository root as `LICENSE`.
-
-Placeholders in square brackets must be filled in by the owner. Do not invent a copyright holder or year.
-
-Proposed scope, if approved: original source code written for this project, excluding the artwork, sprites, brand files, audio and third-party dependencies listed in `ASSET_RIGHTS.md`.
-
----
-
 MIT License
 
-Copyright (c) [YEAR] [COPYRIGHT HOLDER, to be confirmed by the owner]
+Copyright (c) 2026 Devendurance
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

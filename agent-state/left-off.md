@@ -2,20 +2,20 @@
 
 ## Current task
 
-README rewrite, gameplay gallery and rights documentation are committed. The repo has no root LICENSE. Owner decisions are still open (see Next).
+README rewrite, gallery and rights notes are committed. Root `LICENSE` is MIT, approved by the owner on 2026-11-07. Artwork rights are still open (see Next).
 
 ## Done
 
 - README rewritten from source config: hero, badges, 9-image gallery (`docs/media/*.webp`), arsenal, grenades, pickups and loot, roster, modes, controls, progression, architecture, setup, status, privacy, licensing.
 - Gallery captured from a local production build via `scripts/capture-readme-media.mjs` (SQLite, test hooks for placement only, no Neon writes). Converted by `scripts/optimize-readme-media.py`. Raw captures stay in gitignored `artifacts/readme-media/`.
 - `ASSET_RIGHTS.md` records artwork provenance and what is unverified. No permission is granted or claimed.
-- Proposed MIT text staged at `docs/licensing/PROPOSED-MIT-LICENSE.md`. Not in effect, placeholders for holder and year.
+- Root `LICENSE` is standard MIT, copyright 2026 Devendurance (owner approved, 2026-11-07). The proposal file was removed. MIT covers code only. Artwork stays under `ASSET_RIGHTS.md`. License badge added to the README header.
 - README checked: GitHub markdown API render (tables, images, centered header OK), 9 image paths, all local links, badge URLs 200, GitHub/Vercel/Colyseus/Next links 200, `npm run lint` and `npm run typecheck` pass.
 - AGENTS.md got a DOCUMENTATION section. agent-state corrected (practice is the full simulation, leaderboard default is on).
 
 ## Next
 
-0. Owner: choose a source license. Decide whether artwork stays out of it. Then move the proposed text to `LICENSE` and add a license badge only after approval.
+0. Owner: confirm "Devendurance" is the copyright name you want in `LICENSE` (it is the GitHub handle, not a legal name). Decide whether to add an explicit artwork carve-out to `LICENSE`.
 1. Owner: confirm rights to the Vibe Vibers character art and the origin of sprite sources and the Sector 07 SVG. Update `ASSET_RIGHTS.md`.
 2. Owner: decide whether the leaderboard should be opt-in, not ticked by default. It is ticked now, which conflicts with older "opt-in" wording.
 3. Physical phone test (iOS and Android). Everything mobile is still Chromium emulation.
