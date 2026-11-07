@@ -464,7 +464,7 @@ python scripts/optimize-readme-media.py
 - There is no lag compensation. Players far from the server feel the extra latency.
 - A reload recovers your seat in the same tab. Characters can be changed only in the lobby, not during a match.
 - Sector 07 is the only arena.
-- Audio is original synthesized sound only. There is no music or voice.
+- Gameplay effects use original synthesis. The hub soundtrack is the CC0 track “Fun Music Loop” by Seth_Makes_Sounds, credited in `ASSET_RIGHTS.md`.
 - No gamepad support and no key remapping.
 
 ## Privacy
@@ -490,6 +490,7 @@ python scripts/optimize-readme-media.py
 
 ## Credits
 
+- Hub soundtrack: “Fun Music Loop” by Seth_Makes_Sounds, CC0 1.0 Universal. Source and processing details are in [ASSET_RIGHTS.md](ASSET_RIGHTS.md).
 - Character artwork from the original Vibe Vibers collection. The rights status is in [ASSET_RIGHTS.md](ASSET_RIGHTS.md).
 - Built with [Phaser](https://github.com/phaserjs/phaser), [Next.js](https://nextjs.org), [React](https://react.dev), [TypeScript](https://www.typescriptlang.org), [Colyseus](https://colyseus.io), [Neon](https://neon.tech), [Vercel](https://vercel.com) and [Cloudflare Tunnel](https://www.cloudflare.com/products/tunnel/).
 - Gameplay inspired by Mini Militia. This project is not affiliated with it.

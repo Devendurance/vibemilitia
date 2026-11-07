@@ -16,6 +16,7 @@
 | Sector 07 hub illustration | `public/brand/sector07-hub.svg` | Project file | Author not recorded. Owner to confirm. |
 | Sound effects | None shipped | Synthesized at runtime with Web Audio in `src/game/audio/` | No third-party audio files |
 | Typefaces | Loaded through the app's font setup | Archivo, Inter and JetBrains Mono | Expected to be open-font licensed. Owner to confirm the exact license terms. |
+| Sector 07 hub music | `public/audio/sector-07-hub-loop.mp3` | “Fun Music Loop” by Seth_Makes_Sounds, Freesound | CC0 1.0 Universal |
 
 ## Provenance
 
@@ -53,5 +54,17 @@ Nothing in this document grants any right. Until the owner confirms rights in wr
 2. Confirm who made the sprite source sheets, the Sector 07 SVG and the other project art, and record their terms here.
 3. Add an explicit artwork carve-out to `LICENSE` if you want one. The standard MIT text covers every file in the repository, and this document and the README are the only places that exclude artwork from it. A legal reviewer may prefer the carve-out in the license itself.
 5. Confirm the font licenses.
+
+## Music and audio credits
+
+- Title: Fun Music Loop
+- Creator: Seth_Makes_Sounds
+- Source: https://freesound.org/people/Seth_Makes_Sounds/sounds/688623/
+- License: CC0 1.0 Universal, public-domain dedication
+- License URL: https://creativecommons.org/publicdomain/zero/1.0/
+- Local file: `public/audio/sector-07-hub-loop.mp3`
+- Modification: The authorized Freesound preview was trimmed to 120.080 seconds to remove approximately 3.05 seconds of trailing quiet/silence, then re-encoded at 128 kbps MP3 for browser delivery. The source is titled as a loop and is played as one looping Web Audio buffer. No musical content was otherwise edited and no crossfade was applied, preserving the approved musical rhythm.
+
+The soundtrack is third-party music and is not original Vibe Militia music. The repository MIT license does not change or extend the soundtrack license.
 
 When these are answered, update the table and the status line at the top of this file, and update the licensing section of `README.md` to match.
