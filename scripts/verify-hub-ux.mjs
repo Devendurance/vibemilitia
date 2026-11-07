@@ -225,9 +225,22 @@ try {
   check(
     "settings drawer contains audio and touch settings",
     (await desktop.locator('[data-testid="hub-settings-drawer"]').count()) === 1 &&
-      (await desktop.locator('[data-testid="audio-settings"]').count()) >= 1,
+      (await desktop.locator('[data-testid="audio-settings"]').count()) >= 1 &&
+      (await desktop.locator('[aria-label="Music volume"]').count()) === 1,
+  );
+  await desktop.locator('[data-testid="audio-music-mute"]').click();
+  check(
+    "music mute preference persists independently",
+    (await desktop.locator('[data-testid="audio-music-mute"]').innerText()).includes("MUSIC OFF") &&
+      (await desktop.evaluate(() => JSON.parse(window.localStorage.getItem("vibe-militia-audio") ?? "{}").musicMuted)) === true,
   );
   await desktop.locator('[aria-label="Close panel"]').click();
+  await desktop.locator('[data-testid="hub-music-toggle"]').click();
+  check(
+    "hub header exposes an accessible music toggle",
+    (await desktop.locator('[data-testid="hub-music-toggle"]').count()) === 1 &&
+      ((await desktop.locator('[data-testid="hub-music-toggle"]').getAttribute("aria-label")) ?? "").includes("hub music"),
+  );
   await desktop.locator('[data-testid="hub-mode-practice"]').click();
   await desktop.waitForTimeout(200);
   check(

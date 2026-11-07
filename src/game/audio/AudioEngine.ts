@@ -27,7 +27,9 @@ export type SoundId =
 export interface AudioPreferences {
   master: number;
   effects: number;
+  music: number;
   muted: boolean;
+  musicMuted: boolean;
 }
 
 const STORAGE_KEY = "vibe-militia-audio";
@@ -35,8 +37,11 @@ const MAX_VOICES = 14;
 const DEFAULT_PREFS: AudioPreferences = {
   master: 0.85,
   effects: 0.8,
+  music: 0.5,
   muted: false,
+  musicMuted: false,
 };
+const HUB_MUSIC_URL = "/audio/sector-07-hub-loop.mp3";
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, Number.isFinite(value) ? value : 0));
@@ -51,7 +56,9 @@ function readPreferences(): AudioPreferences {
     return {
       master: clamp(parsed.master ?? DEFAULT_PREFS.master),
       effects: clamp(parsed.effects ?? DEFAULT_PREFS.effects),
+      music: clamp(parsed.music ?? DEFAULT_PREFS.music),
       muted: Boolean(parsed.muted ?? DEFAULT_PREFS.muted),
+      musicMuted: Boolean(parsed.musicMuted ?? DEFAULT_PREFS.musicMuted),
     };
   } catch {
     return { ...DEFAULT_PREFS };
@@ -81,6 +88,11 @@ class AudioEngine {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private effectsGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private musicSource: AudioBufferSourceNode | null = null;
+  private musicBuffer: AudioBuffer | null = null;
+  private musicLoad: Promise<AudioBuffer | null> | null = null;
+  private musicStarting = false;
   private prefs: AudioPreferences = { ...DEFAULT_PREFS };
   private voices = 0;
   private noise: AudioBuffer | null = null;
@@ -115,6 +127,9 @@ class AudioEngine {
     muted: boolean;
     master: number;
     effects: number;
+    music: number;
+    musicMuted: boolean;
+    musicPlaying: boolean;
     voices: number;
   } {
     return {
@@ -122,6 +137,9 @@ class AudioEngine {
       muted: this.prefs.muted,
       master: this.prefs.master,
       effects: this.prefs.effects,
+      music: this.prefs.music,
+      musicMuted: this.prefs.musicMuted,
+      musicPlaying: this.musicSource !== null,
       voices: this.voices,
     };
   }
@@ -168,6 +186,22 @@ class AudioEngine {
     return { ...this.prefs };
   }
 
+  setMusic(value: number): AudioPreferences {
+    this.prefs.music = clamp(value);
+    this.applyGains();
+    this.persist();
+    this.notify();
+    return { ...this.prefs };
+  }
+
+  setMusicMuted(value: boolean): AudioPreferences {
+    this.prefs.musicMuted = Boolean(value);
+    this.applyGains();
+    this.persist();
+    this.notify();
+    return { ...this.prefs };
+  }
+
   async unlock(): Promise<void> {
     if (typeof window === "undefined" || this.prefs.muted) return;
     try {
@@ -183,7 +217,9 @@ class AudioEngine {
         this.context = new AudioContextCtor();
         this.masterGain = this.context.createGain();
         this.effectsGain = this.context.createGain();
+        this.musicGain = this.context.createGain();
         this.effectsGain.connect(this.masterGain);
+        this.musicGain.connect(this.masterGain);
         this.masterGain.connect(this.context.destination);
         this.applyGains();
         this.createNoiseBuffer();
@@ -202,6 +238,76 @@ class AudioEngine {
     const master = this.prefs.muted ? 0 : this.prefs.master;
     this.masterGain.gain.setTargetAtTime(master, now, 0.02);
     this.effectsGain.gain.setTargetAtTime(this.prefs.effects, now, 0.02);
+    this.musicGain?.gain.setTargetAtTime(
+      this.prefs.musicMuted || this.prefs.muted ? 0 : this.prefs.music,
+      now,
+      0.08,
+    );
+  }
+
+  private async loadMusic(): Promise<AudioBuffer | null> {
+    if (this.musicBuffer) return this.musicBuffer;
+    if (this.musicLoad) return this.musicLoad;
+    if (!this.context) return null;
+    this.musicLoad = fetch(HUB_MUSIC_URL)
+      .then((response) => {
+        if (!response.ok) throw new Error(`Music request failed: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((data) => this.context?.decodeAudioData(data) ?? null)
+      .then((buffer) => {
+        this.musicBuffer = buffer;
+        return buffer;
+      })
+      .catch(() => null)
+      .finally(() => {
+        this.musicLoad = null;
+      });
+    return this.musicLoad;
+  }
+
+  async startMusic(): Promise<boolean> {
+    if (typeof window === "undefined" || this.prefs.musicMuted || this.prefs.muted) return false;
+    if (this.musicStarting) return false;
+    if (!this.context || !this.musicGain || this.musicSource) return this.musicSource !== null;
+    this.musicStarting = true;
+    try {
+      const buffer = await this.loadMusic();
+      if (!buffer || this.prefs.musicMuted || this.prefs.muted || !this.context || !this.musicGain) return false;
+      const source = this.context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(this.musicGain);
+      source.start();
+      this.musicSource = source;
+      this.applyGains();
+      return true;
+    } finally {
+      this.musicStarting = false;
+    }
+  }
+
+  stopMusic(): void {
+    if (!this.musicSource || !this.context || !this.musicGain) return;
+    const source = this.musicSource;
+    const now = this.context.currentTime;
+    this.musicGain.gain.cancelScheduledValues(now);
+    this.musicGain.gain.setTargetAtTime(0.0001, now, 0.05);
+    this.musicSource = null;
+    window.setTimeout(() => {
+      try { source.stop(); } catch { /* Already stopped. */ }
+      this.applyGains();
+    }, 220);
+  }
+
+  pauseMusic(): void {
+    if (!this.musicSource || !this.context || !this.musicGain) return;
+    this.musicGain.gain.setTargetAtTime(0.0001, this.context.currentTime, 0.05);
+  }
+
+  resumeMusic(): void {
+    if (!this.musicSource || !this.context) return;
+    this.applyGains();
   }
 
   private createNoiseBuffer(): void {
@@ -446,6 +552,10 @@ class AudioEngine {
       this.context = null;
       this.masterGain = null;
       this.effectsGain = null;
+      this.musicGain = null;
+      this.musicSource = null;
+      this.musicBuffer = null;
+      this.musicLoad = null;
     }
   }
 }

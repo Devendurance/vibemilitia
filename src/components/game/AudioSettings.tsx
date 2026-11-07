@@ -7,7 +7,9 @@ export function AudioSettings({ compact = false }: { compact?: boolean }) {
   const [prefs, setPrefs] = useState<AudioPreferences>({
     master: 0.85,
     effects: 0.8,
+    music: 0.5,
     muted: false,
+    musicMuted: false,
   });
 
   useEffect(() => {
@@ -61,6 +63,22 @@ export function AudioSettings({ compact = false }: { compact?: boolean }) {
         </span>
       </label>
       <label className="audio-slider">
+        <span className="mono-label">MUSIC</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(prefs.music * 100)}
+          onChange={(event) => {
+            setPrefs(audio.setMusic(Number(event.target.value) / 100));
+          }}
+          aria-label="Music volume"
+        />
+        <span className="audio-slider__value">
+          {Math.round(prefs.music * 100)}
+        </span>
+      </label>
+      <label className="audio-slider">
         <span className="mono-label">EFFECTS</span>
         <input
           type="range"
@@ -76,6 +94,21 @@ export function AudioSettings({ compact = false }: { compact?: boolean }) {
           {Math.round(prefs.effects * 100)}
         </span>
       </label>
+      <button
+        type="button"
+        className={`hud-button${prefs.musicMuted ? "" : " is-active"}`}
+        onClick={() => {
+          const next = audio.setMusicMuted(!prefs.musicMuted);
+          setPrefs(next);
+          if (!next.musicMuted) {
+            void audio.unlock().then(() => audio.startMusic());
+          }
+        }}
+        aria-pressed={!prefs.musicMuted}
+        data-testid="audio-music-mute"
+      >
+        {prefs.musicMuted ? "MUSIC OFF" : "MUSIC ON"}
+      </button>
       <button
         type="button"
         className="hud-button"

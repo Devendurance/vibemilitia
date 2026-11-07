@@ -19,6 +19,8 @@ import {
   Trophy,
   UserRound,
   Users,
+  Volume2,
+  VolumeX,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -38,6 +40,7 @@ import {
   SettingsDrawer,
 } from "@/components/hub/HubOverlays";
 import { usePlayerIdentity } from "@/components/hub/usePlayerIdentity";
+import { audio, type AudioPreferences } from "@/game/audio/AudioEngine";
 
 type Overlay = "character" | "profile" | "rankings" | "settings" | "loadout" | null;
 type Mode = "online" | "practice";
@@ -68,6 +71,61 @@ function DisplayName({
   name: string;
 }) {
   return <>{profile?.name ?? name}</>;
+}
+
+function HubMusicControl() {
+  const [prefs, setPrefs] = useState<AudioPreferences>(() => audio.getPreferences());
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = audio.subscribe(setPrefs);
+    const start = () => {
+      void audio.unlock().then(() => audio.startMusic()).then(setPlaying);
+    };
+    void audio.startMusic().then(setPlaying);
+    window.addEventListener("pointerdown", start, { once: true });
+    window.addEventListener("keydown", start, { once: true });
+    const onVisibility = () => {
+      if (document.hidden) audio.pauseMusic();
+      else {
+        audio.resumeMusic();
+        if (!audio.getPreferences().musicMuted) void audio.startMusic().then(setPlaying);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      unsubscribe();
+      window.removeEventListener("pointerdown", start);
+      window.removeEventListener("keydown", start);
+      document.removeEventListener("visibilitychange", onVisibility);
+      audio.stopMusic();
+    };
+  }, []);
+
+  const toggle = () => {
+    const next = audio.setMusicMuted(!prefs.musicMuted);
+    if (!next.musicMuted) {
+      void audio.unlock().then(() => audio.startMusic()).then(setPlaying);
+    } else {
+      audio.pauseMusic();
+      setPlaying(false);
+    }
+  };
+
+  const enabled = !prefs.musicMuted && playing;
+  return (
+    <button
+      type="button"
+      className={`hub-icon-button hub-music-button${enabled ? " is-active" : ""}`}
+      onClick={toggle}
+      aria-label={enabled ? "Mute hub music" : "Enable hub music"}
+      aria-pressed={enabled}
+      title={enabled ? "Mute hub music" : "Enable music"}
+      data-testid="hub-music-toggle"
+    >
+      {enabled ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
+    </button>
+  );
 }
 
 export function GameHub() {
@@ -233,6 +291,7 @@ export function GameHub() {
               {identity.serverOnline ? "SERVER LINKED" : "LOCAL PRACTICE"}
             </span>
           </span>
+          <HubMusicControl />
           <button
             type="button"
             className="hub-icon-button"

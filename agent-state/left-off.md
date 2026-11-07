@@ -2,9 +2,14 @@
 
 ## Current task
 
-UX overhaul milestone is implemented, committed, deployed and verified. P6 not started.
+Implement and ship the official CC0 hub soundtrack as `feat/hub-background-music`.
 
 ## Done
+
+- Researched the three requested Freesound candidates by page metadata. Actual playback audition was unavailable in this environment, so no listening claim is made. Selected Jadis0x's 53.333-second CC0 retro game loop as the best title and loop-format fit, pending human auditory approval.
+- Added `public/audio/sector-07-hub-loop.mp3`, 640,775 bytes, 96 kbps, and rights documentation in `ASSET_RIGHTS.md`.
+- Added separate Web Audio music gain, lazy decode, one-source loop, preference migration, fade/visibility handling, hub header toggle and settings slider.
+- Production browser smoke checks passed hub, music toggle, settings slider, independent persistence and one lazy music request. Full `verify:ux` reached 50/51, with the existing recovered-room movement check flaky/failing. Typecheck, lint, tests and build pass.
 
 - Final commit: `0744a75`. Earlier milestone commits: `21f4ff2` (server identity/rankings/reload recovery), `eebd97b` (hub/practice/mobile overhaul), `e9d3ea1` (verification hardening).
 - Frontend: latest Vercel production `dpl_FDvQ89MUKGketaeBWfuYpRaQRNHt`, `https://vibemilitia-kkew73l45-endy-s-winning-szn.vercel.app`, aliased to `https://vibemilitia.vercel.app`. Git automatic deployment works from `main`. The app-code deployment for the UX overhaul was `dpl_4A1gHshqfhUV1FhXzXNUnwtCFrUs` from `e9d3ea1`; later deploys were docs and verification scripts only.
@@ -19,7 +24,10 @@ UX overhaul milestone is implemented, committed, deployed and verified. P6 not s
 
 ## Next
 
-1. Run the 15-20 player beta from `BETA_TESTING.md`.
+1. Create the feature branch, commit and push the soundtrack slice.
+2. Open a pull request to main with the audition limitation and verification results.
+3. Human-audition the three candidates and confirm or replace the selected loop before merge.
+4. Run the 15-20 player beta from `BETA_TESTING.md`.
 2. Physical iOS and Android testing.
 3. Re-measure headed FPS on an idle host; the 46 fps run was under load.
 

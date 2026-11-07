@@ -4123,13 +4123,17 @@ a:focus-visible {
   transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
 }
 
-.hub-icon-button:hover {
+.hub-icon-button:hover,
+.hub-icon-button:focus-visible,
+.hub-icon-button.is-active {
   border-color: var(--lime);
   color: var(--lime);
   background: var(--raised);
 }
 
 .hub-icon-button svg { width: 17px; height: 17px; }
+.hub-music-button { flex: 0 0 42px; }
+.hub-music-button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
 
 .hub-profile {
   grid-area: profile;

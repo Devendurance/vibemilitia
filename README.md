@@ -81,13 +81,15 @@ The mobile match fills the available landscape viewport instead of a fixed 16:9 
 
 ## Audio
 
-All sounds are original Web Audio synthesis. No commercial game audio or music is included. The layered oscillator and noise recipes cover rifle, scatter, lance, akimbo, SMG, heavy cannon, rocket launch and impact, contact and frag explosions, stinking activation, toxic ticks, jetpack thrust, damage, elimination, weapon and medkit pickups, medkit use, countdown, victory, defeat, UI selection and confirmation.
+Gameplay effects use original Web Audio synthesis. The hub also has a licensed third-party soundtrack, `Retro Game Music 90BPM Loop - Bass, Lead, Pad and Keys` by Jadis0x, from Freesound. It is CC0 and is credited in `ASSET_RIGHTS.md`.
 
-- Master and effects volume are independent, persist in `vibe-militia-audio`, and support a mute toggle.
-- The audio context initializes only after a user gesture. A blocked context never blocks gameplay.
+- The Sector 07 hub loop is lazy-loaded as a 96 kbps MP3 Web Audio buffer, loops from one source instance and fades at hub boundaries.
+- Master, music and effects volume are independent. Master mute and music mute persist in `vibe-militia-audio`.
+- Music starts only after a permitted gesture. A blocked context or failed music load never blocks navigation or gameplay.
+- Hub music pauses while the page is backgrounded and fades out when entering Practice or Online.
 - A 14-voice ceiling bounds simultaneous sound instances. Jetpack audio is one looping voice with a smoothed gain.
 - Sounds are driven by one-shot server events, not by repeated snapshots, so a snapshot refresh cannot double-play an elimination or pickup.
-- Settings are available in the online lobby, the in-match settings panel and the local P1 settings drawer.
+- Settings are available in the hub, online lobby, in-match settings panel and local P1 settings drawer.
 
 ## Progression and cosmetics
 
@@ -515,7 +517,7 @@ Last verification against the production build:
 - Guest profiles are device-bound. Clearing browser storage loses access until account linking exists, and there is no email, wallet or password recovery.
 - PostgreSQL is the durable backend. SQLite remains a single-process fallback. Colyseus room state is still process-local, so multiple game-server replicas need a shared room directory or sticky matchmaking before horizontal scaling.
 - XP, levels, titles, badges, elimination variants and jetpack trails are cosmetic only. There is no ranked mode, matchmaking skill rating or paid content.
-- The audio system uses original synthesis. There is no licensed music, voice acting, 3D positional mix or dynamic soundtrack.
+- The audio system combines original synthesis with the CC0-licensed hub loop credited in `ASSET_RIGHTS.md`. There is no voice acting, 3D positional mix or gameplay background music.
 - Mobile controls were verified with Chromium mobile emulation, CDP multi-touch and real touch event handling at four landscape shapes. Physical iOS and Android hardware were not available in this environment.
 - Mobile play is landscape-only by design. Portrait shows a rotation guard. Very small or unusual aspect ratios may still need per-device tuning after physical testing.
 - Anonymous feedback and client errors are stored in `client_events`. There is no analytics dashboard, funnel tracking or session replay.

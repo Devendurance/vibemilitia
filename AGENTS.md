@@ -77,6 +77,7 @@
 - The frontend has one global stylesheet entry: `src/app/globals.css`. Do not add a second global CSS import to the root layout; Turbopack dropped the first sheet during this milestone. Append new global styles to `globals.css`.
 - `RECONNECT_GRACE_SECONDS=30` is the product default. Reload/navigation recovery uses the tab-scoped resume handle and `POST /api/resume`. Do not move that handle to shared localStorage: a second tab must not redeem a live seat.
 - Public rankings use `GET /api/leaderboard`. Display names are editable and non-unique. X handles are self-declared and must never be rendered as verified.
+- Hub music is a separate lazy-loaded Web Audio channel. Keep music preference keys backward-compatible, stop the single loop when leaving the hub, and keep third-party credits in `ASSET_RIGHTS.md`.
 
 ## TESTING
 
