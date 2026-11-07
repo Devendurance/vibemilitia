@@ -11,6 +11,15 @@
  *   LABEL=before node scripts/measure-playability.mjs
  *
  * Output: artifacts/playability/<LABEL>.json
+ *
+ * Tablet benchmark, sustained play on four landscape tablets, Practice and
+ * Online, on the real GPU and on a software GPU:
+ *
+ *   TABLET=1 LABEL=tablet-before RUNS=3 node scripts/measure-playability.mjs
+ *
+ * This machine cannot throttle a GPU, so the software renderer stands in for a
+ * fill-rate-limited one: its cost grows with pixels, as a weak tablet's does.
+ * Neither mode is a physical device, and reports must say so.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
@@ -40,15 +49,15 @@ const stddev = (values) => {
 };
 const round = (value, digits = 2) => Number(value.toFixed(digits));
 
-async function launchBrowser() {
+async function launchBrowser(gpu = "hardware") {
   return chromium.launch({
     channel: "chrome",
     headless: !headed,
     args: [
       "--enable-webgl",
       "--ignore-gpu-blocklist",
-      "--use-angle=d3d11",
-      "--enable-gpu-rasterization",
+      gpu === "software" ? "--use-angle=swiftshader" : "--use-angle=d3d11",
+      ...(gpu === "software" ? ["--enable-unsafe-swiftshader"] : ["--enable-gpu-rasterization"]),
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
@@ -430,6 +439,175 @@ async function measureLoad({
       style: perSecond("RecalcStyleDuration"),
     },
   };
+}
+
+const TABLETS = [
+  { name: "1024x600", width: 1024, height: 600 },
+  { name: "1024x768", width: 1024, height: 768 },
+  { name: "1280x800", width: 1280, height: 800 },
+  { name: "1366x768", width: 1366, height: 768 },
+];
+
+/**
+ * One sustained run. The player stands guarded mid-arena so the camera sees the
+ * same place every run, while the bots keep fighting. Touch layout comes from
+ * the same emulated tablet flags a real one reports.
+ */
+async function measureTablet({ browser, stack, tablet, mode, gpu, cpuThrottle, seconds }) {
+  const context = await browser.newContext({
+    viewport: { width: tablet.width, height: tablet.height },
+    screen: { width: tablet.width, height: tablet.height },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Performance.enable");
+  stack.proxy.set({ rttMs: 0, jitterMs: 0 });
+  if (mode === "online") {
+    await joinRoom(page, stack.baseUrl);
+  } else {
+    await page.goto(`${stack.baseUrl}/practice?difficulty=normal&touch=1`, { waitUntil: "load" });
+    await page.waitForFunction(() => window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.phase === "live", null, { timeout: 60_000 });
+  }
+  await page.evaluate(() => {
+    const hooks = window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks;
+    hooks?.guard?.();
+    hooks?.extendMatch?.(600_000);
+    hooks?.teleport?.(1800, 1340);
+  });
+  // Past first-use shader compilation, so this is steady play.
+  await page.waitForTimeout(5000);
+  if (cpuThrottle > 1) await cdp.send("Emulation.setCPUThrottlingRate", { rate: cpuThrottle });
+  await page.waitForTimeout(1500);
+  const before = (await cdp.send("Performance.getMetrics")).metrics;
+  const started = Date.now();
+  const sampled = await page.evaluate(
+    (durationMs) =>
+      new Promise((resolve) => {
+        const times = [];
+        const load = [];
+        const start = performance.now();
+        let nextLoad = start;
+        const step = (now) => {
+          times.push(now);
+          if (now >= nextLoad) {
+            nextLoad = now + 1000;
+            const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+            const renderLoad = probe.renderLoad?.();
+            if (renderLoad) load.push({ ...renderLoad, phase: probe.snapshot?.phase });
+          }
+          if (now - start < durationMs) requestAnimationFrame(step);
+          else resolve({ times, load });
+        };
+        requestAnimationFrame(step);
+      }),
+    seconds * 1000,
+  );
+  const elapsed = (Date.now() - started) / 1000;
+  const after = (await cdp.send("Performance.getMetrics")).metrics;
+  const value = (list, key) => list.find((metric) => metric.name === key)?.value ?? 0;
+  const perSecond = (key) => round(((value(after, key) - value(before, key)) * 1000) / elapsed, 1);
+  const frameMs = sampled.times.slice(1).map((t, index) => t - sampled.times[index]);
+  const sorted = [...frameMs].sort((a, b) => b - a);
+  const slowest = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 100)));
+  const state = await page.evaluate(() => {
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    const viewport = probe.viewport;
+    return {
+      renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : "unknown",
+      css: viewport.canvasCss,
+      backing: viewport.canvasBacking,
+      renderScale: viewport.renderScale,
+      worldZoom: viewport.worldZoom,
+      apparentScale: viewport.apparentScale,
+      zoomChanges: viewport.zoomChanges,
+      scaleEvents: viewport.history.map((event) => [event.reason, event.renderScale]),
+      heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null,
+      textureMb: Math.round(probe.textureMemory().bytes / 1048576),
+      snapshotGapMs: Math.round(probe.net.snapshotGapMs ?? 0),
+    };
+  });
+  await context.close();
+  const load = sampled.load.filter((entry) => entry.phase === "live");
+  const peak = (key) => load.reduce((max, entry) => Math.max(max, entry[key] ?? 0), 0);
+  return {
+    tablet: tablet.name,
+    mode,
+    gpu,
+    cpuThrottle,
+    fps: round(1000 / Math.max(1, mean(frameMs))),
+    onePercentLowFps: round(1000 / Math.max(1, mean(slowest))),
+    p50Ms: round(percentile(frameMs, 0.5)),
+    p95Ms: round(percentile(frameMs, 0.95)),
+    p99Ms: round(percentile(frameMs, 0.99)),
+    longFrames: frameMs.filter((ms) => ms > 33.4).length,
+    frames: frameMs.length,
+    mainThreadMsPerSecond: {
+      task: perSecond("TaskDuration"),
+      script: perSecond("ScriptDuration"),
+      layout: perSecond("LayoutDuration"),
+      style: perSecond("RecalcStyleDuration"),
+    },
+    load: {
+      sprites: round(mean(load.map((entry) => entry.sprites)), 0),
+      particlesPeak: peak("particles"),
+      projectilesPeak: peak("projectiles"),
+      objects: round(mean(load.map((entry) => entry.objects)), 0),
+    },
+    ...state,
+    pixels: state.backing.width * state.backing.height,
+    errors,
+  };
+}
+
+async function runTablets() {
+  const runs = Number(process.env.RUNS ?? 1);
+  const seconds = Number(process.env.SECONDS ?? 30);
+  const gpus = (process.env.GPUS ?? "hardware,software").split(",");
+  const tablets = process.env.TABLETS
+    ? TABLETS.filter((tablet) => process.env.TABLETS.split(",").includes(tablet.name))
+    : TABLETS;
+  const modes = (process.env.MODES ?? "practice,online").split(",");
+  const cpuThrottle = Number(process.env.CPU ?? 4);
+  const results = { label, at: new Date().toISOString(), emulated: true, runs: [] };
+  const stack = await startStack({ countdownMs: 0 });
+  try {
+    for (const gpu of gpus) {
+      const browser = await launchBrowser(gpu);
+      for (let run = 0; run < runs; run += 1) {
+        for (const tablet of tablets) {
+          for (const mode of modes) {
+            // A software GPU is the limit under test, so the CPU stays unthrottled there.
+            const throttle = gpu === "software" ? 1 : cpuThrottle;
+            const result = await measureTablet({ browser, stack, tablet, mode, gpu, cpuThrottle: throttle, seconds }).catch((error) => ({
+              tablet: tablet.name,
+              mode,
+              gpu,
+              failed: String(error).slice(0, 300),
+            }));
+            results.runs.push({ run, ...result });
+            console.log(JSON.stringify({ run, ...result, scaleEvents: result.scaleEvents?.slice(-6) }));
+            writeFileSync(`${outDir}/${label}.json`, JSON.stringify(results, null, 2));
+          }
+        }
+      }
+      await browser.close();
+    }
+  } finally {
+    await stack.stop();
+  }
+}
+
+if (process.env.TABLET === "1") {
+  await runTablets();
+  process.exit(0);
 }
 
 const stack = await startStack({ countdownMs: 800 });

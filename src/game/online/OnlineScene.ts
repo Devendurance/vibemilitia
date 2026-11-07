@@ -428,6 +428,7 @@ export class OnlineScene extends Phaser.Scene {
       getProbe: () => ({
         ...this.probe,
         textureMemory: () => this.textureMemory(),
+        renderLoad: () => this.renderLoad(),
         ready: this.ready,
         snapshot: this.latestSnapshot,
         hud: this.bridge.getSnapshot(),
@@ -901,6 +902,27 @@ export class OnlineScene extends Phaser.Scene {
     if (this.lastWorldZoom !== 0 && zoom !== this.lastWorldZoom) this.zoomChanges += 1;
     this.lastWorldZoom = zoom;
     for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
+  }
+
+  /** What the GPU is drawing right now, for benchmarks and the diagnostics view. */
+  private renderLoad(): { objects: number; sprites: number; particles: number; projectiles: number } {
+    let sprites = 0;
+    let particles = 0;
+    for (const child of this.children.list) {
+      const object = child as Phaser.GameObjects.GameObject & { visible?: boolean };
+      if (object.visible === false) continue;
+      if (object.type === "ParticleEmitter") {
+        particles += (object as Phaser.GameObjects.Particles.ParticleEmitter).getAliveParticleCount();
+      } else if (object.type === "Image" || object.type === "Sprite") {
+        sprites += 1;
+      }
+    }
+    return {
+      objects: this.children.length,
+      sprites,
+      particles,
+      projectiles: this.latestSnapshot?.projectiles.length ?? 0,
+    };
   }
 
   /** Sum of width x height x 4 over every loaded texture source. */
