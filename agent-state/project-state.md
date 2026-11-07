@@ -6,13 +6,38 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
-## UX overhaul (current milestone)
+## Approved sprite art (current milestone)
+
+- `LoadoutArt.ts` loads all gun, grenade, pickup and projectile PNGs in `preload`. `TextureFactory` no longer draws those keys, and keeps sparks, voxels, drone, muzzle flash, baked rings and `bullet-drone`.
+- `scripts/export-sprites.py` trims and downscales the sources at 2x. Art draws at `ART_SCALE` 0.5. `WEAPON_ANCHORS` holds origin and barrel tip per gun, measured from pixels.
+- Akimbo is two layers, `weapon-akimbo` and `weapon-akimbo-b`.
+- Online and practice bullets are a pooled image per shot in `drawProjectiles`, plus the existing soft streak. They were Graphics dots before.
+- HUD, hub and touch icons are small PNGs through `LoadoutIcon`. Selected slots use a lime outline.
+
+## Mobile control correction (previous milestone)
+
+- Right pad: fire is "thumb down", aim is "thumb has a direction". Tap keeps the retained aim, drag or a 140 ms hold takes the thumb direction. Pad state writes straight to the DOM.
+- Packets: a press latches into the next packet, and the rest of that frame sends no fire so a slow-frame tap stays one shot.
+- Local shots are predicted at weapon cadence for flash and sound, matched to server `shot` events.
+- `RenderScaler` owns CSS size, backing size and world zoom. Phone world zoom and control sizes come from the screen. A resolution drop must earn at least 8% within two steps or it is reverted.
+- `lockMatchViewport` holds the page during touch matches and re-applies its viewport meta when Next rewrites head tags.
+- Countdown: `MatchCountdown` plus one cached `match-backdrop`. Batch shaders are linked behind it, bot views build one per frame.
+
+## Playability rescue (previous milestone)
+
+- Netcode: the server consumes one client tick per server tick and holds a player whose input is late, so `LocalPredictor` replay lands exactly. `RemoteInterpolator` plays remotes from a timestamped buffer with a monotonic clock.
+- Snapshots: version 2 clients get fast, slow and self sections (`snapshotCodec.ts`), about 650 B instead of 10 KB. Older tabs keep the full message.
+- Practice: `GameSimulation` in a worker behind `PracticeRoom`, with `SIM_BOT_TUNING` per difficulty. Works offline once loaded, never has a profile id, so cannot earn XP.
+- HUD: slim edge strip, clock, bottom loadout, scoreboard on Tab or tap. Eliminated replaces SIGNAL LOST. Results have PLAY AGAIN, LOBBY and BACK TO HUB.
+- Touch: hybrid right pad (drag aims and fires, tap fires, release stops and keeps aim), separate FIRE mode, camera look-ahead, 2x render scale with adaptive fallback.
+
+## UX overhaul (previous milestone)
 
 - `/` is the game hub: Sector 07 SVG skydeck, selected Viber hero, compact level/XP card, 10-character drawer, preview loadout, online/practice switch, Easy/Normal/Hard/Merciless, primary CTA, rankings/profile/settings/loadout drawers.
 - First-visit onboarding captures an editable, non-unique display name, optional self-declared X handle and leaderboard opt-in. No fake verification. Practice is never ranked.
-- `/practice?difficulty=...` is the deliberate local P1 route. Practice bots use real difficulty profiles for reaction, cadence, burst, aim error, movement, standoff, repath, projectile speed and damage.
+- `/practice?difficulty=...` was the local P1 route, now replaced by the shared simulation. Practice bots use real difficulty profiles for reaction, cadence, burst, aim error, movement, standoff, repath, projectile speed and damage.
 - `/online` is one fixed viewport: callsign, quick match, create room, join code, compact operator rail, rooms, compact profile, invite banner. No long roster/profile/audio document.
-- Global all-time leaderboard: Neon/SQLite schema v3 (`x_handle`, `x_public`, `leaderboard_visible`), `GET /api/leaderboard?limit=25`, server-derived XP/wins/K/D only, opt-in, X handle public only when explicitly enabled.
+- Global all-time leaderboard: Neon/SQLite schema v3 (`x_handle`, `x_public`, `leaderboard_visible`), `GET /api/leaderboard?limit=25`, server-derived XP/wins/K/D only. The first-visit leaderboard box is ticked by default (opt-out). X handle public only when explicitly enabled.
 - 30-second reconnect default. `POST /api/resume` exchanges a tab-scoped, single-use, identity-bound handle for the Colyseus reconnection token. Reload/navigation recovers the same room and seat; second tabs and grace expiry cannot take the live seat.
 - Touch v2: thin segmented HP/fuel/ammo/time strip, 4-way left pad with up-thrust, round right aim/fire pad, compact grenade/throw/reload/weapon/medkit/pickup, safe areas, pointer cancellation, portrait guard, fullscreen in settings.
 - Mobile camera targets a 680 px world view (`zoom = height / 680`, clamped 0.5 to 0.86) in both online and local practice, with manual arena clamping and hit registration unchanged.

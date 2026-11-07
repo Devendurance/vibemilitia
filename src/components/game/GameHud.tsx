@@ -3,12 +3,13 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { getCharacterSkin, HUMAN_DEFAULT_SKIN_ID } from "@/game/characters/roster";
+import { LoadoutIcon } from "@/components/game/LoadoutIcon";
+import { MatchCountdown } from "@/components/game/MatchCountdown";
 import type { GameBridge, HudSnapshot } from "@/game/bridge";
 import { isCriticalFuel, isLowHealth } from "@/game/core/combat";
 import { formatMatchClock } from "@/game/core/match";
 import { MEDKIT_CONFIG } from "@/game/core/pickups";
 import type { MatchReward, PlayerProfile } from "@/game/progression/profile";
-import { cosmeticById } from "@/game/progression/cosmetics";
 import {
   totalXpForLevel,
   xpForNextLevel,
@@ -16,148 +17,20 @@ import {
 
 interface GameHudProps {
   bridge: GameBridge;
-  mode?: "local" | "online";
+  mode?: "local" | "practice" | "online";
   playerName?: string;
   playerSkinId?: string;
   profile?: PlayerProfile | null;
   reward?: MatchReward | null;
+  difficultyLabel?: string;
+  /** Leaves the match for the lobby. On practice this is the hub. */
+  onLobby?: () => void;
+  /** Online only: leaves the match and returns to the hub. */
+  onHub?: () => void;
 }
 
 function Keycap({ children }: { children: React.ReactNode }) {
   return <kbd className="keycap">{children}</kbd>;
-}
-
-function WeaponIcon({ weaponId }: { weaponId: string }) {
-  const common = {
-    width: 20,
-    height: 11,
-    viewBox: "0 0 24 12",
-    fill: "currentColor",
-    "aria-hidden": true,
-    className: "hud-weapon-slot__icon",
-  } as const;
-  switch (weaponId) {
-    case "scatter-blaster":
-      return (
-        <svg {...common}>
-          <rect x="2" y="4" width="14" height="5" rx="1" />
-          <rect x="14" y="3" width="8" height="3" />
-          <rect x="14" y="7" width="8" height="3" />
-          <rect x="4" y="8" width="4" height="3" />
-        </svg>
-      );
-    case "vibe-lance":
-      return (
-        <svg {...common}>
-          <rect x="1" y="5" width="20" height="2.4" rx="1" />
-          <rect x="12" y="7" width="2" height="4" />
-          <rect x="6" y="2.5" width="6" height="2.6" rx="1" />
-          <rect x="20" y="4.6" width="3" height="3" />
-        </svg>
-      );
-    case "akimbo-rifles":
-      return (
-        <svg {...common}>
-          <rect x="3" y="1.5" width="12" height="3.2" rx="1" />
-          <rect x="12" y="1" width="8" height="2" />
-          <rect x="3" y="7.3" width="12" height="3.2" rx="1" />
-          <rect x="12" y="9" width="8" height="2" />
-          <rect x="5" y="4" width="3" height="1.5" />
-          <rect x="5" y="6.5" width="3" height="1.5" />
-        </svg>
-      );
-    case "vibe-smg":
-      return (
-        <svg {...common}>
-          <rect x="3" y="3.5" width="13" height="5" rx="1" />
-          <rect x="14" y="4.5" width="7" height="2.4" />
-          <rect x="6" y="8" width="4" height="3" />
-          <rect x="1" y="5" width="3" height="2" />
-        </svg>
-      );
-    case "heavy-cannon":
-      return (
-        <svg {...common}>
-          <rect x="1" y="3" width="15" height="6" rx="1" />
-          <rect x="14" y="2" width="9" height="3.6" />
-          <rect x="14" y="6.4" width="9" height="3.6" />
-          <rect x="4" y="8.5" width="5" height="3" />
-          <rect x="6" y="4.5" width="4" height="2" />
-        </svg>
-      );
-    case "rocket-launcher":
-      return (
-        <svg {...common}>
-          <rect x="1" y="3" width="17" height="6" rx="2" />
-          <rect x="16" y="2" width="5" height="8" rx="1" />
-          <path d="M21 4.5 L24 6 L21 7.5 Z" />
-          <rect x="5" y="8.5" width="4" height="3" />
-          <rect x="7" y="4.5" width="5" height="1.6" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...common}>
-          <rect x="2" y="4" width="14" height="4.6" rx="1" />
-          <rect x="15" y="4.8" width="7" height="2.2" />
-          <rect x="4" y="8.2" width="4" height="3" />
-          <rect x="9" y="3" width="4" height="1.4" />
-        </svg>
-      );
-  }
-}
-
-function ContactGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1.5" width="6" height="4" rx="1" fill="#C7692F" />
-      <circle cx="12" cy="14" r="9" fill="#0C0D0F" />
-      <circle cx="12" cy="14" r="7.5" fill="#E5484D" />
-      <circle cx="9.5" cy="11" r="2.4" fill="#FF8A3D" />
-      <circle cx="9" cy="10.5" r="1.1" fill="#FFD166" />
-      <rect x="10.5" y="22" width="3" height="1.5" fill="#0C0D0F" opacity="0.5" />
-    </svg>
-  );
-}
-
-function FragGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
-      <rect x="5" y="4.5" width="14" height="18" rx="5" fill="#0C0D0F" />
-      <rect x="6.5" y="6" width="11" height="15" rx="4" fill="#566B32" />
-      <rect x="6.5" y="10.5" width="11" height="2.5" fill="#2F3A1D" />
-      <rect x="6.5" y="15" width="11" height="2" fill="#2F3A1D" />
-      <circle cx="9" cy="8" r="1.2" fill="#F4E21C" />
-    </svg>
-  );
-}
-
-function StinkingGrenadeIcon() {
-  return (
-    <svg
-      className="hud-grenade-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-    >
-      <rect x="9" y="1" width="6" height="4" rx="1" fill="#C7692F" />
-      <rect x="5" y="4.5" width="14" height="18" rx="6" fill="#0C0D0F" />
-      <rect x="6.5" y="6" width="11" height="15" rx="5" fill="#6FBE2E" />
-      <rect x="7.5" y="7.5" width="9" height="5" rx="2.5" fill="#D7FF2E" />
-      <rect x="6.5" y="14" width="11" height="2" fill="#2F4A16" />
-      <rect x="6.5" y="18" width="11" height="1.6" fill="#2F4A16" />
-      <circle cx="16" cy="12" r="1.3" fill="#F5F3EC" opacity="0.9" />
-      <circle cx="9" cy="16.5" r="1" fill="#F5F3EC" opacity="0.7" />
-    </svg>
-  );
 }
 
 function placementLabel(placement: number): string {
@@ -196,20 +69,15 @@ function FuelBar({ snapshot }: { snapshot: HudSnapshot }) {
 export function GameHud({
   bridge,
   mode = "local",
-  playerName,
   playerSkinId,
   profile = null,
   reward = null,
+  difficultyLabel,
+  onLobby,
+  onHub,
 }: GameHudProps) {
-  const playerSkin = getCharacterSkin(
-    mode === "online" ? playerSkinId : HUMAN_DEFAULT_SKIN_ID,
-  );
-  const badge = profile?.equipped.badgeId
-    ? cosmeticById(profile.equipped.badgeId)
-    : null;
-  const title = profile?.equipped.titleId
-    ? cosmeticById(profile.equipped.titleId)
-    : null;
+  const playerSkin = getCharacterSkin(playerSkinId ?? HUMAN_DEFAULT_SKIN_ID);
+  const fullLoadout = mode !== "local";
   const levelLabel = String(profile?.level ?? 1).padStart(2, "0");
   const [snapshot, setSnapshot] = useState<HudSnapshot>(() =>
     bridge.getSnapshot(),
@@ -218,6 +86,8 @@ export function GameHud({
   const [booted, setBooted] = useState(false);
   const [medkitToast, setMedkitToast] = useState(0);
   const [supplyToast, setSupplyToast] = useState("");
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [introVisible, setIntroVisible] = useState(false);
   const previousHealth = useRef(snapshot.health);
   const lastMedkitSeq = useRef(snapshot.medkitFeedbackSeq);
   const lastSupplySeq = useRef(snapshot.supplyFeedbackSeq);
@@ -311,19 +181,43 @@ export function GameHud({
   }, [snapshot.supplyFeedbackSeq, snapshot.supplyFeedbackText]);
 
   useEffect(() => {
+    const typing = (event: KeyboardEvent) =>
+      event.target instanceof HTMLElement &&
+      /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName);
     const onKeyDown = (event: KeyboardEvent) => {
+      if (typing(event)) return;
+      if (event.code === "Tab" && !matchEnded) {
+        event.preventDefault();
+        setBoardOpen(true);
+      }
       if (event.code === "Enter" && matchEnded) {
         bridge.send({ type: "restart-match" });
       }
+      if (event.code === "KeyL" && matchEnded) onLobby?.();
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Tab") setBoardOpen(false);
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [bridge, matchEnded]);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [bridge, matchEnded, onLobby]);
 
-  const ammoTicks = Array.from(
-    { length: snapshot.magazineSize },
-    (_, index) => index < snapshot.ammo,
-  );
+  const liveStarted = snapshot.ready && snapshot.matchPhase === "live";
+  useEffect(() => {
+    if (!liveStarted) return undefined;
+    const show = window.setTimeout(() => setIntroVisible(true), 0);
+    const hide = window.setTimeout(() => setIntroVisible(false), 2200);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(hide);
+    };
+  }, [liveStarted]);
+
+  const leader = snapshot.standings[0] ?? null;
 
   return (
     <>
@@ -342,7 +236,10 @@ export function GameHud({
           aria-hidden="true"
         />
 
-        <section className="hud-panel hud-identity">
+        <section
+          className={`hud-strip hud-identity hud-vitals${low ? " is-danger" : ""}`}
+          aria-label="Operator status"
+        >
           <div className="hud-avatar">
             <Image
               src={playerSkin.avatarPath}
@@ -353,47 +250,39 @@ export function GameHud({
             />
             <span className="hud-avatar__level">{levelLabel}</span>
           </div>
-          <div className="hud-identity__copy">
-            <span className="hud-brand">VIBE MILITIA</span>
-            <h1 className="display hud-identity__name">
-              {playerSkin.displayName}
-            </h1>
-            <div className="hud-identity__meta">
-              <span className="hud-pill hud-pill--live">
-                <i className="live-dot" />
-                {matchEnded ? "FINAL" : matchStarting ? "STARTING" : "LIVE"}
-              </span>
-              <span className="mono-label">
-                {mode === "online"
-                  ? `${(playerName ?? "GUEST").toUpperCase()} // ONLINE`
-                  : "FFA OPERATOR"}
+          <div className="hud-strip__body">
+            <div className="hud-strip__head">
+              <h1 className="hud-identity__name">{playerSkin.displayName}</h1>
+              <span className="hud-identity__meta">
+                <span className="hud-pill hud-pill--live">
+                  <i className="live-dot" />
+                  {matchEnded ? "FINAL" : matchStarting ? "STARTING" : "LIVE"}
+                </span>
               </span>
             </div>
-            {mode === "online" && profile ? (
-              <div className="hud-identity__profile">
-                <span>{title?.name ?? "ROOKIE"}</span>
-                <span>{badge?.name ?? "LIME RECRUIT"}</span>
-                <span>LVL {profile.level}</span>
-              </div>
-            ) : null}
+            <div className="hud-meter" aria-label={`Health ${Math.round(snapshot.health)} of ${snapshot.maxHealth}`}>
+              <span className="hud-meter__label">HP</span>
+              <HealthBar snapshot={snapshot} />
+              <span className="hud-meter__value">{Math.round(snapshot.health)}</span>
+            </div>
+            <div className="hud-meter" aria-label={`Jetpack fuel ${Math.round(snapshot.fuel)} percent`}>
+              <span className="hud-meter__label">JET</span>
+              <FuelBar snapshot={snapshot} />
+              <span className="hud-meter__value">{Math.round(snapshot.fuel)}</span>
+            </div>
           </div>
         </section>
 
         <div
-          className={`hud-matchbar${!matchEnded && timeCritical ? " is-critical" : !matchEnded && timeWarning ? " is-warning" : ""}`}
+          className={`hud-clock hud-matchbar${!matchEnded && timeCritical ? " is-critical" : !matchEnded && timeWarning ? " is-warning" : ""}`}
           data-testid="match-clock"
           role="status"
         >
-          <div className="hud-matchbar__mode">
-            <span className="hud-mode__dot" />
-            <span className="hud-matchbar__strong">FREE FOR ALL</span>
-            <span className="hud-matchbar__muted">SECTOR 07</span>
-          </div>
           <div className="hud-matchbar__clock" data-testid="match-clock-value">
             <span className="mono-label">
               {matchStarting ? "START IN" : "TIME"}
             </span>
-            <strong className="display">
+            <strong>
               {formatMatchClock(
                 matchStarting
                   ? snapshot.matchCountdownMs
@@ -401,19 +290,29 @@ export function GameHud({
               )}
             </strong>
           </div>
-          <div className="hud-matchbar__limit">
-            <span className="mono-label">FIRST TO {snapshot.matchScoreLimit}</span>
-            <span className={`hud-pill${timeCritical ? " hud-pill--danger" : ""}`}>
-              {matchEnded
-                ? "MATCH OVER"
-                : matchStarting
-                  ? "MATCH STARTING"
-                  : timeCritical
-                    ? `FINAL ${Math.ceil(snapshot.matchTimeRemainingMs / 1000)}`
-                    : `${placementLabel(snapshot.playerPlacement)} OF ${snapshot.standings.length || 4}`}
-            </span>
-          </div>
+          <span className={`hud-clock__score${timeCritical ? " is-danger" : ""}`}>
+            {matchEnded
+              ? "MATCH OVER"
+              : matchStarting
+                ? `FIRST TO ${snapshot.matchScoreLimit}`
+                : timeCritical
+                  ? `FINAL ${Math.ceil(snapshot.matchTimeRemainingMs / 1000)}`
+                  : `${placementLabel(snapshot.playerPlacement)} / ${snapshot.playerEliminations} OF ${snapshot.matchScoreLimit}`}
+          </span>
         </div>
+
+        {introVisible || matchStarting ? (
+          <div className="hud-intro" data-testid="match-intro">
+            <span>SECTOR 07</span>
+            <em>{mode === "practice" ? `PRACTICE // ${difficultyLabel ?? "NORMAL"}` : "FREE FOR ALL"}</em>
+          </div>
+        ) : null}
+
+        <MatchCountdown
+          phase={snapshot.matchPhase}
+          countdownMs={snapshot.matchCountdownMs}
+          hidden={bootVisible}
+        />
 
         <div className="hud-feed" aria-live="polite">
           {visibleFeed.map((entry) => (
@@ -424,10 +323,26 @@ export function GameHud({
           ))}
         </div>
 
+        <button
+          type="button"
+          className={`hud-board-toggle${boardOpen ? " is-open" : ""}`}
+          onClick={() => setBoardOpen((open) => !open)}
+          aria-expanded={boardOpen}
+          aria-controls="hud-leaderboard"
+          data-testid="board-toggle"
+        >
+          <Keycap>TAB</Keycap>
+          <span className="hud-board-toggle__leader">
+            {leader ? `${leader.name} ${leader.score}` : "SCOREBOARD"}
+          </span>
+        </button>
+
         <section
-          className="hud-panel hud-leaderboard"
+          id="hud-leaderboard"
+          className={`hud-board hud-leaderboard${boardOpen ? " is-open" : ""}`}
           data-testid="leaderboard"
           aria-label="Match leaderboard"
+          aria-hidden={!boardOpen}
         >
           <div className="hud-board__head">
             <span className="mono-label">LEADERBOARD</span>
@@ -469,6 +384,7 @@ export function GameHud({
               className={`hud-button${snapshot.debug ? " is-active" : ""}`}
               onClick={() => bridge.send({ type: "toggle-debug" })}
               aria-pressed={snapshot.debug}
+              tabIndex={boardOpen ? 0 : -1}
               data-testid="debug-toggle"
             >
               <Keycap>F1</Keycap>
@@ -477,139 +393,56 @@ export function GameHud({
           </div>
         </section>
 
-        <section className={`hud-panel hud-vitals${low ? " is-danger" : ""}`}>
-          <div className="hud-section-head">
-            <span className="mono-label">OPERATOR VITALS</span>
-            <span className={`hud-signal${low ? " is-danger" : ""}`}>
-              {matchEnded ? "ROUND OVER" : dead ? "OFFLINE" : low ? "CRITICAL" : "STABLE"}
+        {snapshot.nearbyLootText ? (
+          <div
+            className={`hud-loot-prompt${snapshot.nearbyLootCanSwap ? " is-ready" : ""}`}
+            data-testid="loot-prompt"
+            data-can-swap={snapshot.nearbyLootCanSwap}
+          >
+            <Keycap>E</Keycap>
+            <span className="mono-label">{snapshot.nearbyLootText}</span>
+            {snapshot.nearbyLootCanSwap ? (
+              <button
+                type="button"
+                className="hud-loot-prompt__button"
+                onClick={() => bridge.send({ type: "swap-weapon" })}
+                disabled={dead || matchEnded}
+                data-testid="loot-swap"
+              >
+                SWAP
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <section className="hud-loadout" aria-label="Loadout">
+          <div className="hud-weapon hud-loadout__weapon">
+            <div className="hud-loadout__weapon-line">
+              <h2 className="hud-weapon__name" data-testid="weapon-name">
+                {snapshot.weaponName}
+              </h2>
+              <div className="hud-ammo" data-testid="hud-ammo">
+                <strong>{String(snapshot.ammo).padStart(2, "0")}</strong>
+                <span>/{snapshot.magazineSize}</span>
+              </div>
+            </div>
+            <div className="reload-track" aria-hidden="true">
+              <span
+                style={{
+                  width: snapshot.reloading
+                    ? `${snapshot.reloadProgress * 100}%`
+                    : `${(snapshot.ammo / Math.max(1, snapshot.magazineSize)) * 100}%`,
+                }}
+                className={snapshot.reloading ? "is-reloading" : ""}
+              />
+            </div>
+            <span className="sr-only">
+              {snapshot.reloading
+                ? `Reloading ${Math.round(snapshot.reloadProgress * 100)} percent`
+                : "Ready to fire"}
             </span>
           </div>
 
-          <div className="hud-vital-row">
-            <div className="hud-vital-label">
-              <span className="hud-vital-name">HEALTH</span>
-              <span className="hud-vital-value">
-                {Math.round(snapshot.health)}
-                <small>/{snapshot.maxHealth}</small>
-              </span>
-            </div>
-            <HealthBar snapshot={snapshot} />
-            <div className="hud-vital-foot">
-              <span className="mono-label">
-                {Math.round((snapshot.health / snapshot.maxHealth) * 100)}%
-              </span>
-              <span className="mono-label">AUTO-REGEN 4.0S</span>
-            </div>
-          </div>
-
-          <div className="hud-vital-row">
-            <div className="hud-vital-label">
-              <span className="hud-vital-name">JETPACK</span>
-              <span className="hud-vital-value">
-                {Math.round(snapshot.fuel)}
-                <small>%</small>
-              </span>
-            </div>
-            <FuelBar snapshot={snapshot} />
-            <div className="hud-vital-foot">
-              <span className="mono-label">
-                {Math.round((snapshot.fuel / snapshot.maxFuel) * 100)}% FUEL
-              </span>
-              <span className="mono-label">SPACE TO THRUST</span>
-            </div>
-          </div>
-
-          {mode === "online" ? (
-            <div
-              className="hud-vital-row hud-medkit"
-              data-testid="hud-medkits"
-              data-medkits={snapshot.medkits}
-            >
-              <div className="hud-vital-label">
-                <span className="hud-vital-name">MEDKITS</span>
-                <span className="hud-vital-value">
-                  {snapshot.medkits}
-                  <small>/{snapshot.maxMedkits}</small>
-                </span>
-              </div>
-              <div className="hud-medkit-row">
-                <div className="hud-medkit-pips" aria-hidden="true">
-                  {Array.from(
-                    { length: snapshot.maxMedkits },
-                    (_, index) => (
-                      <span
-                        key={index}
-                        className={`hud-medkit-pip${index < snapshot.medkits ? " is-filled" : ""}`}
-                      />
-                    ),
-                  )}
-                </div>
-                <button
-                  type="button"
-                  className="hud-medkit-use"
-                  onClick={() => bridge.send({ type: "use-medkit" })}
-                  disabled={
-                    dead || matchEnded || snapshot.medkits <= 0 || snapshot.health >= snapshot.maxHealth
-                  }
-                  data-testid="medkit-use"
-                  aria-label="Use medkit"
-                >
-                  <Keycap>H</Keycap>
-                  <span className="mono-label">USE</span>
-                </button>
-              </div>
-              <div className="hud-vital-foot">
-                <span className="mono-label">+{MEDKIT_CONFIG.healAmount} HP</span>
-                <span className="mono-label">CARRY {snapshot.maxMedkits}</span>
-              </div>
-            </div>
-          ) : null}
-        </section>
-
-        <section className="hud-panel hud-weapon">
-          <div className="hud-section-head">
-            <span className="mono-label">EQUIPPED</span>
-            <span className="hud-pill hud-pill--soft">SLOT {snapshot.weaponSlot}</span>
-          </div>
-          <div className="hud-weapon__main">
-            <div>
-              <h2 className="display hud-weapon__name" data-testid="weapon-name">
-                {snapshot.weaponName}
-              </h2>
-              <span className="mono-label hud-weapon__class">{snapshot.weaponRole}</span>
-            </div>
-            <div className="hud-ammo" data-testid="hud-ammo">
-              <strong className="display">{String(snapshot.ammo).padStart(2, "0")}</strong>
-              <span className="mono-label">/ {snapshot.magazineSize}</span>
-            </div>
-          </div>
-          <div className="hud-mag" aria-hidden="true">
-            {ammoTicks.map((active, index) => (
-              <span key={index} className={active ? "is-loaded" : ""} />
-            ))}
-          </div>
-          <div className="hud-reload">
-            <div className="hud-reload__line">
-              <span className="mono-label">
-                {snapshot.reloading
-                  ? `RELOADING ${Math.round(snapshot.reloadProgress * 100)}%`
-                  : "READY TO FIRE"}
-              </span>
-              <span className="hud-reload__keys">
-                <Keycap>LMB</Keycap>
-                <span className="mono-label">FIRE</span>
-                <Keycap>R</Keycap>
-                <span className="mono-label">RELOAD</span>
-              </span>
-            </div>
-            <div className="reload-track">
-              <span
-                style={{
-                  width: snapshot.reloading ? `${snapshot.reloadProgress * 100}%` : "100%",
-                }}
-              />
-            </div>
-          </div>
           <div className="hud-weapon-slots" role="group" aria-label="Weapon selection">
             {snapshot.weaponSlots.map((slot) => {
               const empty = !slot.owned;
@@ -632,45 +465,25 @@ export function GameHud({
                   data-owned={slot.owned}
                 >
                   <Keycap>{slot.slot}</Keycap>
-                  <WeaponIcon weaponId={empty ? "" : slot.id} />
-                  <span className="hud-weapon-slot__name">
-                    {empty ? "EMPTY" : slot.shortName}
-                  </span>
+                  {empty ? (
+                    <span className="hud-weapon-slot__icon" aria-hidden="true" />
+                  ) : (
+                    <LoadoutIcon name={slot.id} className="hud-weapon-slot__icon" />
+                  )}
+                  <span className="sr-only">{empty ? "EMPTY" : slot.shortName}</span>
                   <span className="hud-weapon-slot__ammo">
                     {empty
                       ? "--"
                       : slot.reloading
-                        ? "RELOAD"
-                        : `${slot.ammo}/${slot.magazineSize}`}
+                        ? "..."
+                        : slot.ammo}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {snapshot.nearbyLootText ? (
-            <div
-              className={`hud-loot-prompt${snapshot.nearbyLootCanSwap ? " is-ready" : ""}`}
-              data-testid="loot-prompt"
-              data-can-swap={snapshot.nearbyLootCanSwap}
-            >
-              <Keycap>E</Keycap>
-              <span className="mono-label">{snapshot.nearbyLootText}</span>
-              {snapshot.nearbyLootCanSwap ? (
-                <button
-                  type="button"
-                  className="hud-loot-prompt__button"
-                  onClick={() => bridge.send({ type: "swap-weapon" })}
-                  disabled={dead || matchEnded}
-                  data-testid="loot-swap"
-                >
-                  SWAP
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {mode === "online" ? (
+          {fullLoadout ? (
             <div
               className="hud-throwables"
               data-testid="hud-grenades"
@@ -679,117 +492,87 @@ export function GameHud({
               data-frag={snapshot.grenadeFrag}
               data-stinking={snapshot.grenadeStinking}
             >
-              <div className="hud-throwables__head">
-                <span className="mono-label">THROWABLES</span>
+              <div className="hud-grenade-slots" role="group" aria-label="Grenade selection">
+                {(
+                  [
+                    ["contact", "4", "CONTACT", snapshot.grenadeContact, 0],
+                    ["frag", "5", "FRAG", snapshot.grenadeFrag, 1],
+                    ["stinking", "6", "STINK", snapshot.grenadeStinking, 2],
+                  ] as const
+                ).map(([type, key, label, count, slot]) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`hud-grenade-slot${snapshot.grenadeSelected === type ? " is-active" : ""}`}
+                    onClick={() => bridge.send({ type: "select-grenade", slot })}
+                    aria-pressed={snapshot.grenadeSelected === type}
+                    aria-label={`${label} grenade, ${count} carried`}
+                    disabled={dead || matchEnded}
+                    data-testid={`grenade-select-${type}`}
+                  >
+                    <Keycap>{key}</Keycap>
+                    <LoadoutIcon name={type} className="hud-grenade-icon" />
+                    <strong data-testid={`grenade-count-${type}`}>{count}</strong>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className={`hud-grenade-throw${grenadeReady ? " is-ready" : ""}`}
+                onClick={() => bridge.send({ type: "throw-grenade" })}
+                disabled={!grenadeReady}
+                aria-label={`Throw grenade. ${grenadeStatus}`}
+                data-testid="grenade-throw"
+                data-can-throw={grenadeReady}
+              >
+                <Keycap>G</Keycap>
                 <span
                   className={`hud-grenade-status${grenadeReady ? " is-ready" : ""}`}
                   data-testid="grenade-status"
                 >
                   {grenadeStatus}
                 </span>
-              </div>
+              </button>
+            </div>
+          ) : null}
 
-              <div className="hud-grenade-slots" role="group" aria-label="Grenade selection">
-                <button
-                  type="button"
-                  className={`hud-grenade-slot${snapshot.grenadeSelected === "contact" ? " is-active" : ""}`}
-                  onClick={() =>
-                    bridge.send({ type: "select-grenade", slot: 0 })
-                  }
-                  aria-pressed={snapshot.grenadeSelected === "contact"}
-                  disabled={dead || matchEnded}
-                  data-testid="grenade-select-contact"
-                >
-                  <Keycap>4</Keycap>
-                  <ContactGrenadeIcon />
-                  <span className="hud-grenade-slot__copy">
-                    <span className="hud-grenade-slot__name">CONTACT</span>
-                    <span className="mono-label">IMPACT</span>
-                  </span>
-                  <strong data-testid="grenade-count-contact">
-                    {snapshot.grenadeContact}
-                  </strong>
-                </button>
-
-                <button
-                  type="button"
-                  className={`hud-grenade-slot${snapshot.grenadeSelected === "frag" ? " is-active" : ""}`}
-                  onClick={() =>
-                    bridge.send({ type: "select-grenade", slot: 1 })
-                  }
-                  aria-pressed={snapshot.grenadeSelected === "frag"}
-                  disabled={dead || matchEnded}
-                  data-testid="grenade-select-frag"
-                >
-                  <Keycap>5</Keycap>
-                  <FragGrenadeIcon />
-                  <span className="hud-grenade-slot__copy">
-                    <span className="hud-grenade-slot__name">FRAG</span>
-                    <span className="mono-label">5.0S FUSE</span>
-                  </span>
-                  <strong data-testid="grenade-count-frag">
-                    {snapshot.grenadeFrag}
-                  </strong>
-                </button>
-
-                <button
-                  type="button"
-                  className={`hud-grenade-slot${snapshot.grenadeSelected === "stinking" ? " is-active" : ""}`}
-                  onClick={() =>
-                    bridge.send({ type: "select-grenade", slot: 2 })
-                  }
-                  aria-pressed={snapshot.grenadeSelected === "stinking"}
-                  disabled={dead || matchEnded}
-                  data-testid="grenade-select-stinking"
-                >
-                  <Keycap>6</Keycap>
-                  <StinkingGrenadeIcon />
-                  <span className="hud-grenade-slot__copy">
-                    <span className="hud-grenade-slot__name">STINK</span>
-                    <span className="mono-label">TOXIC</span>
-                  </span>
-                  <strong data-testid="grenade-count-stinking">
-                    {snapshot.grenadeStinking}
-                  </strong>
-                </button>
-              </div>
-
+          {fullLoadout ? (
+            <div
+              className="hud-medkit"
+              data-testid="hud-medkits"
+              data-medkits={snapshot.medkits}
+            >
               <button
                 type="button"
-                className={`hud-grenade-throw${grenadeReady ? " is-ready" : ""}`}
-                onClick={() => bridge.send({ type: "throw-grenade" })}
-                disabled={!grenadeReady}
-                data-testid="grenade-throw"
-                data-can-throw={grenadeReady}
+                className="hud-medkit-use"
+                onClick={() => bridge.send({ type: "use-medkit" })}
+                disabled={
+                  dead ||
+                  matchEnded ||
+                  snapshot.medkits <= 0 ||
+                  snapshot.health >= snapshot.maxHealth
+                }
+                data-testid="medkit-use"
+                aria-label={`Use medkit, heals ${MEDKIT_CONFIG.healAmount}. ${snapshot.medkits} of ${snapshot.maxMedkits} carried`}
               >
-                <Keycap>G</Keycap>
-                <span className="hud-grenade-throw__label">
-                  THROW{" "}
-                  {snapshot.grenadeSelected === "contact"
-                    ? "CONTACT"
-                    : snapshot.grenadeSelected === "frag"
-                      ? "FRAG"
-                      : "STINK"}
-                </span>
-                <span className="hud-grenade-throw__count">
-                  {selectedGrenadeCount}/{snapshot.grenadeMax}
-                </span>
+                <Keycap>H</Keycap>
+                <LoadoutIcon name="medkit" className="hud-medkit-icon" />
+                <strong>{snapshot.medkits}</strong>
               </button>
             </div>
           ) : null}
         </section>
 
-        <section className="hud-controls" aria-label="Controls">
-          <span className="hud-control"><Keycap>A</Keycap><Keycap>D</Keycap><span className="mono-label">MOVE</span></span>
-          <span className="hud-control"><Keycap>SPACE</Keycap><span className="mono-label">JUMP / JET</span></span>
-          <span className="hud-control"><Keycap>MOUSE</Keycap><span className="mono-label">AIM</span></span>
-          <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
-          <span className="hud-control"><Keycap>1</Keycap><Keycap>2</Keycap><Keycap>3</Keycap><span className="mono-label">SWAP</span></span>
-          <span className="hud-control"><Keycap>E</Keycap><span className="mono-label">LOOT SWAP</span></span>
-          <span className="hud-control"><Keycap>H</Keycap><span className="mono-label">MEDKIT</span></span>
-          <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
-          <span className="hud-control"><Keycap>F1</Keycap><span className="mono-label">PHYSICS</span></span>
-        </section>
+        {matchStarting ? (
+          <section className="hud-controls" aria-label="Controls">
+            <span className="hud-control"><Keycap>A</Keycap><Keycap>D</Keycap><span className="mono-label">MOVE</span></span>
+            <span className="hud-control"><Keycap>SPACE</Keycap><span className="mono-label">JUMP / JET</span></span>
+            <span className="hud-control"><Keycap>LMB</Keycap><span className="mono-label">FIRE</span></span>
+            <span className="hud-control"><Keycap>R</Keycap><span className="mono-label">RELOAD</span></span>
+            <span className="hud-control"><Keycap>E</Keycap><span className="mono-label">LOOT</span></span>
+            <span className="hud-control"><Keycap>TAB</Keycap><span className="mono-label">SCORES</span></span>
+          </section>
+        ) : null}
 
         {recentKill ? (
           <div className="elim-toast" aria-live="polite">
@@ -819,22 +602,17 @@ export function GameHud({
       </div>
 
       <div className={`death-overlay${dead && snapshot.ready ? " is-visible" : ""}`}>
-        <div className="death-card" role="alertdialog" aria-modal="true" aria-labelledby="death-title">
-          <span className="death-eyebrow">MATCH LIVE // ELIMINATED</span>
-          <h2 id="death-title" className="display">SIGNAL LOST</h2>
+        <div className="death-card" role="status" aria-live="assertive" aria-labelledby="death-title">
+          <span className="death-eyebrow">MATCH CONTINUES</span>
+          <h2 id="death-title" className="display">ELIMINATED</h2>
           <p className="death-copy">
             {snapshot.lastKillerName
-              ? `${snapshot.lastKillerName} took VIBER-010 out. The match clock is still running.`
-              : "VIBER-010 went offline. The match clock is still running."}
+              ? `${snapshot.lastKillerName} took you out.`
+              : "You went down."}
           </p>
           <div className="death-count">
-            <span className="mono-label">AUTO-REDEPLOY IN</span>
+            <span className="mono-label">REDEPLOY IN</span>
             <strong className="display">{snapshot.respawnIn.toFixed(1)}</strong>
-            <span className="mono-label">SEC</span>
-          </div>
-          <div className="death-foot">
-            <span className="mono-label">SAFE PAD SELECTION</span>
-            <span className="mono-label">MATCH CONTINUES</span>
           </div>
         </div>
       </div>
@@ -944,12 +722,35 @@ export function GameHud({
             PLAY AGAIN
             <Keycap>ENTER</Keycap>
           </button>
+          <div className="results-actions">
+            <button
+              type="button"
+              className="results-secondary"
+              onClick={() => onLobby?.()}
+              data-testid="results-lobby"
+            >
+              {mode === "online" ? "LOBBY" : "BACK TO HUB"}
+              <Keycap>L</Keycap>
+            </button>
+            {mode === "online" && onHub ? (
+              <button
+                type="button"
+                className="results-secondary"
+                onClick={onHub}
+                data-testid="results-hub"
+              >
+                BACK TO HUB
+              </button>
+            ) : null}
+          </div>
           <div className="results-foot">
             <span className="mono-label">
               {formatMatchClock(snapshot.matchDurationMs)} MATCH
             </span>
             <span className="mono-label">
-              {mode === "online" ? "ONLINE ROOM" : "LOCAL BOT LOBBY"}
+              {mode === "online"
+                ? "ONLINE ROOM"
+                : `PRACTICE // ${difficultyLabel ?? "NORMAL"} // NO RANKED XP`}
             </span>
           </div>
         </div>
@@ -976,7 +777,7 @@ export function GameHud({
           <p className="boot-copy">
             {mode === "online"
               ? "Server-authoritative free-for-all. Eight combatant slots, live match clock and bot backfill."
-              : "Four operators. One arena. First to 10 eliminations, or the highest score when the 90 second clock runs out."}
+              : "Eight operators. One arena. First to 10 eliminations, or the highest score when the 90 second clock runs out."}
           </p>
           <div className="boot-load" aria-hidden="true">
             <span />
@@ -994,8 +795,8 @@ export function GameHud({
         </div>
         <span className="boot-legal mono-label">
           {mode === "online"
-            ? "P2.5 ONLINE BUILD . ORIGINAL VIBE VIBERS ARTWORK . SERVER AUTHORITATIVE"
-            : "P1 BUILD . ORIGINAL VIBE VIBERS ARTWORK . LOCAL FREE FOR ALL"}
+            ? "ORIGINAL VIBE VIBERS ARTWORK . SERVER AUTHORITATIVE"
+            : "ORIGINAL VIBE VIBERS ARTWORK . PRACTICE . NO RANKED XP"}
         </span>
       </div>
     </>

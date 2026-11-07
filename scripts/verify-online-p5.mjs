@@ -63,6 +63,7 @@ const probe = (page) =>
           }
         : null,
       camera: value?.camera ?? null,
+      renderScale: value?.render?.scale ?? 1,
       input: value?.touch ?? null,
       control: value?.control ?? null,
       lobby: Boolean(document.querySelector('[data-testid="quick-match"]')),
@@ -149,8 +150,8 @@ const inspectLayout = async (page, label) => {
     Boolean(frame && canvas && state.camera) &&
       Math.abs(canvas.width - frame.width) <= 1 &&
       Math.abs(canvas.height - frame.height) <= 1 &&
-      Math.abs(state.camera.width - frame.width) <= 2 &&
-      Math.abs(state.camera.height - frame.height) <= 2,
+      Math.abs(state.camera.width / state.renderScale - frame.width) <= 2 &&
+      Math.abs(state.camera.height / state.renderScale - frame.height) <= 2,
     `canvas=${canvas?.width}x${canvas?.height} camera=${state.camera?.width}x${state.camera?.height}`,
   );
   const inside = Object.entries(boxes).every(
@@ -356,7 +357,7 @@ try {
   await page.locator('[data-testid="touch-aim-fire-toggle"]').tap();
   await page.waitForTimeout(200);
   const toggleValue = await page.evaluate(() =>
-    JSON.parse(window.localStorage.getItem("vibe-militia-touch") ?? "{}"),
+    JSON.parse(window.localStorage.getItem("vibe-militia-touch-v2") ?? "{}"),
   );
   check(
     "aim-fire mode can be switched off and persists",

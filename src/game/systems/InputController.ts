@@ -18,6 +18,8 @@ export interface ControlFrame {
   grenadeThrowPressed: boolean;
   swapPressed: boolean;
   aimWorld: Phaser.Math.Vector2;
+  /** Direct stick angle on touch. Null means aim from `aimWorld`. */
+  aimAngle: number | null;
 }
 
 export class InputController {
@@ -154,10 +156,11 @@ export class InputController {
     const moveX = keyboardMoveX !== 0 ? keyboardMoveX : touch?.moveX ?? 0;
 
     const pointer = this.scene.input.activePointer;
-    if (touch?.aimAngle !== null && touch?.aimAngle !== undefined) {
+    const touchAim = touch?.aimAngle ?? null;
+    if (touchAim !== null) {
       this.aim.set(
-        fallbackX + Math.cos(touch.aimAngle) * 240,
-        fallbackY - 56 + Math.sin(touch.aimAngle) * 240,
+        fallbackX + Math.cos(touchAim) * 240,
+        fallbackY - 56 + Math.sin(touchAim) * 240,
       );
     } else if (this.hasPointer) {
       camera.getWorldPoint(this.lastPointer.x, this.lastPointer.y, this.cameraPoint);
@@ -196,6 +199,7 @@ export class InputController {
       grenadeThrowPressed,
       swapPressed,
       aimWorld: this.aim.clone(),
+      aimAngle: touchAim,
     };
   }
 

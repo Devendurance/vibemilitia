@@ -418,14 +418,17 @@ try {
     afterThrow.local?.grenadeStinking === 0 &&
       afterThrow.local?.grenadeContact === 1 &&
       afterThrow.local?.grenadeFrag === 1,
-    `stink=${afterThrow.local?.grenadeStinking}`,
+    `stink=${afterThrow.local?.grenadeStinking} alive=${afterThrow.local?.alive} selected=${afterThrow.local?.selectedGrenade} cooldown=${afterThrow.local?.grenadeCooldownRemainingMs} before=${beforeSelf.local?.grenadeStinking} beforeAlive=${beforeSelf.local?.alive} phase=${afterThrow.phase}`,
   );
   check(
     "the stinking canister is synchronized",
-    afterThrow.grenades.length === 1 &&
-      afterThrow.grenades[0].type === "stinking" &&
-      (afterThrow.grenades[0].activationRemainingMs ?? 0) > 0,
-    `grenades=${afterThrow.grenades.length}`,
+    // Bots replaced a moment ago can still have grenades in the air.
+    afterThrow.grenades.some(
+      (grenade) =>
+        grenade.type === "stinking" &&
+        (grenade.activationRemainingMs ?? 0) > 0,
+    ),
+    `grenades=${afterThrow.grenades.map((grenade) => grenade.type).join(",")}`,
   );
   await pageA.waitForTimeout(1200);
   const cloudState = await probe(pageA);

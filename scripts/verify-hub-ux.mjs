@@ -262,21 +262,21 @@ try {
     waitUntil: "networkidle",
   });
   await practice.waitForFunction(
-    () => window.__VIBE_MILITIA__?.getProbe().hud.ready === true,
+    () => window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.phase === "live",
     null,
     { timeout: 30000 },
   );
   const practiceProbe = await practice.evaluate(() => {
-    const probe = window.__VIBE_MILITIA__.getProbe();
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
     return {
-      phase: probe.match.phase,
-      drones: probe.drones.length,
+      phase: probe.snapshot.phase,
+      bots: probe.snapshot.bots,
       camera: probe.camera,
     };
   });
   check(
     "practice starts locally without matchmaking",
-    practiceProbe.phase === "live" && practiceProbe.drones === 3,
+    practiceProbe.phase === "live" && practiceProbe.bots === 7,
     JSON.stringify(practiceProbe),
   );
   await practice.screenshot({ path: `${artifactDir}/practice-desktop-merciless.png` });
@@ -295,12 +295,12 @@ try {
     waitUntil: "networkidle",
   });
   await phone.waitForFunction(
-    () => window.__VIBE_MILITIA__?.getProbe().hud.ready === true,
+    () => window.__VIBE_MILITIA_ONLINE__?.getProbe().ready === true,
     null,
     { timeout: 30000 },
   );
   const phoneLayout = await phone.evaluate(() => {
-    const probe = window.__VIBE_MILITIA__.getProbe();
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
     const box = (selector) => {
       const element = document.querySelector(selector);
       if (!element) return null;
@@ -315,6 +315,7 @@ try {
       fire: box('[data-testid="touch-fire"]'),
       jump: box('[data-testid="touch-jump"]'),
       camera: probe.camera,
+      renderScale: probe.render.scale,
       grenade: Boolean(document.querySelector('[data-testid="touch-grenade"]')),
     };
   });
@@ -324,7 +325,7 @@ try {
       phoneLayout.frame?.height === 390 &&
       phoneLayout.canvas?.width === 844 &&
       phoneLayout.canvas?.height === 390 &&
-      phoneLayout.camera.zoom < 0.7,
+      phoneLayout.camera.zoom / phoneLayout.renderScale < 0.7,
     JSON.stringify(phoneLayout.camera),
   );
   check(
@@ -374,6 +375,9 @@ try {
     beforeReload.phase === "live" && Boolean(beforeReload.roomId),
     `${beforeReload.roomId} ${beforeReload.phase}`,
   );
+  // Bots kill an idle player during the wait, and a respawn reads as failed input.
+  await online.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard());
+  await online.waitForTimeout(100);
   await online.reload({ waitUntil: "networkidle" });
   await online.waitForTimeout(5000);
   const afterReload = await probeOnline(online);
@@ -470,6 +474,10 @@ try {
   await guestContext.close();
 
   await online.locator('[data-testid="leave-online"]').click();
+  await online.waitForTimeout(150);
+  if (await online.locator('[data-testid="leave-online"]').isVisible().catch(() => false)) {
+    await online.locator('[data-testid="leave-online"]').click();
+  }
   await online.waitForTimeout(1200);
   check(
     "explicit Leave releases the seat and returns to matchmaking",

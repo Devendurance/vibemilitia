@@ -39,6 +39,7 @@ import {
   RankingsDrawer,
   SettingsDrawer,
 } from "@/components/hub/HubOverlays";
+import { LoadoutIcon } from "@/components/game/LoadoutIcon";
 import { usePlayerIdentity } from "@/components/hub/usePlayerIdentity";
 import { audio, type AudioPreferences } from "@/game/audio/AudioEngine";
 
@@ -78,6 +79,7 @@ function HubMusicControl() {
   const [playing, setPlaying] = useState(false);
 
   useEffect(() => {
+    audio.enterHub();
     const unsubscribe = audio.subscribe(setPrefs);
     const start = () => {
       void audio.unlock().then(() => audio.startMusic()).then(setPlaying);
@@ -98,7 +100,7 @@ function HubMusicControl() {
       window.removeEventListener("pointerdown", start);
       window.removeEventListener("keydown", start);
       document.removeEventListener("visibilitychange", onVisibility);
-      audio.stopMusic();
+      audio.leaveHub();
     };
   }, []);
 
@@ -570,6 +572,7 @@ export function GameHub() {
           {PLAYER_WEAPONS.map((weapon, index) => (
             <div className="hub-loadout-card" key={weapon.id}>
               <span className="hub-key">{index + 1}</span>
+              <LoadoutIcon name={weapon.id} className="hub-loadout-icon" />
               <div>
                 <strong>{weapon.shortName ?? weapon.name}</strong>
                 <span className="mono-label">{weapon.magazineSize} RDS</span>
@@ -586,7 +589,7 @@ export function GameHub() {
           <div className="hub-loadout-divider" aria-hidden="true" />
           {GRENADE_SLOT_TYPES.map((type) => (
             <div className="hub-loadout-card hub-loadout-card--grenade" key={type}>
-              <span className="hub-grenade-dot" data-type={type} aria-hidden="true" />
+              <LoadoutIcon name={type} className="hub-loadout-icon hub-loadout-icon--square" />
               <div>
                 <strong>{GRENADE_CONFIG[type].name.replace(" GRENADE", "")}</strong>
                 <span className="mono-label">1</span>
@@ -594,7 +597,7 @@ export function GameHub() {
             </div>
           ))}
           <div className="hub-loadout-card hub-loadout-card--medkit">
-            <span className="hub-medkit" aria-hidden="true">+</span>
+            <LoadoutIcon name="medkit" className="hub-loadout-icon hub-loadout-icon--square" />
             <div>
               <strong>MEDKIT</strong>
               <span className="mono-label">LOOT ONLY</span>

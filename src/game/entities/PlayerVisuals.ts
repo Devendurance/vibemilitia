@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { ART_SCALE, WEAPON_ANCHORS } from "@/game/systems/LoadoutArt";
 
 interface VisualState {
   x: number;
@@ -22,7 +23,13 @@ interface VisualState {
 
 const PIVOT_X = 28;
 const PIVOT_Y = 58;
-const MUZZLE_LOCAL_X = 67;
+
+function applyWeaponArt(image: Phaser.GameObjects.Image, key: string): void {
+  const anchor = WEAPON_ANCHORS[key];
+  image.setTexture(key);
+  if (anchor) image.setOrigin(anchor.originX, anchor.originY);
+  image.setScale(ART_SCALE);
+}
 
 interface PlayerVisualsOptions {
   dust?: boolean;
@@ -36,13 +43,13 @@ interface PlayerVisualsOptions {
 export class PlayerVisuals {
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Sprite;
-  private shadow: Phaser.GameObjects.Ellipse;
+  private shadow: Phaser.GameObjects.Image;
   private weapon: Phaser.GameObjects.Container;
   private weaponImage: Phaser.GameObjects.Image;
   private weaponImage2: Phaser.GameObjects.Image;
   private muzzle: Phaser.GameObjects.Image;
   private muzzle2: Phaser.GameObjects.Image;
-  private shield: Phaser.GameObjects.Arc;
+  private shield: Phaser.GameObjects.Image;
   private jetLeft: Phaser.GameObjects.Particles.ParticleEmitter;
   private jetRight: Phaser.GameObjects.Particles.ParticleEmitter;
   private dust: Phaser.GameObjects.Particles.ParticleEmitter | null;
@@ -58,8 +65,11 @@ export class PlayerVisuals {
     this.scene = scene;
     this.sprite = sprite;
 
+    // Baked images. Phaser Arc and Ellipse shapes rebuild their path every
+    // frame, which was the largest script cost of a full online match.
     this.shadow = scene.add
-      .ellipse(sprite.x, sprite.y + 2, 64, 16, 0x0c0d0f, 0.26)
+      .image(sprite.x, sprite.y + 2, "fx-shadow")
+      .setDisplaySize(68, 18)
       .setDepth(12);
 
     const exhaustConfig: Phaser.Types.GameObjects.Particles.ParticleEmitterConfig = {
@@ -78,19 +88,17 @@ export class PlayerVisuals {
     this.jetRight = scene.add.particles(sprite.x + 15, sprite.y - 10, "spark-lime", exhaustConfig).setDepth(16);
 
     this.weapon = scene.add.container(sprite.x, sprite.y - PIVOT_Y).setDepth(31);
-    this.weaponImage = scene.add.image(0, 0, "weapon-player").setOrigin(10 / 76, 0.5);
-    this.weaponImage2 = scene.add
-      .image(0, 0, "weapon-player")
-      .setOrigin(10 / 76, 0.5)
-      .setFlipY(true)
-      .setVisible(false);
+    this.weaponImage = scene.add.image(0, 0, "weapon-player");
+    applyWeaponArt(this.weaponImage, "weapon-player");
+    this.weaponImage2 = scene.add.image(0, 0, "weapon-akimbo-b").setVisible(false);
+    applyWeaponArt(this.weaponImage2, "weapon-akimbo-b");
     this.muzzle = scene.add
-      .image(MUZZLE_LOCAL_X, 0, "muzzle-flash")
+      .image(WEAPON_ANCHORS["weapon-player"].muzzleX, 0, "muzzle-flash")
       .setAlpha(0)
       .setOrigin(0.32, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD);
     this.muzzle2 = scene.add
-      .image(MUZZLE_LOCAL_X, 0, "muzzle-flash")
+      .image(WEAPON_ANCHORS["weapon-player"].muzzleX, 0, "muzzle-flash")
       .setAlpha(0)
       .setOrigin(0.32, 0.5)
       .setBlendMode(Phaser.BlendModes.ADD)
@@ -98,8 +106,8 @@ export class PlayerVisuals {
     this.weapon.add([this.weaponImage2, this.weaponImage, this.muzzle, this.muzzle2]);
 
     this.shield = scene.add
-      .circle(sprite.x, sprite.y - 58, 47, 0x000000, 0)
-      .setStrokeStyle(2, 0xd7ff2e, 0.8)
+      .image(sprite.x, sprite.y - 58, "fx-shield-ring")
+      .setDisplaySize(100, 100)
       .setDepth(29)
       .setVisible(false);
 
@@ -162,8 +170,8 @@ export class PlayerVisuals {
     }
 
     this.shadow.setPosition(state.x, state.y + 1);
-    this.shadow.setAlpha(state.grounded ? 0.26 : 0.09);
-    this.shadow.setScale(state.grounded ? 1 : 0.8);
+    this.shadow.setAlpha(state.grounded ? 1 : 0.35);
+    this.shadow.setDisplaySize(state.grounded ? 68 : 54, state.grounded ? 18 : 14);
 
     const px = state.x + PIVOT_X - Math.cos(state.aimAngle) * state.recoil * 4;
     const py = state.y - PIVOT_Y - Math.sin(state.aimAngle) * state.recoil * 4;
@@ -172,7 +180,7 @@ export class PlayerVisuals {
     this.weapon.setScale(1, Math.cos(state.aimAngle) < 0 ? -1 : 1);
 
     if (this.weaponImage.texture.key !== state.weaponTexture) {
-      this.weaponImage.setTexture(state.weaponTexture);
+      applyWeaponArt(this.weaponImage, state.weaponTexture);
     }
     const separation = state.secondaryWeaponTexture
       ? state.barrelSeparation ?? 10
@@ -182,7 +190,7 @@ export class PlayerVisuals {
     this.weaponImage2.setVisible(hasSecondary);
     if (hasSecondary && state.secondaryWeaponTexture) {
       if (this.weaponImage2.texture.key !== state.secondaryWeaponTexture) {
-        this.weaponImage2.setTexture(state.secondaryWeaponTexture);
+        applyWeaponArt(this.weaponImage2, state.secondaryWeaponTexture);
       }
       this.weaponImage2.setY(-separation / 2);
     }
@@ -193,8 +201,9 @@ export class PlayerVisuals {
       this.muzzle2.setTint(state.muzzleColor);
     }
     const barrel = state.muzzleBarrel ?? 0;
-    this.muzzle.setPosition(MUZZLE_LOCAL_X, hasSecondary ? separation / 2 : 0);
-    this.muzzle2.setPosition(MUZZLE_LOCAL_X, -separation / 2);
+    const muzzleX = WEAPON_ANCHORS[state.weaponTexture]?.muzzleX ?? 66;
+    this.muzzle.setPosition(muzzleX, hasSecondary ? separation / 2 : 0);
+    this.muzzle2.setPosition(muzzleX, -separation / 2);
     this.muzzle.setAlpha(
       state.muzzleFlash > 0 && barrel === 0 ? state.muzzleFlash : 0,
     );
@@ -210,7 +219,7 @@ export class PlayerVisuals {
     this.shield.setVisible(state.shield);
     if (state.shield) {
       const pulse = 1 + Math.sin(this.scene.time.now * 0.009) * 0.045;
-      this.shield.setScale(pulse);
+      this.shield.setDisplaySize(100 * pulse, 100 * pulse);
       this.shield.setPosition(state.x, state.y - 58);
       this.shield.setAlpha(0.35 + pulse * 0.2);
     }
@@ -225,8 +234,8 @@ export class PlayerVisuals {
   }
 
   kick(): void {
-    this.muzzle.setPosition(MUZZLE_LOCAL_X, this.weaponImage.y);
-    this.muzzle2.setPosition(MUZZLE_LOCAL_X, this.weaponImage2.y);
+    this.muzzle.setY(this.weaponImage.y);
+    this.muzzle2.setY(this.weaponImage2.y);
   }
 
   dustPuff(x: number, y: number): void {

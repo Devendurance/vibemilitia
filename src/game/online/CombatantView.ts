@@ -3,9 +3,18 @@ import { ALL_PLAYER_WEAPONS } from "@/game/config/gameplay";
 import { getCharacterSkin } from "@/game/characters/roster";
 import { PlayerVisuals } from "@/game/entities/PlayerVisuals";
 import { cosmeticTint } from "@/game/progression/cosmetics";
+import { RemoteInterpolator } from "@/game/online/RemoteInterpolator";
 import type { OnlineCombatantSnapshot } from "@/game/multiplayer/protocol";
 
 const PLAYER_HEIGHT = 128;
+
+export interface LocalMotionOverride {
+  x: number;
+  y: number;
+  grounded: boolean;
+  thrusting: boolean;
+  vx: number;
+}
 
 function rotateToward(current: number, target: number, amount: number): number {
   const difference = Phaser.Math.Angle.Wrap(target - current);
@@ -22,7 +31,9 @@ export class CombatantView {
   private botTag: Phaser.GameObjects.Text | null = null;
   private healthBack: Phaser.GameObjects.Rectangle;
   private healthFill: Phaser.GameObjects.Rectangle;
-  private localRing: Phaser.GameObjects.Ellipse | null = null;
+  private localRing: Phaser.GameObjects.Image | null = null;
+  private interpolator = new RemoteInterpolator();
+  private labelScale = 1;
   private currentX: number;
   private currentY: number;
   private targetX: number;
@@ -66,20 +77,22 @@ export class CombatantView {
     this.localRing =
       isLocal && snapshot.kind === "human"
         ? scene.add
-            .ellipse(snapshot.x, snapshot.y + 2, 76, 18, 0x000000, 0)
-            .setStrokeStyle(2, 0xd7ff2e, 0.55)
+            .image(snapshot.x, snapshot.y + 2, "fx-ground-ring")
+            .setDisplaySize(84, 22)
+            .setAlpha(0.6)
             .setDepth(11)
         : null;
     this.nameText = scene.add
       .text(snapshot.x, snapshot.y - 145, snapshot.name, {
         fontFamily: '"JetBrains Mono", ui-monospace, monospace',
-        fontSize: "9px",
+        fontSize: "11px",
         fontStyle: "bold",
         color: isLocal ? "#d7ff2e" : "#f5f3ec",
         stroke: "#0c0d0f",
         strokeThickness: 3,
         letterSpacing: 1,
       })
+      .setResolution(2)
       .setOrigin(0.5)
       .setDepth(32);
     if (snapshot.kind === "bot") {
@@ -117,8 +130,10 @@ export class CombatantView {
     nameVisible: boolean;
     botLabelVisible: boolean;
     healthBarVisible: boolean;
+    aim: number;
   } {
     return {
+      aim: this.currentAim,
       texture: this.sprite.texture.key,
       weaponTexture: this.visuals.weaponTextureKey,
       weaponVisible: this.visuals.weaponVisible,
@@ -129,34 +144,45 @@ export class CombatantView {
     };
   }
 
+  /** Keeps world labels readable when the camera is zoomed out on phones. */
+  setLabelScale(scale: number): void {
+    this.labelScale = scale;
+    this.nameText.setScale(scale);
+    this.botTag?.setScale(scale);
+  }
+
+  pushSample(serverMs: number, snapshot: OnlineCombatantSnapshot): void {
+    this.interpolator.push(
+      serverMs,
+      snapshot.x,
+      snapshot.y,
+      snapshot.vx,
+      snapshot.vy,
+      snapshot.aimAngle,
+    );
+  }
+
   update(
     snapshot: OnlineCombatantSnapshot,
     dtMs: number,
     localAim: number | null,
-    positionOverride?: { x: number; y: number },
+    localMotion?: LocalMotionOverride,
+    playbackMs?: number | null,
   ): void {
-    this.targetX = positionOverride?.x ?? snapshot.x;
-    this.targetY = positionOverride?.y ?? snapshot.y;
-    this.targetAim = localAim ?? snapshot.aimAngle;
+    const played =
+      !localMotion && playbackMs !== null && playbackMs !== undefined
+        ? this.interpolator.sample(playbackMs)
+        : null;
+    this.targetX = localMotion?.x ?? played?.x ?? snapshot.x;
+    this.targetY = localMotion?.y ?? played?.y ?? snapshot.y;
+    this.targetAim = localAim ?? played?.aim ?? snapshot.aimAngle;
     const dt = Math.min(dtMs, 50) / 1000;
-    const positionRate = this.kind === "human" ? 18 : 14;
-    const snapThreshold = this.alive ? 360 : 120;
-    if (
-      positionOverride ||
-      Math.hypot(this.targetX - this.currentX, this.targetY - this.currentY) >
-        snapThreshold
-    ) {
-      this.currentX = this.targetX;
-      this.currentY = this.targetY;
-    } else {
-      const positionBlend = 1 - Math.exp(-dt * positionRate);
-      this.currentX = Phaser.Math.Linear(this.currentX, this.targetX, positionBlend);
-      this.currentY = Phaser.Math.Linear(this.currentY, this.targetY, positionBlend);
-    }
+    this.currentX = this.targetX;
+    this.currentY = this.targetY;
     this.currentAim = rotateToward(
       this.currentAim,
       this.targetAim,
-      1 - Math.exp(-dt * 20),
+      localMotion ? 1 : 1 - Math.exp(-dt * 24),
     );
     this.muzzleFlashMs = Math.max(0, this.muzzleFlashMs - dtMs);
     this.damageFlashMs = Math.max(0, this.damageFlashMs - dtMs);
@@ -177,8 +203,6 @@ export class CombatantView {
     }
 
     if (!this.wasAlive) {
-      this.currentX = this.targetX;
-      this.currentY = this.targetY;
       this.visuals.revive();
       this.nameText.setVisible(true);
       this.botTag?.setVisible(true);
@@ -189,8 +213,8 @@ export class CombatantView {
     this.sprite.setPosition(this.currentX, this.currentY);
     this.nameText
       .setText(this.name)
-      .setPosition(this.currentX, this.currentY - 145);
-    this.botTag?.setPosition(this.currentX, this.currentY - 157);
+      .setPosition(this.currentX, this.currentY - 145 - (this.labelScale - 1) * 8);
+    this.botTag?.setPosition(this.currentX, this.currentY - 158 - (this.labelScale - 1) * 20);
     const width = 54 * Math.max(0, Math.min(1, snapshot.health / snapshot.maxHealth));
     this.healthBack.setPosition(this.currentX, this.currentY - 132);
     this.healthFill
@@ -211,10 +235,10 @@ export class CombatantView {
       y: this.currentY,
       aimAngle: this.currentAim,
       recoil: this.muzzleFlashMs > 45 ? 0.7 : 0,
-      grounded: snapshot.grounded,
-      thrusting: snapshot.thrusting,
-      moving: Math.abs(snapshot.vx) > 20,
-      velocityX: snapshot.vx,
+      grounded: localMotion?.grounded ?? snapshot.grounded,
+      thrusting: localMotion?.thrusting ?? snapshot.thrusting,
+      moving: Math.abs(localMotion?.vx ?? snapshot.vx) > 20,
+      velocityX: localMotion?.vx ?? snapshot.vx,
       muzzleFlash: this.muzzleFlashMs / 80,
       muzzleBarrel: this.muzzleBarrel,
       shield: snapshot.invulnerable > 0,

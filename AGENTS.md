@@ -79,11 +79,38 @@
 - Public rankings use `GET /api/leaderboard`. Display names are editable and non-unique. X handles are self-declared and must never be rendered as verified.
 - Hub music is a separate lazy-loaded Web Audio channel. Keep music preference keys backward-compatible, stop the single loop when leaving the hub, and keep third-party credits in `ASSET_RIGHTS.md`.
 
+## NETCODE AND RENDERING
+
+- Movement is a pure function of the input stream. Keep it that way: the server consumes one client tick per server tick and holds a player whose input is late. Never compare a predicted position directly with a snapshot, because a snapshot is RTT old. Reconcile with `LocalPredictor.reconcile` only.
+- Wire changes stay version-gated by `netProtocol`. Old tabs must keep receiving the full `snapshot` message, because tabs stay open across a deploy. Deploy the backend before the frontend.
+- A real public RTT from Nigeria through the Cloudflare tunnel is 360 to 560 ms. Test netcode at 550/80 as well as 100-250 ms, using `scripts/lib/latency-proxy.mjs`. Devtools throttling does not reliably apply to WebSockets.
+- Never add a per-frame Phaser `Arc`, `Ellipse` or stroked shape to a match. Each one re-tessellates every frame. Bake a texture in `makeBakedEffects`. Never use `backdrop-filter` over the live canvas.
+- Practice is `GameSimulation` in a worker behind `PracticeRoom`. Add rules to the simulation, never to a practice copy. The older drone drill stays at `/practice?engine=legacy` for the P1 suite only.
+- Render scale and world zoom are separate. `RenderScaler` owns the CSS size, the backing size and `worldZoom`, and the camera renders at `worldZoom * renderScale`. Keep Phaser's own scale zoom at 1: its `resize` skips the canvas style at zoom 1, which once left a 1055x488 canvas in an 844x390 frame and enlarged the world by 25%.
+- On a phone, world zoom and control sizes come from the physical screen, never from `dvh` or the current height, so browser toolbars can't move them. Small height losses don't resize the canvas, the frame clips it.
+- On the combined right pad, fire means "a thumb is down" and nothing else. The dead zone only freezes the angle. Don't put a distance threshold back on firing.
+- Local fire and aim are read straight from `touchInput`. Muzzle flash and sound are predicted and matched against server `shot` events through `unconfirmedShots`. Ammo, damage, cadence and hits stay on the server.
+- GO comes only from the snapshot phase changing to `live`. The digit is extrapolated from authoritative remaining time and holds at 1 until then. Don't use a live blur for the countdown: `match-backdrop` is one cached low-resolution frame.
+- Bot views build one per frame and batch shaders are linked behind the countdown backdrop. Both exist to keep the first live frames clear, so keep them when changing match start.
+- Gun, grenade, pickup and projectile art loads in `preload` through `preloadLoadoutArt` and draws at `ART_SCALE`. Run `scripts/export-sprites.py` to change it, and keep hitboxes and server origins out of art changes. Lime is only for selected or interactive states, never in the art.
+- `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
+
 ## TESTING
 
 - Use any testing tools and libraries available to the project to test your changes.
+- `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `npm run verify:mobile`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
+- Never take a screenshot in a run that measures timing. It stalls rAF across the whole browser.
+- Emulated mobile proves events and layout, never physical device performance. Say so in reports.
 - Never assume your changes work; always test.
 - If the project does not have any testing tools, scripts, MCP tools, or similar resources available for testing, ask the user whether testing should be skipped.
+
+## DOCUMENTATION
+
+- README game numbers come from source config: `src/game/config/gameplay.ts`, `src/game/core/grenades.ts`, `src/game/core/pickups.ts`, `src/game/core/loot.ts` and `src/game/progression/progression.ts`. Update the README when those change. Do not copy numbers from older docs.
+- README gallery: `scripts/capture-readme-media.mjs` writes raw captures to `artifacts/readme-media/` (gitignored). `scripts/optimize-readme-media.py` writes the committed WebP files to `docs/media/`. Do not commit raw captures.
+- Root `LICENSE` is MIT, approved by the owner on 2026-11-07, copyright holder "Devendurance". It covers source code only. `ASSET_RIGHTS.md` tracks artwork rights, and artwork is not MIT-licensed. Do not change the license or add artwork under it without owner approval.
+- Describe Practice as the same simulation as Online, with seven bots and no XP. Do not describe it as a drone drill except for `/practice?engine=legacy`.
+- App icons come from the hub mark (`.hub-brand__mark`). `src/app/icon.svg` is the vector source. After changing the mark, update the SVG and run `python scripts/generate-favicons.py` to rebuild `favicon.ico`, `apple-icon.png` and `public/brand/icon-*.png`.
 
 ## UI DESIGN
 

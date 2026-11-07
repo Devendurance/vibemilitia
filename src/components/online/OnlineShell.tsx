@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Client, Room, RoomAvailable } from "@colyseus/sdk";
 import {
@@ -17,7 +18,15 @@ import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import { ProfilePanel } from "@/components/online/ProfilePanel";
 import { BetaFeedback } from "@/components/online/BetaFeedback";
 import { OnlineGameCanvas } from "@/components/online/OnlineGameCanvas";
-import type { OnlineRoomMetadata } from "@/game/multiplayer/protocol";
+import {
+  NET_PROTOCOL_VERSION,
+  type OnlineRoomMetadata,
+} from "@/game/multiplayer/protocol";
+import {
+  SNAPSHOT_FAST,
+  SNAPSHOT_SELF,
+  SNAPSHOT_SLOW,
+} from "@/game/multiplayer/snapshotCodec";
 import { audio } from "@/game/audio/AudioEngine";
 import {
   ensureGuestProfile,
@@ -50,6 +59,8 @@ const SERVER_URL =
   process.env.NEXT_PUBLIC_COLYSEUS_URL ??
   "http://localhost:2567";
 const SKIN_STORAGE_KEY = "vibe-militia-skin";
+const LOBBY_ATTEMPTS = 5;
+const LOBBY_ATTEMPT_MS = 6000;
 
 interface LobbyRoomLike extends AvailableRoom {
   roomId: string;
@@ -113,8 +124,11 @@ function OnlineGameSession({
   onLeave: () => void;
 }) {
   const bridge = useMemo(() => new GameBridge(), []);
+  const router = useRouter();
   const [ping, setPing] = useState<number | null>(null);
   const [tickMs, setTickMs] = useState<number | null>(null);
+  const [signalWeak, setSignalWeak] = useState(false);
+  const [leaveArmed, setLeaveArmed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [touchMode, setTouchMode] = useState(false);
   const [portrait, setPortrait] = useState(false);
@@ -128,6 +142,30 @@ function OnlineGameSession({
       delete (window as unknown as { __HUD_BRIDGE__?: GameBridge }).__HUD_BRIDGE__;
     };
   }, [bridge]);
+
+  useEffect(() => {
+    // Measured, not inferred. A stalled snapshot stream is what a player feels,
+    // and it is reported separately from a real disconnect.
+    const timer = window.setInterval(() => {
+      const age = window.__VIBE_MILITIA_ONLINE__?.getProbe().net?.snapshotAgeMs ?? 0;
+      setSignalWeak(age > 1200);
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!leaveArmed) return undefined;
+    const timer = window.setTimeout(() => setLeaveArmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [leaveArmed]);
+
+  const requestLeave = () => {
+    if (bridge.getSnapshot().matchPhase !== "live" || leaveArmed) {
+      onLeave();
+      return;
+    }
+    setLeaveArmed(true);
+  };
 
   useEffect(() => {
     let active = true;
@@ -227,6 +265,11 @@ function OnlineGameSession({
           playerSkinId={skinId}
           profile={profile}
           reward={lastReward}
+          onLobby={onLeave}
+          onHub={() => {
+            onLeave();
+            router.push("/");
+          }}
         />
         {touchMode ? (
           <TouchControls
@@ -421,16 +464,15 @@ function OnlineGameSession({
             </div>
           </div>
         ) : null}
-        <div className="online-session-bar">
-          <span className="mono-label">
-            ROOM {room.roomId.slice(0, 8)}
-            {" // "}
-            {playerName}
-          </span>
-          <span className="online-session-bar__ping">
-            {profile ? `LVL ${profile.level} // ` : ""}
-            {ping === null ? "PING --" : `PING ${ping}MS`}
-            {tickMs === null ? "" : ` // TICK ${tickMs.toFixed(1)}MS`}
+        <div className="online-session-bar" title={`Room ${room.roomId} // ${playerName}`}>
+          <span
+            className={`online-session-bar__ping${(ping ?? 0) >= 300 ? " is-high" : ""}${signalWeak ? " is-weak" : ""}`}
+            data-testid="connection-status"
+            data-signal={signalWeak ? "weak" : "ok"}
+          >
+            {signalWeak
+              ? "SIGNAL WEAK"
+              : `${ping === null ? "PING --" : `PING ${ping}MS`}${tickMs === null ? "" : ` // TICK ${tickMs.toFixed(1)}MS`}`}
           </span>
           <button
             type="button"
@@ -451,11 +493,11 @@ function OnlineGameSession({
           <BetaFeedback compact />
           <button
             type="button"
-            className="hud-button"
-            onClick={onLeave}
+            className={`hud-button${leaveArmed ? " is-armed" : ""}`}
+            onClick={requestLeave}
             data-testid="leave-online"
           >
-            LEAVE
+            {leaveArmed ? "CONFIRM LEAVE" : "LEAVE"}
           </button>
         </div>
       </section>
@@ -590,6 +632,11 @@ export function OnlineShell() {
   );
 
   const attachRoomHandlers = useCallback((room: OnlineRoom) => {
+    // The match scene registers its handlers when the arena finishes loading.
+    // These keep the stream quiet until then. It asks for a resync on arrival.
+    for (const type of ["snapshot", "events", SNAPSHOT_FAST, SNAPSHOT_SLOW, SNAPSHOT_SELF]) {
+      room.onMessage(type, () => undefined);
+    }
     room.reconnection.minUptime = 0;
     room.reconnection.maxRetries = 40;
     room.reconnection.delay = 250;
@@ -690,9 +737,29 @@ export function OnlineShell() {
         localClient = new Client(SERVER_URL);
         if (cancelled) return;
         clientRef.current = localClient;
-        localLobby = await localClient.joinOrCreate("lobby", {
-          filter: { name: "ffa" },
-        });
+        // A lost handshake never rejects, so a slow link could sit on CONNECTING
+        // forever. Bound each attempt and try again.
+        for (let attempt = 0; attempt < LOBBY_ATTEMPTS && !localLobby; attempt += 1) {
+          const joining = localClient.joinOrCreate("lobby", {
+            filter: { name: "ffa" },
+          });
+          const joined = await Promise.race([
+            joining,
+            new Promise<null>((resolve) => {
+              window.setTimeout(() => resolve(null), LOBBY_ATTEMPT_MS);
+            }),
+          ]);
+          if (joined) {
+            localLobby = joined;
+          } else {
+            void joining.then((late) => late.leave()).catch(() => undefined);
+          }
+          if (cancelled) return;
+        }
+        if (!localLobby) {
+          setError("Could not reach the game server. Reload to try again.");
+          return;
+        }
         if (cancelled) {
           await localLobby.leave();
           return;
@@ -817,12 +884,14 @@ export function OnlineShell() {
               name: guest,
               skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
+              netProtocol: NET_PROTOCOL_VERSION,
             })
           : await client.create("ffa", {
               name: guest,
               roomName: "SECTOR 07",
               skinId: identity.skinId,
               guestToken: guestToken() ?? undefined,
+              netProtocol: NET_PROTOCOL_VERSION,
             });
         await adoptRoom(room);
       } catch (joinError) {
@@ -860,6 +929,7 @@ export function OnlineShell() {
             skinId: identity.skinId,
             open: true,
             guestToken: guestToken() ?? undefined,
+            netProtocol: NET_PROTOCOL_VERSION,
           });
         } catch (attemptError) {
           const message =
@@ -879,6 +949,7 @@ export function OnlineShell() {
           roomName: "SECTOR 07",
           skinId: identity.skinId,
           guestToken: guestToken() ?? undefined,
+          netProtocol: NET_PROTOCOL_VERSION,
         });
       }
       await adoptRoom(room);

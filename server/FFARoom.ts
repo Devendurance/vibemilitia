@@ -2,8 +2,15 @@ import { Client, CloseCode, Room } from "colyseus";
 import { getCharacterSkin } from "../src/game/characters/roster";
 import { GameSimulation } from "../src/game/multiplayer/GameSimulation";
 import {
+  CompactSnapshotStream,
+  SNAPSHOT_FAST,
+  SNAPSHOT_SELF,
+  SNAPSHOT_SLOW,
+} from "../src/game/multiplayer/snapshotCodec";
+import {
   DEFAULT_MATCH_COUNTDOWN_MS,
   MAX_COMBATANTS,
+  NET_PROTOCOL_VERSION,
   SNAPSHOT_INTERVAL_MS,
   sanitizeGuestName,
   type JoinOptions,
@@ -49,6 +56,9 @@ export class FFARoom extends Room {
   private settlementInFlight = false;
   private rewardsByPlayer = new Map<string, MatchReward>();
   private reservations = new Set<string>();
+  private compactClients = new Set<string>();
+  private snapshotStream = new CompactSnapshotStream();
+  private lastResyncAt = new Map<string, number>();
 
   async onCreate(options: JoinOptions & { roomName?: string }): Promise<void> {
     this.maxClients = MAX_COMBATANTS;
@@ -65,6 +75,7 @@ export class FFARoom extends Room {
     this.setSimulationInterval((delta) => this.gameLoop(delta), 1000 / 60);
     this.onMessage("input", (client, payload) => this.onInput(client, payload));
     this.onMessage("rematch", () => this.onRematch());
+    this.onMessage("resync", (client) => this.onResync(client));
     this.onMessage("request-resume", (client) => {
       const playerId =
         this.simulation
@@ -240,6 +251,9 @@ export class FFARoom extends Room {
     }
     if (auth?.playerId) this.reservations.delete(auth.playerId);
     this.lastPhase = this.simulation.phase;
+    if (Number(options?.netProtocol) >= NET_PROTOCOL_VERSION) {
+      this.compactClients.add(client.sessionId);
+    }
     client.send("snapshot", this.simulation.snapshot());
     client.send("events", this.simulation.drainEvents());
     if (auth?.playerId) {
@@ -334,6 +348,9 @@ export class FFARoom extends Room {
 
   private releaseClient(sessionId: string): void {
     this.rateBuckets.delete(sessionId);
+    this.compactClients.delete(sessionId);
+    this.snapshotStream.forget(sessionId);
+    this.lastResyncAt.delete(sessionId);
     resumeRegistry.dropSession(this.roomId, sessionId);
     if (!this.simulation) return;
     const human = this.simulation
@@ -352,6 +369,9 @@ export class FFARoom extends Room {
   onDispose(): void {
     this.simulation = null;
     this.rateBuckets.clear();
+    this.compactClients.clear();
+    this.snapshotStream.clear();
+    this.lastResyncAt.clear();
     this.reservations.clear();
     this.rewardsByPlayer.clear();
     resumeRegistry.dropRoom(this.roomId);
@@ -360,6 +380,7 @@ export class FFARoom extends Room {
   private gameLoop(deltaMs: number): void {
     if (!this.simulation) return;
     this.accumulator += Math.min(deltaMs, 100);
+    if (deltaMs > 100) this.simulation.creditStall(deltaMs - 100);
     let iterations = 0;
     while (this.accumulator >= 1000 / 60 && iterations < 5) {
       this.simulation.tick(1000 / 60);
@@ -377,17 +398,52 @@ export class FFARoom extends Room {
       this.lastPhase = phase;
       if (phase === "ended") this.queueMatchSettlement();
       this.queueMetadataUpdate();
+      this.sendSnapshots(Date.now(), true);
     }
 
     const now = Date.now();
-    if (now - this.lastSnapshotAt >= SNAPSHOT_INTERVAL_MS) {
-      this.lastSnapshotAt = now;
-      this.broadcast("snapshot", this.simulation.snapshot());
+    if (now - this.lastSnapshotAt >= SNAPSHOT_INTERVAL_MS - 8) {
+      // Advance by the interval rather than to `now`, so a 16.7ms tick does not
+      // quantise the 50ms cadence down to ~15 snapshots a second.
+      this.lastSnapshotAt =
+        now - this.lastSnapshotAt > SNAPSHOT_INTERVAL_MS * 3
+          ? now
+          : this.lastSnapshotAt + SNAPSHOT_INTERVAL_MS;
+      this.sendSnapshots(now, false);
     }
     if (now - this.lastMetadataAt >= 1000) {
       this.lastMetadataAt = now;
       this.queueMetadataUpdate();
     }
+  }
+
+  /**
+   * Older tabs keep the full `snapshot` message. Compact clients get a small
+   * motion frame, plus roster/board data and their own inventory on change.
+   * Each section is ordered before the fast frame that depends on it.
+   */
+  private sendSnapshots(now: number, force: boolean): void {
+    const simulation = this.simulation;
+    if (!simulation) return;
+    const full = simulation.snapshot();
+    const compact = this.clients.filter((client) =>
+      this.compactClients.has(client.sessionId),
+    );
+    const legacy = this.clients.filter(
+      (client) => !this.compactClients.has(client.sessionId),
+    );
+    for (const client of legacy) client.send("snapshot", full);
+    if (compact.length === 0) return;
+
+    const frame = this.snapshotStream.frame(full, now, force);
+    if (frame.slow) {
+      this.broadcast(SNAPSHOT_SLOW, frame.slow, { except: legacy });
+    }
+    for (const client of compact) {
+      const self = this.snapshotStream.selfFor(full, client.sessionId, force);
+      if (self) client.send(SNAPSHOT_SELF, self);
+    }
+    this.broadcast(SNAPSHOT_FAST, frame.fast, { except: legacy });
   }
 
   private queueMatchSettlement(): void {
@@ -469,6 +525,7 @@ export class FFARoom extends Room {
     }
     this.simulation.applyInput(client.sessionId, {
       seq: value.seq,
+      ticks: typeof value.ticks === "number" ? value.ticks : undefined,
       moveX: value.moveX,
       jump: Boolean(value.jump),
       jumpHeld: Boolean(value.jumpHeld),
@@ -489,6 +546,14 @@ export class FFARoom extends Room {
     });
   }
 
+  private onResync(client: Client): void {
+    if (!this.simulation) return;
+    const now = Date.now();
+    if (now - (this.lastResyncAt.get(client.sessionId) ?? 0) < 500) return;
+    this.lastResyncAt.set(client.sessionId, now);
+    client.send("snapshot", this.simulation.snapshot());
+  }
+
   private onRematch(): void {
     if (!this.simulation) return;
     const result = this.simulation.rematch();
@@ -505,7 +570,9 @@ export class FFARoom extends Room {
       this.rateBuckets.set(sessionId, { windowStart: now, count: 1 });
       return true;
     }
-    if (bucket.count >= 45) return false;
+    // 30 packets a second is normal. TCP can release a late burst all at once,
+    // and dropping it would lose real input, so the ceiling sits well above that.
+    if (bucket.count >= 90) return false;
     bucket.count += 1;
     return true;
   }

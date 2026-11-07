@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PracticeDifficulty } from "@/game/config/gameplay";
+import { useRouter } from "next/navigation";
 import { GameBridge } from "@/game/bridge";
 import { GameCanvas } from "@/components/game/GameCanvas";
+import { PracticeCanvas } from "@/components/game/PracticeCanvas";
 import { GameHud } from "@/components/game/GameHud";
 import { AudioSettings } from "@/components/game/AudioSettings";
 import { TouchControls } from "@/components/game/TouchControls";
@@ -21,10 +23,16 @@ const DIFFICULTY_LABEL: Record<PracticeDifficulty, string> = {
 export function GameShell({
   difficulty = "normal",
   skinId = "viber-010",
+  playerName = "VIBER-GUEST",
+  legacyDrill = false,
 }: {
   difficulty?: PracticeDifficulty;
   skinId?: string;
+  playerName?: string;
+  /** The older drone drill, kept at /practice?engine=legacy. */
+  legacyDrill?: boolean;
 }) {
+  const router = useRouter();
   const activeBridge = useMemo(() => new GameBridge(), []);
   const [touchMode, setTouchMode] = useState(false);
   const [portrait, setPortrait] = useState(false);
@@ -80,20 +88,36 @@ export function GameShell({
         className={`game-frame${touchMode ? " is-touch" : ""}${portrait && touchMode ? " is-portrait" : ""}${isFullscreen ? " is-fullscreen" : ""}`}
         aria-label={`Vibe Militia practice arena on ${DIFFICULTY_LABEL[difficulty]} difficulty`}
       >
-        <GameCanvas
+        {legacyDrill ? (
+          <GameCanvas
+            bridge={activeBridge}
+            difficulty={difficulty}
+            skinId={skinId}
+          />
+        ) : (
+          <PracticeCanvas
+            bridge={activeBridge}
+            difficulty={difficulty}
+            skinId={skinId}
+            playerName={playerName}
+          />
+        )}
+        <GameHud
           bridge={activeBridge}
-          difficulty={difficulty}
-          skinId={skinId}
+          mode={legacyDrill ? "local" : "practice"}
+          playerName={playerName}
+          playerSkinId={skinId}
+          difficultyLabel={DIFFICULTY_LABEL[difficulty]}
+          onLobby={() => router.push("/")}
         />
-        <GameHud bridge={activeBridge} playerSkinId={skinId} />
         {touchMode ? (
           <TouchControls
             bridge={activeBridge}
             onSettings={() => setSettingsOpen(true)}
-            playerName="SOLO DRILL"
+            playerName={playerName}
             level={1}
-            variant="practice"
-            onExit={() => undefined}
+            variant={legacyDrill ? "practice" : "online"}
+            onExit={() => router.push("/")}
             modeLabel={`PRACTICE // ${DIFFICULTY_LABEL[difficulty]} // NO RANKED XP`}
           />
         ) : null}
@@ -159,14 +183,16 @@ export function GameShell({
               <div className="settings-card__controls">
                 <span className="mono-label">CONTROLS</span>
                 <p>
-                  Desktop: WASD move, Space jump and jetpack, mouse aim and
-                  fire, R reload, 1 to 3 weapons. Touch: left pad moves and
+                  Desktop: A and D move, Space jump and jetpack, mouse aim and
+                  fire, R reload, 1 to 3 weapons, 4 to 6 grenades, G throw, H
+                  medkit, E pick up, Tab scoreboard. Touch: left pad moves and
                   pushes up to fly, right pad aims and fires.
                 </p>
                 <p>
-                  Practice bots react faster and shoot tighter bursts on Hard
-                  and Merciless. Practice never writes ranked XP, wins or
-                  leaderboard entries.
+                  Practice uses the online rules: seven weapons, three grenades,
+                  medkits, caches and loot. Bots react faster and aim tighter on
+                  Hard and Merciless. Practice runs on this device and never
+                  writes ranked XP, wins or leaderboard entries.
                 </p>
               </div>
               {touchMode ? <BetaFeedback /> : null}

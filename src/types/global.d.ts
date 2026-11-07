@@ -31,6 +31,15 @@ declare global {
           thrustHeld: boolean;
           moveX: number;
         };
+        net?: {
+          pendingTicks: number;
+          lastCorrectionPx: number;
+          snaps: number;
+          playbackDelayMs: number;
+          jitterMs: number;
+          snapshotAgeMs: number;
+          snapshotGapMs: number;
+        };
         control: {
           fire: boolean;
           moveX: number;

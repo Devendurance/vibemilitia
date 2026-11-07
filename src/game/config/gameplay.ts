@@ -151,7 +151,7 @@ export const ADVANCED_WEAPONS: readonly PlayerWeapon[] = [
     projectileLifetimeMs: 1500,
     projectileTexture: "bullet-akimbo",
     weaponTexture: "weapon-akimbo",
-    secondaryWeaponTexture: "weapon-akimbo",
+    secondaryWeaponTexture: "weapon-akimbo-b",
     barrelSeparation: 11,
     muzzleColor: 0xd7ff2e,
     recoil: 0.8,
@@ -346,6 +346,82 @@ export const BOT_DIFFICULTIES: Record<PracticeDifficulty, BotDifficultyProfile> 
     strafeMaxMs: 1050,
     projectileSpeed: 1080,
     projectileDamage: 9,
+  },
+};
+
+/**
+ * Tuning for simulation bots. DEFAULT_SIM_BOT_TUNING is the online behaviour and
+ * must stay equal to the DRONE_CONFIG values it replaced. The practice tiers
+ * change how bots think and shoot. Weapons, damage and supplies stay the same
+ * rules as online, so practice teaches the real game.
+ */
+export interface SimBotTuning {
+  reactionMs: number;
+  fireIntervalMs: number;
+  burstCount: number;
+  burstSpacingMs: number;
+  aimErrorRadians: number;
+  leadFactor: number;
+  hoverSpeed: number;
+  standoffDistance: number;
+  repathMs: number;
+  grenades: boolean;
+}
+
+export const DEFAULT_SIM_BOT_TUNING: SimBotTuning = {
+  reactionMs: 70,
+  fireIntervalMs: DRONE_CONFIG.fireIntervalMs,
+  burstCount: DRONE_CONFIG.burstCount,
+  burstSpacingMs: DRONE_CONFIG.burstSpacingMs,
+  aimErrorRadians: 0,
+  leadFactor: 0.35,
+  hoverSpeed: DRONE_CONFIG.hoverSpeed,
+  standoffDistance: DRONE_CONFIG.standoffDistance,
+  repathMs: DRONE_CONFIG.repathMs,
+  grenades: true,
+};
+
+export const SIM_BOT_TUNING: Record<PracticeDifficulty, SimBotTuning> = {
+  easy: {
+    reactionMs: 520,
+    fireIntervalMs: 2600,
+    burstCount: 2,
+    burstSpacingMs: 210,
+    aimErrorRadians: 0.2,
+    leadFactor: 0,
+    hoverSpeed: 118,
+    standoffDistance: 340,
+    repathMs: 1300,
+    grenades: false,
+  },
+  normal: {
+    ...DEFAULT_SIM_BOT_TUNING,
+    aimErrorRadians: 0.07,
+    reactionMs: 220,
+  },
+  hard: {
+    reactionMs: 110,
+    fireIntervalMs: 1150,
+    burstCount: 4,
+    burstSpacingMs: 125,
+    aimErrorRadians: 0.03,
+    leadFactor: 0.6,
+    hoverSpeed: 190,
+    standoffDistance: 235,
+    repathMs: 600,
+    grenades: true,
+  },
+  merciless: {
+    reactionMs: 45,
+    fireIntervalMs: 780,
+    burstCount: 6,
+    burstSpacingMs: 95,
+    aimErrorRadians: 0.012,
+    leadFactor: 0.9,
+    hoverSpeed: 220,
+    standoffDistance: 205,
+    repathMs: 420,
+    grenades: true,
   },
 };
 

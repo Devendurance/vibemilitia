@@ -85,22 +85,6 @@ export function TouchSettingsPanel() {
         onChange={(value) => update({ rightDeadZone: value })}
       />
       <TouchRow
-        label="AIM SENSITIVITY"
-        value={settings.aimSensitivity}
-        min={0.5}
-        max={1.6}
-        step={0.05}
-        onChange={(value) => update({ aimSensitivity: value })}
-      />
-      <TouchRow
-        label="AUTO FIRE"
-        value={settings.aimFireThreshold}
-        min={0.3}
-        max={0.98}
-        step={0.02}
-        onChange={(value) => update({ aimFireThreshold: value })}
-      />
-      <TouchRow
         label="FLY THRESHOLD"
         value={settings.thrustThreshold}
         min={0.25}

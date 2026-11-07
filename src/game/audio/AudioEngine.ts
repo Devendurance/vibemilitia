@@ -19,6 +19,7 @@ export type SoundId =
   | "medkitPickup"
   | "medkitUse"
   | "countdown"
+  | "matchGo"
   | "victory"
   | "defeat"
   | "uiSelect"
@@ -93,6 +94,8 @@ class AudioEngine {
   private musicBuffer: AudioBuffer | null = null;
   private musicLoad: Promise<AudioBuffer | null> | null = null;
   private musicStarting = false;
+  private hubActive = false;
+  private musicRequest = 0;
   private prefs: AudioPreferences = { ...DEFAULT_PREFS };
   private voices = 0;
   private noise: AudioBuffer | null = null;
@@ -266,14 +269,38 @@ class AudioEngine {
     return this.musicLoad;
   }
 
+  enterHub(): void {
+    this.hubActive = true;
+  }
+
+  leaveHub(): void {
+    this.hubActive = false;
+    this.musicRequest += 1;
+    this.stopMusic();
+  }
+
   async startMusic(): Promise<boolean> {
-    if (typeof window === "undefined" || this.prefs.musicMuted || this.prefs.muted) return false;
+    if (
+      typeof window === "undefined" ||
+      !this.hubActive ||
+      this.prefs.musicMuted ||
+      this.prefs.muted
+    ) return false;
     if (this.musicStarting) return false;
     if (!this.context || !this.musicGain || this.musicSource) return this.musicSource !== null;
     this.musicStarting = true;
+    const request = ++this.musicRequest;
     try {
       const buffer = await this.loadMusic();
-      if (!buffer || this.prefs.musicMuted || this.prefs.muted || !this.context || !this.musicGain) return false;
+      if (
+        !buffer ||
+        !this.hubActive ||
+        request !== this.musicRequest ||
+        this.prefs.musicMuted ||
+        this.prefs.muted ||
+        !this.context ||
+        !this.musicGain
+      ) return false;
       const source = this.context.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
@@ -480,6 +507,11 @@ class AudioEngine {
         break;
       case "countdown":
         this.tone({ type: "square", frequency: 660, duration: 0.1, gain: 0.07 * gain });
+        break;
+      case "matchGo":
+        [880, 1320].forEach((frequency, index) =>
+          this.tone({ type: "square", frequency, duration: 0.2, gain: 0.08 * gain, delay: index * 0.05 }),
+        );
         break;
       case "victory":
         [523, 659, 784, 1046].forEach((frequency, index) =>

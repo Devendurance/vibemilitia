@@ -114,7 +114,7 @@
 - Reload recovery is tab-scoped: `src/lib/resumeContext.ts` uses `sessionStorage`, never shared `localStorage`. `POST /api/resume` is bearer-authenticated, identity-bound, single-use and expiry-bound. The server keeps only SHA-256 hashes of 32-byte handles in `server/resumeRegistry.ts`.
 - `server/resumeRegistry.ts` is process-local. A server restart loses live rooms and resume handles; guest profiles and leaderboard data persist.
 - Schema v3 adds `players.x_handle`, `players.x_public`, `players.leaderboard_visible` and `idx_players_leaderboard`. Apply automatically on server start.
-- `GET /api/leaderboard?limit=25` is public, read-only, opt-in and server-derived. `server/leaderboard.ts` maps rows to `LeaderboardEntry` with `xVerified: false`.
+- `GET /api/leaderboard?limit=25` is public, read-only and server-derived. The first-visit prompt ticks "Include me in the global leaderboard" by default (`leaderboardVisible ?? true`), so it is opt-out, not opt-in. `server/leaderboard.ts` maps rows to `LeaderboardEntry` with `xVerified: false`.
 - Display names are editable and non-unique. X handles are self-declared and must never be shown as verified.
 - Guest rate limit is 30/min/IP. API limit is still 120/min/IP.
 - `server/loadEnv.ts` preserves shell env values over `.env.local`, so `DATABASE_URL=' ' DATABASE_PATH=...` safely selects SQLite.
@@ -122,7 +122,7 @@
 - Hub components live in `src/components/hub/`. First-visit onboarding is a modal on `/`; the `/online` first-visit guidance is a non-blocking inline banner.
 - The root layout imports only `src/app/globals.css`. Appending to a second global CSS import caused Turbopack to serve only one sheet. All hub/online/touch CSS is in `globals.css`.
 - Touch v2 classes are `tc-*`; old `.touch-*` CSS remains for any legacy fallback. TouchControls takes `variant`, `onExit` and `modeLabel`.
-- Local practice has no grenades, medkits, advanced weapons or elimination loot. It uses the existing drone bots and supports the selected Viber cutout.
+- Practice (`PracticeHost`, see Playability rescue) runs the same `GameSimulation` as online with seven bots, all seven weapons, grenades, medkits, caches and loot, and no XP. The old drone-only description is obsolete. The legacy drone drill stays at `/practice?engine=legacy`.
 - `scripts/verify-hub-ux.mjs` (`npm run verify:ux`) captures the 10-size matrix and checks reload recovery. `SKIP_EXPIRY=1` skips the 30-second offline wait.
 
 ## P5 facts
@@ -255,3 +255,32 @@
 - Preserve original NFT artwork. The game must never regenerate or restyle the character without a fidelity review.
 - Keep game rules in `src/game/core`, AI navigation in `src/game/ai` and shared multiplayer rules in `src/game/multiplayer` free of Phaser imports.
 - Commit and push meaningful checkpoints. `origin` is `https://github.com/Devendurance/vibemilitia.git` and `main` tracks `origin/main`.
+
+## Playability rescue facts
+
+- The owner plays from Nigeria (Cloudflare `loc=NG`). Traffic enters Cloudflare at NBO or JNB, then crosses to tunnel connectors in Toronto and Montreal. The VPS is in Montreal, AS26832 Rica Web Services. Public RTT through the tunnel is 360 to 560 ms. Treat 550/80 as a real test profile.
+- Route legs measured 2026-11-06 from Nigeria: Cloudflare edge p50 195 ms, VPS direct TCP p50 201 ms, tunnel app RTT p50 467 ms. Candidate regions by TCP connect: Cape Town 81, London 127, Milan 131, Frankfurt 137, Ireland 140, Virginia 195, Montreal 205, UAE 233, Mumbai 335. One vantage point only.
+- Only port 22 is public on `endy-vps`, and no web server runs there. Neon is in us-east-2, which is only touched at join and match settlement.
+- A killed suite can orphan its server and Next children. `test-stack.mjs` now clears ports first.
+- The latency proxy must keep one FIFO per direction. Per-chunk timers reorder bytes.
+- Never run a local proxy in the same process as `spawnSync`. It freezes the proxy.
+- `verify:production` writes guest profiles and fills seats. Use `scripts/verify-release.mjs` with `NO_GUEST=1` on production and prove XP on `p5-test`.
+- Git Bash heredocs choke on apostrophes here. Write patch scripts with the file tool.
+
+## Mobile correction facts
+
+- Phaser `resize` skips the canvas style when zoom is exactly 1. Don't use its scale zoom.
+- Phaser 4 links a new shader the first time a batch uses a new texture count. That cost 259 ms at GO. `prewarmBatches` walks 24 textures behind the backdrop.
+- `page.screenshot` stalls the whole browser's rAF, including other pages. Don't take one in a run that measures timing.
+- Next rewrites `<meta name="viewport">` as navigation settles, so a one-time change does not hold.
+- The stack `screen` must be set in Playwright to separate a toolbar change from a real resize.
+- `verify-online-characters` needs 9 s of countdown, or the guest can join after bots took its skin.
+
+## Sprite art facts
+
+- Texture order: `preloadLoadoutArt` must run in `preload`, because `createGameTextures` runs in `create` and no longer draws those keys. A scene that skips it shows Phaser's missing texture box. Each scene that shows loadout art calls it, currently `OnlineScene` and `ArenaScene`.
+- `bullet-*` textures were only used by the legacy drill. Online and practice drew Graphics dots until the art change.
+- Arcade body size is `sourceWidth * scale`, so a 0.5 scale bullet passes twice the wanted size to `setSize`.
+- Source files here can be CRLF. A regex reading them needs `\r?\n`. One such regex made a mobile weapon check pass with 0 of 0 weapons.
+- Don't stop a background suite and trust timing right after. Compare against the previous build before calling a timing failure a regression.
+
