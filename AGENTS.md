@@ -109,6 +109,7 @@
 - README gallery: `scripts/capture-readme-media.mjs` writes raw captures to `artifacts/readme-media/` (gitignored). `scripts/optimize-readme-media.py` writes the committed WebP files to `docs/media/`. Do not commit raw captures.
 - Root `LICENSE` is MIT, approved by the owner on 2026-11-07, copyright holder "Devendurance". It covers source code only. `ASSET_RIGHTS.md` tracks artwork rights, and artwork is not MIT-licensed. Do not change the license or add artwork under it without owner approval.
 - Describe Practice as the same simulation as Online, with seven bots and no XP. Do not describe it as a drone drill except for `/practice?engine=legacy`.
+- App icons come from the hub mark (`.hub-brand__mark`). `src/app/icon.svg` is the vector source. After changing the mark, update the SVG and run `python scripts/generate-favicons.py` to rebuild `favicon.ico`, `apple-icon.png` and `public/brand/icon-*.png`.
 
 ## UI DESIGN
 
