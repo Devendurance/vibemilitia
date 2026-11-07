@@ -2,35 +2,29 @@
 
 ## Current task
 
-Approved sprite art is merged and frontend-deployed. Next is a physical phone test and a real-player beta.
+README rewrite, gameplay gallery and rights documentation are committed. The repo has no root LICENSE. Owner decisions are still open (see Next).
 
 ## Done
 
-- Frontend `dpl_Fc9XxSRLMo6s1dn4XQRJXaRbHZq2` from `fac7d8b`, with the sprite art. Previous code deployment: `dpl_Bm2SdBeH83tKeyJZX5fx6T1LNRnu`. Backend stays on `af205b9`. Public practice smoke and `verify-release` with `NO_GUEST=1` passed.
-- Art: guns, akimbo layers, grenades, medkit, projectiles and HUD, hub and touch icons replace the procedural art. Medkit and grenade pickups have no dark tag, only the glow ring. 248 KB in `public/sprites/{loadout,projectiles,icons}`. Sources backed up in the ignored `artifacts/sprite-sources/`.
-- Art measurement `npm run measure:art`, results in `artifacts/art/{baseline,after}.json`: no FPS or p95 change.
-- Mobile correction on `main`: combined aim + fire, render scale split from world zoom, match viewport lock, animated authoritative countdown, portrait hub scrolling. Frontend only, so the backend stays on `af205b9`. No server, simulation or protocol file changed.
-- Frontend `dpl_Bm2SdBeH83tKeyJZX5fx6T1LNRnu` from `65fa870`. Public practice smoke and `verify-release` with `NO_GUEST=1` passed.
-- Gates: `verify:mobile` 129/129, `verify:playability` 109/109, unit 212 pass. Traces in `artifacts/playability/mobile/`.
-- Backend release `af205b9` on `~/apps/vibe-militia-releases/af205b9`, live on loopback 2767. Rollback: point the symlink at `eebd97b` and restart `vibe-militia.service`.
-- Frontend `dpl_7tm9h71jGNk7RCHo7ftYe3AVLG6P` from `e3c4f28`. Previous code deployment: `dpl_FDvQ89MUKGketaeBWfuYpRaQRNHt`.
-- Before/after data: `artifacts/playability/{before,after}.json`, printed by `scripts/compare-playability.mjs`.
-- Gates: unit 206 pass, 7 skipped; `verify:playability` 109/109; 16 browser suites pass, with three known test races below. XP proven on Neon `p5-test` through a staged release. Public match passed with guest creation blocked, so nothing was written to production.
+- README rewritten from source config: hero, badges, 9-image gallery (`docs/media/*.webp`), arsenal, grenades, pickups and loot, roster, modes, controls, progression, architecture, setup, status, privacy, licensing.
+- Gallery captured from a local production build via `scripts/capture-readme-media.mjs` (SQLite, test hooks for placement only, no Neon writes). Converted by `scripts/optimize-readme-media.py`. Raw captures stay in gitignored `artifacts/readme-media/`.
+- `ASSET_RIGHTS.md` records artwork provenance and what is unverified. No permission is granted or claimed.
+- Proposed MIT text staged at `docs/licensing/PROPOSED-MIT-LICENSE.md`. Not in effect, placeholders for holder and year.
+- README checked: GitHub markdown API render (tables, images, centered header OK), 9 image paths, all local links, badge URLs 200, GitHub/Vercel/Colyseus/Next links 200, `npm run lint` and `npm run typecheck` pass.
+- AGENTS.md got a DOCUMENTATION section. agent-state corrected (practice is the full simulation, leaderboard default is on).
 
 ## Next
 
-0. Owner tests the live art on a physical phone. Rerun `verify:mobile` countdown timing on a quiet machine.
-1. Test on physical iOS and Android. Everything mobile so far is Chromium emulation.
-2. Decide the route. From Nigeria the tunnel measures p50 467 ms against 201 ms direct to the VPS, because traffic detours through NBO or JNB. Options, needing owner approval: a direct TLS hostname on the VPS, then a London or Frankfurt server if players are mostly in Africa or Europe. Player locations are not yet known.
-3. Run the 15-20 player beta from `BETA_TESTING.md`.
+0. Owner: choose a source license. Decide whether artwork stays out of it. Then move the proposed text to `LICENSE` and add a license badge only after approval.
+1. Owner: confirm rights to the Vibe Vibers character art and the origin of sprite sources and the Sector 07 SVG. Update `ASSET_RIGHTS.md`.
+2. Owner: decide whether the leaderboard should be opt-in, not ticked by default. It is ticked now, which conflicts with older "opt-in" wording.
+3. Physical phone test (iOS and Android). Everything mobile is still Chromium emulation.
+4. Route decision for the tunnel latency (see `DEPLOYMENT.md`), then the 15-20 player beta from `BETA_TESTING.md`.
 
 ## Known issues
 
-- `verify:mobile` countdown timing fails while this machine is under load, and fails the same on the build before the art. It passed 129/129 earlier on a quiet machine, so rerun it quiet after the art merge.
-- Short guns stop before the server's bullet origin, 66 units from the pivot: SMG at 58, akimbo at 64. Bullets appear 8 and 2 units ahead of the visible muzzle.
-- Grenade, stinking, arsenal, pickups and loot suites fail intermittently on `main` and on this work alike. `verify-online-grenades` failed 2 of 3 on `main`. Failures read as a throw not consumed or a dead player at a check, and appear to come from bots and timing in older multi-page suites. Not root-caused.
-- iOS Safari is unverified. The carried page zoom cause of the missing right pad is reproduced only by forcing page scale in Chromium.
-- Test races, none in product code: four of 14 respawn pads sit within 90 px of a weapon cache, so loot's "empty third slot" check fails about 1 run in 7. `verify:ux` can fail its reload check if bots kill the unguarded player. `verify:browser` legacy drill timing failed once in eight runs.
-- Lobby timeout and retry is defensive. The stall that prompted it came from a bug in the test proxy, not from a proven production fault.
-- Old HUD CSS in `globals.css` is dead weight, overridden by the block at the end of the file.
-- `/practice?engine=legacy` keeps the old drone drill for the P1 suite only.
+- README mermaid diagram is not rendered by GitHub's markdown API here. Check it on GitHub.
+- Feedback form can attach the guest ID. The README says so, and the owner may want that changed.
+- phaser.io returns a Cloudflare challenge to automated fetches, so the README links the Phaser GitHub repo instead.
+- Sprite loadout art is not regenerated by this pass.
+- Known gameplay issues are unchanged from the previous milestone (see `project-state.md`).

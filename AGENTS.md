@@ -103,6 +103,13 @@
 - Never assume your changes work; always test.
 - If the project does not have any testing tools, scripts, MCP tools, or similar resources available for testing, ask the user whether testing should be skipped.
 
+## DOCUMENTATION
+
+- README game numbers come from source config: `src/game/config/gameplay.ts`, `src/game/core/grenades.ts`, `src/game/core/pickups.ts`, `src/game/core/loot.ts` and `src/game/progression/progression.ts`. Update the README when those change. Do not copy numbers from older docs.
+- README gallery: `scripts/capture-readme-media.mjs` writes raw captures to `artifacts/readme-media/` (gitignored). `scripts/optimize-readme-media.py` writes the committed WebP files to `docs/media/`. Do not commit raw captures.
+- There is no root LICENSE yet. `ASSET_RIGHTS.md` tracks artwork rights. Do not add a LICENSE file, or a license badge, until the owner approves a license. Proposed text stays in `docs/licensing/`.
+- Describe Practice as the same simulation as Online, with seven bots and no XP. Do not describe it as a drone drill except for `/practice?engine=legacy`.
+
 ## UI DESIGN
 
 - Always follow or reference the UI design system when creating or reviewing components or pages.
