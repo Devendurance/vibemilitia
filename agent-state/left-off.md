@@ -2,9 +2,14 @@
 
 ## Current task
 
-README rewrite, gallery and rights notes are committed. Root `LICENSE` is MIT, approved by the owner on 2026-11-07. Artwork rights are still open (see Next).
+Update PR #1 with the approved Seth_Makes_Sounds hub soundtrack, preserve the main-branch README and rights documentation, and leave the PR open.
 
 ## Done
+
+- Merged `origin/main` into `feat/hub-background-music` at `d6a3815`, preserving the README gallery, MIT license and artwork-rights notes.
+- Replaced the hub audio with Seth_Makes_Sounds' approved CC0 `Fun Music Loop` from Freesound sound 688623. Technical inspection found approximately 3.05 seconds of trailing quiet, trimmed to a 120.080-second MP3 at 128 kbps.
+- Added a hub-session token guard so delayed audio decode cannot start after navigation to Practice or Online.
+- Typecheck, lint, unit tests and production build pass after the update.
 
 - README rewritten from source config: hero, badges, 9-image gallery (`docs/media/*.webp`), arsenal, grenades, pickups and loot, roster, modes, controls, progression, architecture, setup, status, privacy, licensing.
 - Gallery captured from a local production build via `scripts/capture-readme-media.mjs` (SQLite, test hooks for placement only, no Neon writes). Converted by `scripts/optimize-readme-media.py`. Raw captures stay in gitignored `artifacts/readme-media/`.
