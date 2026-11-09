@@ -14,6 +14,7 @@
  * elimination attribution, and room isolation.
  */
 
+import { createFailureLog } from "./lib/failure-diagnostics.mjs";
 import { chromium } from "playwright-core";
 import { Client } from "@colyseus/sdk";
 import { mkdir } from "node:fs/promises";
@@ -24,9 +25,11 @@ const artifactDir = process.env.ARTIFACT_DIR ?? "";
 const executablePath = process.env.CHROME_PATH;
 
 const checks = [];
+const failureLog = createFailureLog(artifactDir, {});
 const check = (name, condition, detail = "") => {
   checks.push({ name, ok: Boolean(condition), detail });
   console.log(`${condition ? "PASS" : "FAIL"}  ${name}${detail ? `  ${detail}` : ""}`);
+  if (!condition) failureLog.capture(name, detail);
 };
 
 if (artifactDir) await mkdir(artifactDir, { recursive: true });
@@ -40,6 +43,8 @@ const contextA = await browser.newContext({ viewport: { width: 1440, height: 900
 const contextB = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const pageA = await contextA.newPage();
 const pageB = await contextB.newPage();
+failureLog.pages.A = pageA;
+failureLog.pages.B = pageB;
 const pageErrors = [];
 for (const [label, page] of [
   ["A", pageA],
@@ -185,11 +190,16 @@ const aimAtWorld = async (page, camera, worldX, worldY) => {
   await page.waitForTimeout(70);
 };
 
+/** Input travels at 30 Hz to the server, so wait for the authoritative count. */
 const throwAtWorld = async (page, worldX, worldY) => {
   const current = await probe(page);
+  const before = current.local?.grenadeStinking ?? 0;
   await aimAtWorld(page, current.camera, worldX, worldY);
   await page.keyboard.press("KeyG");
-  await page.waitForTimeout(180);
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && ((await probe(page)).local?.grenadeStinking ?? 0) === before) {
+    await page.waitForTimeout(40);
+  }
 };
 
 const selectStinking = async (page) => {
@@ -299,6 +309,32 @@ const moveFillerToward = async (page, sessionId, target, maxMs = 12000) => {
   return false;
 };
 
+const poll = async (page, predicate, timeoutMs = 6000) => {
+  const startedAt = Date.now();
+  let state = await probe(page);
+  while (Date.now() - startedAt < timeoutMs && !predicate(state)) {
+    await page.waitForTimeout(90);
+    state = await probe(page);
+  }
+  return state;
+};
+
+/** Freezes every bot once all seats are filled, so none can kill the player first. */
+const freezeBots = async (page) => {
+  await page.waitForFunction(
+    () => (window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.participants ?? []).length >= 8,
+    null,
+    { timeout: 15000 },
+  );
+  await page.evaluate(() => {
+    const value = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    value.testHooks.extendMatch(600_000);
+    for (const participant of value.snapshot.participants) {
+      if (participant.kind === "bot") value.testHooks.freeze(participant.id, true);
+    }
+  });
+};
+
 const fillers = [];
 try {
   await pageA.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
@@ -386,6 +422,7 @@ try {
     selected.local?.grenadeSelected ?? "none",
   );
 
+  await freezeBots(pageA);
   // Replace the bots with idle SDK humans for deterministic toxic exposure.
   for (let index = 0; index < 6; index += 1) {
     const client = new Client(serverUrl);
@@ -404,7 +441,9 @@ try {
     `humans=${filled.humans} bots=${filled.bots}`,
   );
 
-  // Self exposure.
+  // Self exposure. A death resets the selection to contact, which would throw a
+  // contact grenade at the player's feet, so select right before throwing.
+  await selectStinking(pageA);
   const beforeSelf = await probe(pageA);
   const selfDeathsBefore = beforeSelf.local?.deaths ?? 0;
   await throwAtWorld(
@@ -422,21 +461,20 @@ try {
   );
   check(
     "the stinking canister is synchronized",
-    // Bots replaced a moment ago can still have grenades in the air.
+    // On a slow page the canister may already have opened by this read.
     afterThrow.grenades.some(
       (grenade) =>
-        grenade.type === "stinking" &&
-        (grenade.activationRemainingMs ?? 0) > 0,
-    ),
+        grenade.type === "stinking" && grenade.ownerId === afterThrow.sessionId,
+    ) || afterThrow.clouds.some((cloud) => cloud.ownerId === afterThrow.sessionId),
     `grenades=${afterThrow.grenades.map((grenade) => grenade.type).join(",")}`,
   );
-  await pageA.waitForTimeout(1200);
-  const cloudState = await probe(pageA);
+  const cloudState = await poll(pageA, (state) => state.clouds.length > 0 && state.cloudViews.length > 0, 3000);
   check(
     "toxic cloud activates with the configured radius and lifetime",
     cloudState.clouds.length === 1 &&
       cloudState.clouds[0].radius === 160 &&
-      cloudState.clouds[0].remainingMs > 4500,
+      cloudState.clouds[0].durationMs === 6000 &&
+      cloudState.clouds[0].remainingMs > 0,
     `clouds=${cloudState.clouds.length} radius=${cloudState.clouds[0]?.radius ?? 0}`,
   );
   check(
@@ -632,8 +670,17 @@ try {
     null,
     { timeout: 30000 },
   );
-  await pageC.evaluate(() =>
-    window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard(),
+  failureLog.pages.C = pageC;
+  // Bots throw stinking grenades too, and the cloud must outlast a page load.
+  await pageC.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard());
+  await freezeBots(pageC);
+  await pageC.waitForFunction(
+    () => {
+      const snapshot = window.__VIBE_MILITIA_ONLINE__.getProbe().snapshot;
+      return (snapshot.toxicClouds ?? []).length === 0 && (snapshot.grenades ?? []).length === 0;
+    },
+    null,
+    { timeout: 10_000 },
   );
   await selectStinking(pageC);
   const lateHost = await probe(pageC);
@@ -642,6 +689,7 @@ try {
   });
   const pageD = await contextD.newPage();
   pageD.on("pageerror", (error) => pageErrors.push(`D: ${error.message}`));
+  failureLog.pages.D = pageD;
   await pageD.goto(`${baseUrl}/online?room=${lateHost.roomId}`, {
     waitUntil: "networkidle",
   });
@@ -661,15 +709,26 @@ try {
     lateCloud.clouds.length === 1,
     `clouds=${lateCloud.clouds.length}`,
   );
+  await pageC.evaluate(() =>
+    window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.extendClouds(120_000),
+  );
   await pageD.locator('[data-testid="join-invite-room"]').click();
   await waitOnlineReady(pageD);
+  // Views build from the first snapshot, a frame or two after ready.
+  await pageD
+    .waitForFunction(
+      () => (window.__VIBE_MILITIA_ONLINE__.getProbe().toxicClouds ?? []).length > 0,
+      null,
+      { timeout: 8000 },
+    )
+    .catch(() => undefined);
   const lateJoin = await probe(pageD);
   check(
     "late joiner sees the existing toxic cloud",
     lateJoin.clouds.length === 1 &&
       lateJoin.cloudViews.length === 1 &&
       lateJoin.cloudViews[0].visible === true,
-    `clouds=${lateJoin.clouds.length}`,
+    `clouds=${lateJoin.clouds.length} views=${lateJoin.cloudViews.length}`,
   );
   await screenshot(pageD, "08-late-join-toxic-cloud");
   check(
@@ -695,6 +754,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
+  await failureLog.flush();
   for (const filler of fillers) {
     try {
       await filler.room.leave();

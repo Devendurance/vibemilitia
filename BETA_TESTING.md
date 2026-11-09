@@ -1,6 +1,6 @@
 # Beta Testing Plan
 
-This plan covers the first real-player beta for Vibe Militia: 15 to 20 participants across desktop and landscape mobile browsers, with server-authoritative rooms, Neon PostgreSQL progression and anonymous feedback capture.
+This plan covers the first real-player beta for Vibe Militia: 15 to 20 participants across desktop, phone and tablet browsers, with server-authoritative rooms, Neon PostgreSQL progression and anonymous feedback capture.
 
 ## Goals
 
@@ -33,10 +33,12 @@ Do not invite players until all of these are true:
 
 Target 15 to 20 players. Recruit a mix:
 
-- 8 to 10 desktop keyboard and mouse players.
-- 7 to 10 mobile players on landscape phones.
-- At least one iOS Safari device and one Android Chrome device.
+- 7 to 9 desktop keyboard and mouse players, on at least two browsers.
+- 5 to 7 landscape phone players.
+- 3 to 4 tablet players, including at least one iPad and one Android tablet under about USD 250.
+- At least two iOS Safari devices and two Android Chrome devices.
 - At least one player on a slower or higher-latency connection.
+- Players from at least two broad regions (for example West Africa and Europe). Ask only for the region, never a city or address.
 - A facilitator who is not playing and can watch `/ready`, logs and room count.
 
 Run two or three sessions of 45 to 60 minutes. Keep each room at eight or fewer humans. With 15 to 20 players, expect two or three concurrent rooms.
@@ -85,6 +87,17 @@ Each participant should complete at least two full matches.
 - Confirm two thumbs can move, fly, aim and fire together.
 - Confirm no page scroll, pinch zoom, text selection or stuck fire after interruptions.
 
+## Device and performance pass
+
+Everyone on a phone or tablet does this once, with settings open from the gear icon:
+
+1. Choose SHOW PERFORMANCE. The overlay stays hidden unless a player turns it on.
+2. Play one Practice match on Normal, then one Online match, both on AUTO quality.
+3. In the last 20 seconds of each match, press COPY SUMMARY and paste it into the feedback form.
+4. If the game feels slow on AUTO, repeat one match on SMOOTH and paste that summary too.
+
+The summary holds frame times, resolution, quality, GPU name, screen size, ping and snapshot gap. It has no names, guest IDs, tokens or location. Practice has no network, so a gap between Practice and Online on one device points at the connection or the server. Slow in both points at the device.
+
 ## What to record
 
 Use the in-game BETA FEEDBACK panel for a 1 to 5 rating and a short note. Client errors are captured automatically and anonymously.
@@ -99,6 +112,14 @@ Record only:
 - A screenshot or short recording when useful.
 
 Do not collect names, email addresses, phone numbers, IP addresses, wallet addresses or other personal data. Do not ask players to paste tokens or connection strings.
+
+Compare by device class and by region, never as one average. A good desktop average can hide a tablet that is unplayable.
+
+Ask every player three questions after their last match, on a 1 to 5 scale:
+
+- How smooth did it feel?
+- How well did controls respond?
+- How likely are you to play again tomorrow?
 
 ## Metrics
 
@@ -174,7 +195,12 @@ Crash-free rate:
 Duplicate XP observed:
 Average / p95 server tick:
 Desktop FPS:
-Mobile FPS:
+Phone FPS / 1% low / p95 (by device):
+Tablet FPS / 1% low / p95 (by device):
+Practice vs Online frame time (same device):
+Ping by broad region:
+Reconnects and accidental exits:
+Smoothness / controls / replay scores:
 Top three issues:
 Blocking issues:
 Decision: continue / fix first / roll back
@@ -183,6 +209,6 @@ Decision: continue / fix first / roll back
 ## Current status
 
 - Beta plan: ready.
-- Automated pre-beta verification: complete on the local production build and Neon test branch.
-- Real-player beta: not started.
-- Physical iOS and Android testing: pending. The first beta session is expected to provide the first real-device evidence.
+- Automated pre-beta verification: complete on local production builds, on emulated devices.
+- Real-player beta: not started. Nothing in this file proves real-player behavior.
+- Physical iOS, Android and tablet testing: pending. The first beta session provides the first real-device evidence, through the performance summaries above.

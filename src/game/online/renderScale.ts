@@ -1,29 +1,59 @@
 import type Phaser from "phaser";
 
-/** Pixel budget. Phones have high density but limited fill rate. */
+import { AdaptiveQuality, type EffectsLevel, type QualityReason } from "@/game/online/adaptiveQuality";
+import {
+  getQualityPreference,
+  subscribeQuality,
+  type QualityPreference,
+} from "@/game/online/qualityPreference";
+
+/** Pixel budgets. Density costs fill rate, and small GPUs have little to spare. */
+const MAX_PIXELS_WEAK = 1_200_000;
 const MAX_PIXELS_TOUCH = 1_900_000;
+const MAX_PIXELS_CAPABLE = 2_600_000;
 const MAX_PIXELS_DESKTOP = 3_700_000;
 const MAX_SCALE = 2;
-const SLOW_FRAME_MS = 24;
-const WINDOW_FRAMES = 100;
-/** Below this gain a drop bought nothing. */
-const MIN_DROP_GAIN = 0.08;
-/** Vsync hides small gains, so one step alone proves little. */
-const TRIAL_STEPS = 2;
 /** Browser toolbars take less height than this, so smaller shrinks are ignored. */
 const TOOLBAR_SHRINK_RATIO = 0.75;
 const HISTORY_LIMIT = 40;
 
+/**
+ * Entry and older mid-range tablet and phone GPUs. Adaptive quality still decides
+ * from measured frames, so a wrong guess costs a few seconds, not the session.
+ */
+const WEAK_GPU = /mali-(t|g3|g5[0-9]\b|g6[0-9]\b)|adreno \(tm\) (3|4|5|6[0-4])|powervr|ge8|img bxm/i;
+const CAPABLE_GPU = /apple|adreno \(tm\) (6[5-9]|7|8)|mali-g(7|9)|immortalis|xclipse/i;
+
+/** Start budget for a device. Viewport size never decides this alone. */
+export function pixelBudget(touch: boolean, renderer: string): number {
+  if (!touch) return MAX_PIXELS_DESKTOP;
+  if (WEAK_GPU.test(renderer)) return MAX_PIXELS_WEAK;
+  if (CAPABLE_GPU.test(renderer)) return MAX_PIXELS_CAPABLE;
+  return MAX_PIXELS_TOUCH;
+}
+
+/** Floors to a quarter step, so the result can never exceed the budget. */
 export function chooseRenderScale(
   cssWidth: number,
   cssHeight: number,
   devicePixelRatio: number,
-  touch: boolean,
+  budget: number,
 ): number {
-  const budget = touch ? MAX_PIXELS_TOUCH : MAX_PIXELS_DESKTOP;
   const fit = Math.sqrt(budget / Math.max(1, cssWidth * cssHeight));
   const scale = Math.min(devicePixelRatio, MAX_SCALE, fit);
-  return Math.max(1, Math.round(scale * 4) / 4);
+  return Math.max(1, Math.floor(scale * 4) / 4);
+}
+
+function readRenderer(): string {
+  try {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    const name = info ? String(gl?.getParameter(info.UNMASKED_RENDERER_WEBGL) ?? "") : "";
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return name;
+  } catch {
+    return "";
+  }
 }
 
 /** World units to CSS pixels. Short screens see more of the arena. */
@@ -51,11 +81,12 @@ export function nextCanvasSize(current: Size, measured: Size): Size {
 
 export interface RenderEvent {
   atMs: number;
-  reason: string;
+  reason: QualityReason | "boot" | "resize" | "debug" | "preference";
   css: Size;
   backing: Size;
   renderScale: number;
   worldZoom: number;
+  effects: EffectsLevel;
 }
 
 function isPhoneLike(): boolean {
@@ -88,27 +119,51 @@ export class RenderScaler {
   private game: Phaser.Game | null = null;
   private observer: ResizeObserver | null = null;
   private onChange: (() => void) | null = null;
-  private frameTotal = 0;
-  private frameCount = 0;
-  private slowWindows = 0;
-  /** Set after a drop: the frame time it must beat, and where to go back to. */
-  private trial: { averageMs: number; scale: number; steps: number } | null = null;
-  private settled = false;
+  /** Null when the player pinned a quality, so nothing adapts. */
+  private adaptive: AdaptiveQuality | null = null;
+  private unsubscribe: (() => void) | null = null;
+  readonly renderer: string;
+  effects: EffectsLevel = "full";
+  preference: QualityPreference;
 
   constructor(parent: HTMLElement) {
     this.parent = parent;
     this.phone = isPhoneLike();
     this.touch = this.phone || navigator.maxTouchPoints > 0;
     this.css = this.measure();
-    this.scale = chooseRenderScale(
-      this.css.width,
-      this.css.height,
-      window.devicePixelRatio || 1,
-      this.touch,
-    );
+    this.renderer = readRenderer();
+    this.preference = getQualityPreference();
+    this.scale = 1;
+    this.applyPreference();
     this.zoom = this.chooseWorldZoom();
     this.applyCssSize();
     this.record("boot");
+  }
+
+  /** Target scale for the current size and preference, before any adapting. */
+  private targetScale(): number {
+    const budget =
+      this.preference === "sharp" ? MAX_PIXELS_DESKTOP : pixelBudget(this.touch, this.renderer);
+    return chooseRenderScale(this.css.width, this.css.height, window.devicePixelRatio || 1, budget);
+  }
+
+  private applyPreference(): void {
+    this.adaptive = null;
+    if (this.preference === "smooth") {
+      this.scale = 1;
+      this.effects = "reduced";
+      return;
+    }
+    this.scale = this.targetScale();
+    this.effects = "full";
+    if (this.preference === "auto") this.adaptive = new AdaptiveQuality(this.scale);
+  }
+
+  /** What the benchmark and the diagnostics view read. */
+  get adaptiveState(): { frameMs: number; workMs: number } | null {
+    return this.adaptive
+      ? { frameMs: this.adaptive.lastFrameMs, workMs: this.adaptive.lastWorkMs }
+      : null;
   }
 
   /** CSS pixels per world unit. Independent of render scale by construction. */
@@ -153,6 +208,13 @@ export class RenderScaler {
     this.game = game;
     this.observer = new ResizeObserver(() => this.onContainerResize());
     this.observer.observe(this.parent);
+    this.unsubscribe = subscribeQuality(() => {
+      const preference = getQualityPreference();
+      if (preference === this.preference) return;
+      this.preference = preference;
+      this.applyPreference();
+      this.apply("preference");
+    });
     game.events.once("destroy", () => this.detach());
   }
 
@@ -164,6 +226,8 @@ export class RenderScaler {
   private detach(): void {
     this.observer?.disconnect();
     this.observer = null;
+    this.unsubscribe?.();
+    this.unsubscribe = null;
     this.game = null;
     this.onChange = null;
   }
@@ -177,7 +241,7 @@ export class RenderScaler {
     this.apply("resize");
   }
 
-  private apply(reason: string): void {
+  private apply(reason: RenderEvent["reason"]): void {
     const game = this.game;
     if (!game) return;
     this.applyCssSize();
@@ -191,7 +255,7 @@ export class RenderScaler {
     this.record(reason);
   }
 
-  private record(reason: string): void {
+  private record(reason: RenderEvent["reason"]): void {
     this.history.push({
       atMs: Math.round(performance.now()),
       reason,
@@ -199,50 +263,25 @@ export class RenderScaler {
       backing: this.gameSize(),
       renderScale: this.scale,
       worldZoom: this.zoom,
+      effects: this.effects,
     });
     if (this.history.length > HISTORY_LIMIT) this.history.shift();
   }
 
   /** Development probe: forces the path adaptive quality takes on a slow GPU. */
   debugSetScale(scale: number): void {
+    this.adaptive = null;
     this.scale = Math.max(1, Math.min(MAX_SCALE, scale));
     this.apply("debug");
   }
 
-  observeFrame(frameMs: number): void {
-    if (this.settled || this.scale <= 1 || frameMs > 250) return;
-    this.frameTotal += frameMs;
-    this.frameCount += 1;
-    if (this.frameCount < WINDOW_FRAMES) return;
-    const average = this.frameTotal / this.frameCount;
-    this.frameTotal = 0;
-    this.frameCount = 0;
-
-    if (this.trial) {
-      const trial = this.trial;
-      if (average <= trial.averageMs * (1 - MIN_DROP_GAIN)) {
-        this.trial = null;
-      } else if (trial.steps < TRIAL_STEPS && this.scale > 1) {
-        trial.steps += 1;
-        this.scale = Math.max(1, this.scale - 0.25);
-        this.apply("adaptive");
-        return;
-      } else {
-        // A phone pinned to 30 Hz by battery saver stays at 33 ms at any density.
-        this.trial = null;
-        this.settled = true;
-        this.scale = trial.scale;
-        this.apply("restore");
-        return;
-      }
-    }
-
-    this.slowWindows = average > SLOW_FRAME_MS ? this.slowWindows + 1 : 0;
-    if (this.slowWindows >= 2) {
-      this.slowWindows = 0;
-      this.trial = { averageMs: average, scale: this.scale, steps: 1 };
-      this.scale = Math.max(1, this.scale - 0.25);
-      this.apply("adaptive");
-    }
+  /** `workMs` is main-thread time in the game step, the rest of the frame is waiting. */
+  observeFrame(frameMs: number, workMs: number): void {
+    if (!this.adaptive) return;
+    const reason = this.adaptive.observe(frameMs, workMs, performance.now());
+    if (!reason) return;
+    this.scale = this.adaptive.state.scale;
+    this.effects = this.adaptive.state.effects;
+    this.apply(reason);
   }
 }

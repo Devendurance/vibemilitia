@@ -36,6 +36,8 @@ export function createOnlineGame(
     },
     render: {
       antialias: true,
+      // Sprites have transparent margins, so MSAA smooths nothing and still costs fill.
+      antialiasGL: false,
       roundPixels: false,
       powerPreference: "high-performance",
     },

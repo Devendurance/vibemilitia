@@ -7656,3 +7656,71 @@ html.in-match .settings-card textarea {
   grid-template-columns: 30px minmax(0, 1fr) auto;
 }
 
+/* ---------- Display quality and performance overlay ---------- */
+
+.quality-settings {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.quality-settings__options {
+  display: flex;
+  gap: 8px;
+}
+
+.quality-settings__options .hud-button {
+  flex: 1 1 0;
+  min-height: 44px;
+}
+
+.quality-settings p {
+  margin: 0;
+  color: var(--n2, #9aa0a7);
+  font-size: 12px;
+}
+
+/* Hidden by default. Sits top center, clear of both thumbs and the session bar. */
+.perf-overlay {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  z-index: 40;
+  transform: translateX(-50%);
+  padding: 6px 8px;
+  border: 1px solid #2e333a;
+  border-radius: 6px;
+  background: rgba(22, 24, 28, 0.94);
+  color: #f5f3ec;
+  font: 500 11px "JetBrains Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.perf-overlay dl {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 1px 10px;
+  margin: 0;
+}
+
+.perf-overlay dt {
+  color: #9aa0a7;
+}
+
+.perf-overlay dd {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.perf-overlay__copy {
+  width: 100%;
+  min-height: 32px;
+  margin-top: 6px;
+  border: 1px solid #3d434b;
+  border-radius: 4px;
+  background: transparent;
+  color: #f5f3ec;
+  font: inherit;
+  pointer-events: auto;
+}

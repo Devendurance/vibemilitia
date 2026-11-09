@@ -1268,7 +1268,8 @@ export class GameSimulation {
     bot.weaponId = BOT_WEAPON.id;
     bot.weaponState = createWeaponState(BOT_WEAPON);
     bot.akimboBarrel = 0;
-    bot.frozen = false;
+    // `frozen` is set only by the test-hook freeze, and it holds across respawn so
+    // a fixture stays still after it eliminates the bot.
     bot.path = [];
     bot.pathIndex = 0;
     bot.pathLength = 0;
@@ -3450,6 +3451,18 @@ export class GameSimulation {
 
   debugPauseLootCollection(paused: boolean): void {
     this.lootCollectionPaused = paused;
+  }
+
+  debugExtendLoot(durationMs: number): void {
+    if (!Number.isFinite(durationMs)) return;
+    for (const item of this.loot) item.expiresAtMs = this.elapsedMs + durationMs;
+  }
+
+  debugExtendToxicClouds(durationMs: number): void {
+    if (!Number.isFinite(durationMs)) return;
+    for (const cloud of this.toxicClouds.values()) {
+      cloud.expiresAtMs = this.elapsedMs + durationMs;
+    }
   }
 
   debugExtendMatch(durationMs: number): boolean {

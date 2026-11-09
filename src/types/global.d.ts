@@ -31,6 +31,29 @@ declare global {
           thrustHeld: boolean;
           moveX: number;
         };
+        frames: number[];
+        renderLoad: () => {
+          objects: number;
+          culled: number;
+          sprites: number;
+          particles: number;
+          projectiles: number;
+        };
+        render: {
+          scale: number;
+          frameMs: number;
+          effects: string;
+          preference: string;
+          renderer: string;
+          adaptive: { frameMs: number; workMs: number } | null;
+        };
+        viewport: {
+          canvasCss: { width: number; height: number };
+          canvasBacking: { width: number; height: number };
+          renderScale: number;
+          worldZoom: number;
+          history: Array<{ reason: string }>;
+        };
         net?: {
           pendingTicks: number;
           lastCorrectionPx: number;

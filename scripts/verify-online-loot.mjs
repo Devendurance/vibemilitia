@@ -14,6 +14,7 @@
  * expiry and replay state remains server-authoritative.
  */
 
+import { createFailureLog } from "./lib/failure-diagnostics.mjs";
 import { chromium } from "playwright-core";
 import { mkdir } from "node:fs/promises";
 
@@ -22,9 +23,11 @@ const artifactDir = process.env.ARTIFACT_DIR ?? "";
 const executablePath = process.env.CHROME_PATH;
 
 const checks = [];
+const failureLog = createFailureLog(artifactDir, {});
 const check = (name, condition, detail = "") => {
   checks.push({ name, ok: Boolean(condition), detail });
   console.log(`${condition ? "PASS" : "FAIL"}  ${name}${detail ? `  ${detail}` : ""}`);
+  if (!condition) failureLog.capture(name, detail);
 };
 
 if (artifactDir) await mkdir(artifactDir, { recursive: true });
@@ -38,6 +41,8 @@ const contextA = await browser.newContext({ viewport: { width: 1440, height: 900
 const contextB = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const pageA = await contextA.newPage();
 const pageB = await contextB.newPage();
+failureLog.pages.A = pageA;
+failureLog.pages.B = pageB;
 const pageErrors = [];
 for (const [label, page] of [
   ["A", pageA],
@@ -220,7 +225,19 @@ const freezeBot = async (page, id) => {
   await hook(page, "freeze", id, true);
 };
 
+/** Bots join a frame or two after the live snapshot, so wait for every seat. */
+const waitForBots = async (page) => {
+  await page.waitForFunction(
+    () =>
+      // Bots fill every seat humans leave, eight in all.
+      (window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.participants ?? []).length >= 8,
+    null,
+    { timeout: 15000 },
+  );
+};
+
 const freezeAllBots = async (page) => {
+  await waitForBots(page);
   const state = await probe(page);
   for (const bot of state.bots) {
     if (!bot.alive) continue;
@@ -533,6 +550,8 @@ try {
   const secondBundleIds = secondLoot.loot.map((item) => item.id);
   check("a grenade elimination also produces a loot bundle", Boolean(contestMedkit));
 
+  // Bundles live 12 seconds, less than a page load on a busy machine.
+  await pageA.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.extendLoot(60_000));
   const contextC = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const pageC = await contextC.newPage();
   pageC.on("pageerror", (error) => pageErrors.push(`C: ${error.message}`));
@@ -683,9 +702,14 @@ try {
       deathWeapon.ammo <= ammoBeforeDeath,
     `${deathWeapon?.weaponId ?? "none"}:${deathWeapon?.ammo ?? "?"} <= ${equippedBeforeDeath}:${ammoBeforeDeath}`,
   );
+  // The DOM follows the snapshot on the next HUD publish, so wait for both.
   const respawned = await poll(
     pageA,
-    (state) => state.local?.alive === true && state.local.weapons[2].owned === false,
+    (state) =>
+      state.local?.alive === true &&
+      state.local.weapons[2].owned === false &&
+      state.hud.weaponSlots[2].owned === false &&
+      state.weaponSlotThree.includes("EMPTY"),
     7000,
   );
   check(
@@ -789,6 +813,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
+  await failureLog.flush();
   await contextA.close();
   await contextB.close();
   await browser.close();

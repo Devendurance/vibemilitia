@@ -1,10 +1,12 @@
 import Phaser from "phaser";
 import type { GrenadeType } from "@/game/core/grenades";
+import type { EffectsLevel } from "@/game/online/adaptiveQuality";
 
 type ImpactKind = "player" | "drone" | "world";
 
 export class EffectsSystem {
   private scene: Phaser.Scene;
+  private reduced = false;
   private lime: Phaser.GameObjects.Particles.ParticleEmitter;
   private red: Phaser.GameObjects.Particles.ParticleEmitter;
   private copper: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -70,48 +72,48 @@ export class EffectsSystem {
   }
 
   bulletImpact(x: number, y: number, kind: ImpactKind): void {
-    this.lime.explode(4, x, y);
-    this.mint.explode(2, x, y);
+    this.burst(this.lime, 4, x, y);
+    this.burst(this.mint, 2, x, y);
     if (kind !== "world") {
-      this.copper.explode(3, x, y);
+      this.burst(this.copper, 3, x, y);
     }
-    this.smoke.explode(2, x, y);
+    this.burst(this.smoke, 2, x, y);
   }
 
   muzzle(x: number, y: number, enemy = false): void {
     if (enemy) {
-      this.red.explode(2, x, y);
+      this.burst(this.red, 2, x, y);
     } else {
-      this.lime.explode(2, x, y);
-      this.cream.explode(1, x, y);
+      this.burst(this.lime, 2, x, y);
+      this.burst(this.cream, 1, x, y);
     }
   }
 
   heavyMuzzle(x: number, y: number): void {
-    this.cream.explode(5, x, y);
-    this.copper.explode(4, x, y);
-    this.voxelCopper.explode(3, x, y);
+    this.burst(this.cream, 5, x, y);
+    this.burst(this.copper, 4, x, y);
+    this.burst(this.voxelCopper, 3, x, y);
     this.ring(x, y, 0xf4e21c);
   }
 
   rocketMuzzle(x: number, y: number): void {
-    this.copper.explode(6, x, y);
-    this.smoke.explode(5, x, y);
-    this.voxelCopper.explode(3, x, y);
+    this.burst(this.copper, 6, x, y);
+    this.burst(this.smoke, 5, x, y);
+    this.burst(this.voxelCopper, 3, x, y);
     this.ring(x, y, 0xc7692f);
   }
 
   droneHit(x: number, y: number): void {
-    this.lime.explode(7, x, y);
-    this.copper.explode(5, x, y);
-    this.cream.explode(3, x, y);
+    this.burst(this.lime, 7, x, y);
+    this.burst(this.copper, 5, x, y);
+    this.burst(this.cream, 3, x, y);
   }
 
   droneDestroyed(x: number, y: number): void {
-    this.copper.explode(14, x, y);
-    this.red.explode(10, x, y);
-    this.lime.explode(8, x, y);
-    this.smoke.explode(10, x, y);
+    this.burst(this.copper, 14, x, y);
+    this.burst(this.red, 10, x, y);
+    this.burst(this.lime, 8, x, y);
+    this.burst(this.smoke, 10, x, y);
     this.ring(x, y, 0xc7692f);
   }
 
@@ -134,22 +136,22 @@ export class EffectsSystem {
     kind: "impact" | "toxic" = "impact",
     style: "lime" | "copper" | "toxic" = kind === "toxic" ? "toxic" : "lime",
   ): void {
-    this.voxelLime.explode(11, x, y);
-    this.voxelCopper.explode(9, x, y);
-    this.voxelSky.explode(8, x, y);
-    this.voxelCream.explode(6, x, y);
+    this.burst(this.voxelLime, 11, x, y);
+    this.burst(this.voxelCopper, 9, x, y);
+    this.burst(this.voxelSky, 8, x, y);
+    this.burst(this.voxelCream, 6, x, y);
     if (kind === "toxic" || style === "toxic") {
-      this.voxelRed.explode(8, x, y);
-      this.mint.explode(9, x, y);
+      this.burst(this.voxelRed, 8, x, y);
+      this.burst(this.mint, 9, x, y);
     } else if (style === "copper") {
-      this.voxelCopper.explode(12, x, y);
-      this.voxelRed.explode(7, x, y);
-      this.smoke.explode(8, x, y);
+      this.burst(this.voxelCopper, 12, x, y);
+      this.burst(this.voxelRed, 7, x, y);
+      this.burst(this.smoke, 8, x, y);
     } else {
-      this.voxelRed.explode(6, x, y);
-      this.lime.explode(8, x, y);
+      this.burst(this.voxelRed, 6, x, y);
+      this.burst(this.lime, 8, x, y);
     }
-    this.smoke.explode(7, x, y);
+    this.burst(this.smoke, 7, x, y);
     this.ring(
       x,
       y,
@@ -159,34 +161,34 @@ export class EffectsSystem {
   }
 
   lootExpired(x: number, y: number): void {
-    this.smoke.explode(3, x, y);
-    this.cream.explode(2, x, y);
+    this.burst(this.smoke, 3, x, y);
+    this.burst(this.cream, 2, x, y);
     this.ring(x, y, 0x6f767e);
   }
 
   weaponSwap(x: number, y: number): void {
-    this.voxelSky.explode(7, x, y);
-    this.voxelCream.explode(5, x, y);
-    this.mint.explode(5, x, y);
+    this.burst(this.voxelSky, 7, x, y);
+    this.burst(this.voxelCream, 5, x, y);
+    this.burst(this.mint, 5, x, y);
     this.ring(x, y, 0x9bd8f2);
   }
 
   heavyImpact(x: number, y: number): void {
-    this.voxelCream.explode(8, x, y);
-    this.voxelCopper.explode(7, x, y);
-    this.voxelRed.explode(5, x, y);
-    this.smoke.explode(5, x, y);
+    this.burst(this.voxelCream, 8, x, y);
+    this.burst(this.voxelCopper, 7, x, y);
+    this.burst(this.voxelRed, 5, x, y);
+    this.burst(this.smoke, 5, x, y);
     this.ring(x, y, 0xf4e21c);
   }
 
   rocketExplosion(x: number, y: number, radius: number): void {
-    this.voxelRed.explode(10, x, y);
-    this.voxelCopper.explode(9, x, y);
-    this.voxelCream.explode(6, x, y);
-    this.voxelLime.explode(4, x, y);
-    this.smoke.explode(6, x, y);
-    this.red.explode(6, x, y);
-    this.copper.explode(5, x, y);
+    this.burst(this.voxelRed, 10, x, y);
+    this.burst(this.voxelCopper, 9, x, y);
+    this.burst(this.voxelCream, 6, x, y);
+    this.burst(this.voxelLime, 4, x, y);
+    this.burst(this.smoke, 6, x, y);
+    this.burst(this.red, 6, x, y);
+    this.burst(this.copper, 5, x, y);
     this.ring(x, y, 0xe5484d);
     this.ring(x, y, 0xf4e21c);
     const shock = this.scene.add
@@ -210,43 +212,43 @@ export class EffectsSystem {
   }
 
   pickupCollected(x: number, y: number): void {
-    this.mint.explode(9, x, y);
-    this.lime.explode(7, x, y);
-    this.cream.explode(5, x, y);
+    this.burst(this.mint, 9, x, y);
+    this.burst(this.lime, 7, x, y);
+    this.burst(this.cream, 5, x, y);
     this.ring(x, y, 0xd7ff2e);
   }
 
   heal(x: number, y: number): void {
-    this.mint.explode(8, x, y);
-    this.cream.explode(6, x, y);
+    this.burst(this.mint, 8, x, y);
+    this.burst(this.cream, 6, x, y);
     this.ring(x, y, 0x9bd8f2);
   }
 
   grenadeThrow(x: number, y: number, type: GrenadeType): void {
     if (type === "stinking") {
-      this.mint.explode(4, x, y);
-      this.lime.explode(2, x, y);
+      this.burst(this.mint, 4, x, y);
+      this.burst(this.lime, 2, x, y);
     } else {
-      this.copper.explode(3, x, y);
-      this.smoke.explode(2, x, y);
+      this.burst(this.copper, 3, x, y);
+      this.burst(this.smoke, 2, x, y);
     }
   }
 
   toxicCloudCreated(x: number, y: number): void {
-    this.mint.explode(10, x, y);
-    this.lime.explode(8, x, y);
-    this.smoke.explode(4, x, y);
+    this.burst(this.mint, 10, x, y);
+    this.burst(this.lime, 8, x, y);
+    this.burst(this.smoke, 4, x, y);
     this.ring(x, y, 0x9bff5a);
   }
 
   toxicCloudExpired(x: number, y: number): void {
-    this.mint.explode(5, x, y);
-    this.smoke.explode(4, x, y);
+    this.burst(this.mint, 5, x, y);
+    this.burst(this.smoke, 4, x, y);
     this.ring(x, y, 0x6fbe2e);
   }
 
   toxicTick(x: number, y: number): void {
-    this.mint.explode(2, x, y);
+    this.burst(this.mint, 2, x, y);
   }
 
   grenadeExplosion(x: number, y: number, type: GrenadeType): void {
@@ -288,6 +290,19 @@ export class EffectsSystem {
       ease: "Cubic.Out",
       onComplete: () => ring.destroy(),
     });
+  }
+
+  setLevel(level: EffectsLevel): void {
+    this.reduced = level === "reduced";
+  }
+
+  private burst(
+    emitter: Phaser.GameObjects.Particles.ParticleEmitter,
+    count: number,
+    x: number,
+    y: number,
+  ): void {
+    emitter.explode(this.reduced ? Math.ceil(count / 2) : count, x, y);
   }
 
   damageNumber(x: number, y: number, amount: number, color = "#d7ff2e"): void {
