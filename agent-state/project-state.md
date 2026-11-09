@@ -6,7 +6,17 @@ Vibe Militia is a side-view free-for-all arena shooter built with Next.js 16, Re
 
 VIBER-010 remains the default and fallback, preserved from the original Vibe Vibers NFT artwork. Players can select any of the ten validated characters before joining. Online bots draw unique skins from appearances not already occupied where possible.
 
-## Approved sprite art (current milestone)
+## Tablet performance and beta stabilization (current milestone)
+
+- Diagnosis: at 4x CPU throttle the match is main-thread bound at every resolution (25-31 fps whether 0.8 or 1.9 M pixels). Old adaptive quality still cut resolution to 1.0 for nothing, then settled. Frames over 250 ms were ignored, so a very slow GPU never adapted.
+- `AdaptiveQuality` (pure, tested) drives `RenderScaler`: CPU limit drops effects, GPU limit drops resolution, failed trials retry with back-off, good periods climb back, 6 s hold between changes. Windows close on 120 frames or 2.5 s.
+- Budgets: desktop 3.7 M, touch 1.9 M, capable GPU (Apple, Adreno 65x+, Mali-G7x+) 2.6 M, weak GPU 1.2 M. Floors to quarter steps. Phones unchanged.
+- CPU cuts: off-camera cull by `cameraFilter`, off-camera effects and jet exhaust skipped, MSAA off, HUD forced only by local events.
+- Auto, Sharp, Smooth quality plus hidden performance overlay in match settings.
+- Gameplay fix: input latched while dead fired after respawn.
+- Suites isolated (bots frozen through respawn, state waits, extend hooks, `failures.json`).
+
+## Approved sprite art (previous milestone)
 
 - `LoadoutArt.ts` loads all gun, grenade, pickup and projectile PNGs in `preload`. `TextureFactory` no longer draws those keys, and keeps sparks, voxels, drone, muzzle flash, baked rings and `bullet-drone`.
 - `scripts/export-sprites.py` trims and downscales the sources at 2x. Art draws at `ART_SCALE` 0.5. `WEAPON_ANCHORS` holds origin and barrel tip per gun, measured from pixels.

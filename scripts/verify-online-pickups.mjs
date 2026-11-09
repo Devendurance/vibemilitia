@@ -427,11 +427,19 @@ try {
     await pageA.waitForTimeout(150);
   }
   if (damaged) {
-    const beforeHealth = damaged.health;
-    const beforeMedkits = damaged.medkits;
+    // Bots keep firing, and one more burst can kill a damaged player before
+    // the heal lands. The guard stops damage, not healing.
+    await pageA.evaluate(() => window.__VIBE_MILITIA_ONLINE__.getProbe().testHooks.guard());
+    const guarded = await probe(pageA);
+    const beforeHealth = guarded.alive === false ? damaged.health : guarded.health;
+    const beforeMedkits = guarded.medkits;
     await pageA.keyboard.press("KeyH");
-    await pageA.waitForTimeout(300);
-    const healed = await probe(pageA);
+    // Input reaches the server at 30 Hz, so wait for the authoritative count.
+    let healed = await probe(pageA);
+    for (let attempt = 0; attempt < 30 && healed.medkits === beforeMedkits; attempt += 1) {
+      await pageA.waitForTimeout(100);
+      healed = await probe(pageA);
+    }
     check(
       "H consumes one medkit and restores health",
       healed.medkits === beforeMedkits - 1 &&

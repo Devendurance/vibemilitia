@@ -636,7 +636,11 @@ export class OnlineScene extends Phaser.Scene {
     const dtMs = Math.min(delta, 50);
     this.frameMsEma += (delta - this.frameMsEma) * 0.05;
     this.latchSentThisFrame = false;
-    this.renderScaler?.observeFrame(this.game.loop.rawDelta, this.stepWorkMs);
+    this.renderScaler?.observeFrame(
+      this.game.loop.rawDelta,
+      this.stepWorkMs,
+      touchInput.aimActive || touchInput.fire || touchInput.moveX !== 0 || Boolean(this.lastFrame?.fire),
+    );
     this.cullOffCamera();
     this.frameLog.push(Math.round(this.game.loop.rawDelta * 10) / 10);
     if (this.frameLog.length > 600) this.frameLog.shift();

@@ -121,6 +121,7 @@ export class RenderScaler {
   private onChange: (() => void) | null = null;
   /** Null when the player pinned a quality, so nothing adapts. */
   private adaptive: AdaptiveQuality | null = null;
+  private deferred: QualityReason | null = null;
   private unsubscribe: (() => void) | null = null;
   readonly renderer: string;
   effects: EffectsLevel = "full";
@@ -149,6 +150,7 @@ export class RenderScaler {
 
   private applyPreference(): void {
     this.adaptive = null;
+    this.deferred = null;
     if (this.preference === "smooth") {
       this.scale = 1;
       this.effects = "reduced";
@@ -275,13 +277,21 @@ export class RenderScaler {
     this.apply("debug");
   }
 
-  /** `workMs` is main-thread time in the game step, the rest of the frame is waiting. */
-  observeFrame(frameMs: number, workMs: number): void {
+  /**
+   * `workMs` is main-thread time in the game step, the rest of the frame is
+   * waiting. `busy` is true while a thumb is down or a trigger is held: a resize
+   * stalls one frame, and on a slow tablet that delayed a tap's release enough
+   * to fire extra shots, so a decided change waits until hands are off.
+   */
+  observeFrame(frameMs: number, workMs: number, busy: boolean): void {
     if (!this.adaptive) return;
     const reason = this.adaptive.observe(frameMs, workMs, performance.now());
-    if (!reason) return;
+    if (reason) this.deferred = reason;
+    if (!this.deferred || busy) return;
+    const deferred = this.deferred;
+    this.deferred = null;
     this.scale = this.adaptive.state.scale;
     this.effects = this.adaptive.state.effects;
-    this.apply(reason);
+    this.apply(deferred);
   }
 }

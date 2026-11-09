@@ -296,6 +296,11 @@ async function twinStick(label, throttle) {
   await refill(page);
   const retained = (await state(page)).aim;
   const tapBefore = (await state(page)).ammo;
+  // Server shot times and quality changes, so an extra shot can be explained.
+  const tapMark = await page.evaluate(() => {
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    return { log: probe.combatLog.length, history: probe.viewport.history.length, at: probe.snapshot.elapsedMs };
+  });
   const taps = 5;
   for (let tap = 0; tap < taps; tap += 1) {
     await touch(cdp, "touchStart", [right(1.2)]);
@@ -305,11 +310,20 @@ async function twinStick(label, throttle) {
   }
   await page.waitForTimeout(150);
   const tapAfter = await state(page);
+  const tapTrace = await page.evaluate((mark) => {
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    const own = probe.combatLog.filter((entry) => entry.type === "shot" && entry.ownerId === probe.sessionId);
+    return {
+      shotsAt: own.filter((entry) => entry.atMs >= mark.at).map((entry) => entry.atMs - mark.at),
+      quality: probe.viewport.history.slice(mark.history).map((event) => `${event.reason}:${event.renderScale}`),
+      worstFrame: Math.max(...probe.frames.slice(-40)),
+    };
+  }, tapMark);
   // A throttled main thread can deliver the release a frame late, which the
   // server rightly treats as a longer press. One extra shot is the limit.
   const tapSlack = throttle > 1 ? 1 : 0;
   const tapShots = tapBefore - tapAfter.ammo;
-  check(`${label}: 6 each tap fires exactly one shot`, tapShots >= taps && tapShots <= taps + tapSlack, `${tapShots} shots from ${taps} taps`);
+  check(`${label}: 6 each tap fires exactly one shot`, tapShots >= taps && tapShots <= taps + tapSlack, `${tapShots} shots from ${taps} taps ${JSON.stringify(tapTrace)}`);
   check(`${label}: 6 tap keeps the retained aim`, angleGap(tapAfter.aim, retained) < 0.02, `${retained.toFixed(2)} -> ${tapAfter.aim.toFixed(2)}`);
 
   // 7. Legal cadence on an automatic and on a slow weapon.
@@ -727,7 +741,8 @@ try {
     const lastDigit = digits.at(-1);
     const pauseSlack = go && lastDigit ? go.gap + lastDigit.gap : 0;
     check(`17 ${label}: no dead pause between 1 and GO`, go && lastDigit && go.t - lastDigit.t < 1250 + pauseSlack, go && lastDigit ? `${(go.t - lastDigit.t).toFixed(0)} ms, frames ${pauseSlack.toFixed(0)} ms` : "missing");
-    const after = log[log.indexOf(go) + 1];
+    // Phase entries interleave with stage entries, so take the next stage change.
+    const after = log.slice(log.indexOf(go) + 1).find((entry) => "stage" in entry);
     check(`16 ${label}: GO clears`, after && after.stage === null, after ? `${(after.t - go.t).toFixed(0)} ms` : "stuck");
     traces[`countdown-${label}`] = log;
   };
