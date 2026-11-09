@@ -162,6 +162,18 @@ export class FFARoom extends Room {
         if (typeof value.durationMs !== "number") return;
         this.simulation.debugExtendMatch(value.durationMs);
       });
+      this.onMessage("debug-extend-loot", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { durationMs?: unknown };
+        if (typeof value.durationMs !== "number") return;
+        this.simulation.debugExtendLoot(value.durationMs);
+      });
+      this.onMessage("debug-extend-clouds", (_client, payload) => {
+        if (!this.simulation || !payload || typeof payload !== "object") return;
+        const value = payload as { durationMs?: unknown };
+        if (typeof value.durationMs !== "number") return;
+        this.simulation.debugExtendToxicClouds(value.durationMs);
+      });
       this.onMessage("debug-reset-pickups", () => {
         this.simulation?.debugResetPickups();
       });

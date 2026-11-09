@@ -15,15 +15,18 @@
 
 import { chromium } from "playwright-core";
 import { mkdir } from "node:fs/promises";
+import { createFailureLog } from "./lib/failure-diagnostics.mjs";
 
 const baseUrl = process.env.BASE_URL ?? "http://localhost:3000";
 const artifactDir = process.env.ARTIFACT_DIR ?? "";
 const executablePath = process.env.CHROME_PATH;
 
 const checks = [];
+const failureLog = createFailureLog(artifactDir, {});
 const check = (name, condition, detail = "") => {
   checks.push({ name, ok: Boolean(condition), detail });
   console.log(`${condition ? "PASS" : "FAIL"}  ${name}${detail ? `  ${detail}` : ""}`);
+  if (!condition) failureLog.capture(name, detail);
 };
 
 if (artifactDir) await mkdir(artifactDir, { recursive: true });
@@ -37,6 +40,8 @@ const contextA = await browser.newContext({ viewport: { width: 1440, height: 900
 const contextB = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const pageA = await contextA.newPage();
 const pageB = await contextB.newPage();
+failureLog.pages.A = pageA;
+failureLog.pages.B = pageB;
 const pageErrors = [];
 for (const [label, page] of [
   ["A", pageA],
@@ -106,6 +111,7 @@ const probe = (page) =>
       grenades: (snapshot?.grenades ?? []).map((grenade) => ({
         id: grenade.id,
         type: grenade.type,
+        ownerId: grenade.ownerId,
         x: grenade.x,
         y: grenade.y,
         fuseRemainingMs: grenade.fuseRemainingMs,
@@ -158,12 +164,76 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: `${artifactDir}/${name}.png` });
 };
 
-const hook = async (page, name) => {
-  await page.evaluate((hookName) => {
-    const hooks = window.__VIBE_MILITIA_ONLINE__?.getProbe().testHooks;
-    if (!hooks) return;
-    if (hookName === "guard") hooks.guard();
-  }, name);
+const hook = async (page, name, ...args) => {
+  await page.evaluate(
+    ([hookName, hookArgs]) =>
+      window.__VIBE_MILITIA_ONLINE__?.getProbe().testHooks?.[hookName]?.(...hookArgs),
+    [name, args],
+  );
+};
+
+/**
+ * Bots throw grenades, chase pickups and can end the match on score, and the
+ * timer is 90 seconds of real time. Frozen bots and a long clock leave only the
+ * client under test acting, on any machine speed.
+ */
+/** Bots join a frame or two after the live snapshot, so wait for every seat. */
+const waitForBots = async (page) => {
+  await page.waitForFunction(
+    () =>
+      // Bots fill every seat humans leave, eight in all.
+      (window.__VIBE_MILITIA_ONLINE__?.getProbe().snapshot?.participants ?? []).length >= 8,
+    null,
+    { timeout: 15000 },
+  );
+};
+
+const poll = async (page, predicate, timeoutMs = 6000) => {
+  const startedAt = Date.now();
+  let state = await probe(page);
+  while (Date.now() - startedAt < timeoutMs && !predicate(state)) {
+    await page.waitForTimeout(90);
+    state = await probe(page);
+  }
+  return state;
+};
+
+/**
+ * The longest stretch of the widest platform with nothing low overhead, the
+ * same lane the playability benchmark uses. Fixed coordinates hit a ramp.
+ */
+const openLane = (state) => {
+  const lane = [...state.platforms].sort((a, b) => b.width - a.width)[0];
+  const blockers = state.platforms
+    .filter((p) => p !== lane && p.y < lane.y && p.y + p.height >= lane.y - 260)
+    .map((p) => [p.x, p.x + p.width])
+    .sort((a, b) => a[0] - b[0]);
+  let best = [lane.x, lane.x];
+  let cursor = lane.x;
+  for (const [from, to] of [...blockers, [lane.x + lane.width, lane.x + lane.width]]) {
+    if (from - cursor > best[1] - best[0]) best = [cursor, from];
+    cursor = Math.max(cursor, to);
+  }
+  return { x: best[0] + 80, y: lane.y };
+};
+
+const isolateMatch = async (page) => {
+  await hook(page, "extendMatch", 600_000);
+  await waitForBots(page);
+  // Bots can kill the player in the moments before the freeze, and respawn
+  // protection replaces the guard, so wait for life and guard again.
+  await hook(page, "guard");
+  const life = await poll(page, (state) => state.local?.alive === true, 9000);
+  if (!life.local?.alive) throw new Error("player did not respawn before isolation");
+  await hook(page, "guard");
+  const state = await probe(page);
+  for (const bot of state.bots) await hook(page, "freeze", bot.id, true);
+  await page.waitForTimeout(150);
+  // A grenade in the air before the freeze still has to land.
+  const deadline = Date.now() + 7000;
+  while (Date.now() < deadline && (await probe(page)).grenades.length > 0) {
+    await page.waitForTimeout(120);
+  }
 };
 
 const aimAtWorld = async (page, camera, worldX, worldY) => {
@@ -179,56 +249,18 @@ const aimAtWorld = async (page, camera, worldX, worldY) => {
   await page.waitForTimeout(70);
 };
 
+/** Input travels at 30 Hz to the server, so wait for the authoritative count. */
 const throwAtWorld = async (page, worldX, worldY) => {
   const current = await probe(page);
+  const held = (state) =>
+    (state.local?.grenadeContact ?? 0) + (state.local?.grenadeFrag ?? 0) + (state.local?.grenadeStinking ?? 0);
+  const before = held(current);
   await aimAtWorld(page, current.camera, worldX, worldY);
   await page.keyboard.press("KeyG");
-  await page.waitForTimeout(180);
-};
-
-const hasClearLine = (state, bot) => {
-  if (!state.local) return false;
-  const originX = state.local.x;
-  const originY = state.local.y - 59;
-  const targetX = bot.x;
-  const targetY = bot.y - 59;
-  const distance = Math.hypot(targetX - originX, targetY - originY);
-  const steps = Math.max(2, Math.ceil(distance / 18));
-  for (let step = 1; step < steps; step += 1) {
-    const progress = step / steps;
-    const x = originX + (targetX - originX) * progress;
-    const y = originY + (targetY - originY) * progress;
-    const blocked = state.platforms.some(
-      (platform) =>
-        x >= platform.x - 4 &&
-        x <= platform.x + platform.width + 4 &&
-        y >= platform.y - 4 &&
-        y <= platform.y + platform.height + 4,
-    );
-    if (blocked) return false;
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && held(await probe(page)) === before) {
+    await page.waitForTimeout(40);
   }
-  return true;
-};
-
-const closestSameLevelBot = (state, maxDistance = 700) => {
-  if (!state.local) return null;
-  return state.bots
-    .filter(
-      (bot) =>
-        bot.alive &&
-        Math.abs(bot.y - state.local.y) < 400 &&
-        Math.abs(bot.vy) < 260 &&
-        Math.hypot(bot.x - state.local.x, bot.y - state.local.y) < maxDistance,
-    )
-    .sort((left, right) => {
-      const leftClear = hasClearLine(state, left) ? 0 : 1;
-      const rightClear = hasClearLine(state, right) ? 0 : 1;
-      if (leftClear !== rightClear) return leftClear - rightClear;
-      return (
-        Math.hypot(left.x - state.local.x, left.y - state.local.y) -
-        Math.hypot(right.x - state.local.x, right.y - state.local.y)
-      );
-    })[0] ?? null;
 };
 
 const ballisticAim = (state, bot) => {
@@ -485,7 +517,7 @@ try {
     null,
     { timeout: 30000 },
   );
-  await pageA.waitForTimeout(700);
+  await isolateMatch(pageA);
 
   const liveA = await probe(pageA);
   check(
@@ -519,7 +551,7 @@ try {
         .querySelector('[data-testid="hud-grenades"]')
         ?.getAttribute("data-selected") === "frag",
     null,
-    { timeout: 2500 },
+    { timeout: 6000 },
   );
   const fragSelected = await probe(pageA);
   check(
@@ -536,7 +568,7 @@ try {
         .querySelector('[data-testid="hud-grenades"]')
         ?.getAttribute("data-selected") === "contact",
     null,
-    { timeout: 2500 },
+    { timeout: 6000 },
   );
   const contactSelected = await probe(pageA);
   check(
@@ -655,13 +687,19 @@ try {
     );
   }
 
-  // Contact grenade against a real bot.
+  // Contact grenade against a real bot, placed in range on open ground.
   await pageA.keyboard.press("Digit4");
   await pageA.waitForTimeout(150);
+  const contactState = await probe(pageA);
+  const contactBot = contactState.bots.find((bot) => bot.alive);
+  const lane = openLane(contactState);
+  await hook(pageA, "guard");
+  await hook(pageA, "teleport", lane.x, lane.y);
+  await hook(pageA, "teleportBot", contactBot.id, lane.x + 240, lane.y);
+  await pageA.waitForTimeout(500);
   let killDemonstrated = false;
   let contactAttempts = 0;
   let localDeaths = 0;
-  let respawnInventoryVerified = false;
   let lastTargetId = null;
   const contactStartedAt = Date.now();
 
@@ -685,14 +723,6 @@ try {
       } catch {
         // retry the outer loop
       }
-      const respawned = await probe(pageA);
-      if (
-        respawned.local?.alive &&
-        respawned.local.grenadeContact === 1 &&
-        respawned.local.grenadeFrag === 1
-      ) {
-        respawnInventoryVerified = true;
-      }
       continue;
     }
     if (state.local.grenadeContact <= 0) {
@@ -702,7 +732,14 @@ try {
       }
       continue;
     }
-    const target = closestSameLevelBot(state, 700);
+    // Only the placed bot. Other frozen bots stand where the match left them.
+    let target = state.bots.find((bot) => bot.id === contactBot.id && bot.alive) ?? null;
+    if (target && Math.hypot(target.x - state.local.x, target.y - state.local.y) > 360) {
+      await hook(pageA, "teleport", lane.x, lane.y);
+      await hook(pageA, "teleportBot", contactBot.id, lane.x + 240, lane.y);
+      await pageA.waitForTimeout(400);
+      target = null;
+    }
     if (!target) {
       await pageA.waitForTimeout(200);
       continue;
@@ -793,14 +830,38 @@ try {
     await screenshot(pageA, "06-contact-elimination");
   }
 
-  const afterCombat = await probe(pageA);
-  if (localDeaths > 0) {
-    check(
-      "death and respawn reset the grenade inventory",
-      respawnInventoryVerified,
-      `deaths=${localDeaths} alive=${afterCombat.local?.alive} contact=${afterCombat.local?.grenadeContact} frag=${afterCombat.local?.grenadeFrag}`,
-    );
-  }
+  // A guarded player never dies on its own, so death is forced to prove the reset.
+  const beforeDeath = await probe(pageA);
+  const deathsBefore = localDeaths;
+  // Let any grenade still in the air land first, so nothing is thrown after respawn.
+  await poll(pageA, (state) => state.grenades.length === 0, 6000);
+  await hook(pageA, "eliminate", beforeDeath.sessionId, "bullet");
+  await pageA.waitForFunction(
+    () => {
+      const value = window.__VIBE_MILITIA_ONLINE__.getProbe();
+      return value.snapshot?.participants.find((entry) => entry.id === value.sessionId)?.alive === false;
+    },
+    null,
+    { timeout: 3000 },
+  );
+  await pageA.waitForFunction(
+    () => {
+      const value = window.__VIBE_MILITIA_ONLINE__.getProbe();
+      return value.snapshot?.participants.find((entry) => entry.id === value.sessionId)?.alive === true;
+    },
+    null,
+    { timeout: 9000 },
+  );
+  await hook(pageA, "guard");
+  const afterRespawn = await probe(pageA);
+  check(
+    "death and respawn reset the grenade inventory",
+    afterRespawn.local?.alive &&
+      afterRespawn.local.grenadeContact === 1 &&
+      afterRespawn.local.grenadeFrag === 1 &&
+      afterRespawn.local.grenadeStinking === 1,
+    `deaths=${deathsBefore + 1} contact=${afterRespawn.local?.grenadeContact} frag=${afterRespawn.local?.grenadeFrag} stink=${afterRespawn.local?.grenadeStinking}`,
+  );
 
   // Room isolation.
   const pageC = await contextA.newPage();
@@ -811,9 +872,11 @@ try {
   await waitOnlineReady(pageC);
   const secondRoom = await probe(pageC);
   check("second room has a different ID", secondRoom.roomId !== roomId);
+  const secondRoomIds = [secondRoom.sessionId, ...secondRoom.bots.map((bot) => bot.id)];
   check(
     "second room has no grenades from the first room",
-    secondRoom.grenades.length === 0,
+    secondRoom.grenades.every((grenade) => secondRoomIds.includes(grenade.ownerId)),
+    `grenades=${secondRoom.grenades.length}`,
   );
   check(
     "second room starts with a fresh grenade inventory",
@@ -850,6 +913,7 @@ try {
     process.exitCode = 1;
   }
 } finally {
+  await failureLog.flush();
   await contextA.close();
   await contextB.close();
   await browser.close();

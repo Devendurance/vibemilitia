@@ -284,3 +284,13 @@
 - Source files here can be CRLF. A regex reading them needs `\r?\n`. One such regex made a mobile weapon check pass with 0 of 0 weapons.
 - Don't stop a background suite and trust timing right after. Compare against the previous build before calling a timing failure a regression.
 
+## Performance and test facts
+
+- This machine is shared with other heavy programs and its speed drifts a lot between hours (27 fps one hour, 9 fps the next for the same 4x run). Only interleaved A/B runs (`scripts/ab-tablet.sh`) are comparable.
+- CDP CPU throttling shows its sleeps as "(program)" in profiles.
+- SwiftShader is too slow to stand in for a tablet GPU (about 3 fps). Use it only for relative comparisons.
+- `debug-guard` is replaced by respawn protection after any death, so re-guard after a respawn.
+- `elapsedMs` in snapshots restarts at live.
+- Grenade and loot suites have two humans, so six bots, not seven. Wait for eight participants.
+- `spawnBot` used to clear `frozen`. Freeze is test-only and now survives respawn.
+- `run-regressions.mjs` swallows suite output. Use `VERBOSE=1` to see it. A blocking `spawnSync` stalls the in-process latency proxy.

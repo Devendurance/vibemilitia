@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import type { EffectsLevel } from "@/game/online/adaptiveQuality";
 import { ART_SCALE, WEAPON_ANCHORS } from "@/game/systems/LoadoutArt";
 
 interface VisualState {
@@ -224,13 +225,27 @@ export class PlayerVisuals {
       this.shield.setAlpha(0.35 + pulse * 0.2);
     }
 
-    const emitting = state.thrusting;
+    // Exhaust from eight jetpacks was most of the live particles, on or off camera.
+    const camera = this.scene.cameras.main.worldView;
+    const emitting =
+      state.thrusting &&
+      state.x > camera.x - 120 &&
+      state.x < camera.right + 120 &&
+      state.y > camera.y - 120 &&
+      state.y < camera.bottom + 120;
     this.jetLeft.emitting = emitting;
     this.jetRight.emitting = emitting;
     this.jetLeft.setPosition(state.x - 15, state.y - 8);
     this.jetRight.setPosition(state.x + 15, state.y - 8);
     this.jetLeft.setScrollFactor(1);
     this.jetRight.setScrollFactor(1);
+  }
+
+  setEffectsLevel(level: EffectsLevel): void {
+    const frequency = level === "reduced" ? 66 : 22;
+    const quantity = level === "reduced" ? 1 : 2;
+    this.jetLeft.setFrequency(frequency, quantity);
+    this.jetRight.setFrequency(frequency, quantity);
   }
 
   kick(): void {

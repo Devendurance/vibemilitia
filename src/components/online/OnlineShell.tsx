@@ -13,6 +13,8 @@ import {
 import { GameBridge } from "@/game/bridge";
 import { GameHud } from "@/components/game/GameHud";
 import { AudioSettings } from "@/components/game/AudioSettings";
+import { PerformanceOverlay } from "@/components/game/PerformanceOverlay";
+import { QualitySettings } from "@/components/game/QualitySettings";
 import { TouchControls } from "@/components/game/TouchControls";
 import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import { ProfilePanel } from "@/components/online/ProfilePanel";
@@ -258,6 +260,7 @@ function OnlineGameSession({
         aria-label="Vibe Militia online arena"
       >
         <OnlineGameCanvas room={room} bridge={bridge} playerName={playerName} />
+        <PerformanceOverlay mode="online" pingMs={ping} />
         <GameHud
           bridge={bridge}
           mode="online"
@@ -355,6 +358,7 @@ function OnlineGameSession({
                 </button>
               </div>
               <AudioSettings />
+              <QualitySettings />
               {touchMode ? <TouchSettingsPanel /> : null}
               <div className="settings-card__controls">
                 <span className="mono-label">CONTROLS</span>

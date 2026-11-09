@@ -93,12 +93,19 @@
 - GO comes only from the snapshot phase changing to `live`. The digit is extrapolated from authoritative remaining time and holds at 1 until then. Don't use a live blur for the countdown: `match-backdrop` is one cached low-resolution frame.
 - Bot views build one per frame and batch shaders are linked behind the countdown backdrop. Both exist to keep the first live frames clear, so keep them when changing match start.
 - Gun, grenade, pickup and projectile art loads in `preload` through `preloadLoadoutArt` and draws at `ART_SCALE`. Run `scripts/export-sprites.py` to change it, and keep hitboxes and server origins out of art changes. Lime is only for selected or interactive states, never in the art.
+- Display quality is `AdaptiveQuality` behind `RenderScaler`. It reads frame time and game-step time: a step over 40% of the frame is a CPU limit, where effects drop and resolution stays. Resolution trials restore and retry with back-off, never stop for the session, and climb back after 45 good seconds. Keep changes at least `holdMs` apart. Render scale floors to a quarter step so it never exceeds the pixel budget.
+- On a 4x throttled CPU the match is main-thread bound at any resolution. Measure before blaming fill rate. Off-camera objects are skipped with `cameraFilter`, never `visible`, which game state owns. Off-camera effects, damage numbers and jet exhaust are not drawn.
+- Only events that touch the local player publish the HUD immediately. Everything else waits for the 100 ms HUD tick, because a whole-HUD React render per bot event cost more than the render loop on a slow tablet.
+- The performance overlay and Auto, Sharp and Smooth quality live in match settings and stay hidden by default. Its copied summary must stay under 600 characters, the feedback limit, and never include names, guest IDs or tokens.
 - `SIGNAL LOST` meant death, and players read it as a disconnect. Connection state is reported only by measured data: the session bar and the reconnect overlay.
 
 ## TESTING
 
 - Use any testing tools and libraries available to the project to test your changes.
 - `node scripts/build-test-frontend.mjs`, then `npm run verify:playability`, `npm run verify:mobile`, `node scripts/run-regressions.mjs` and `npm run measure:playability`. These boot their own SQLite stack, so they cannot touch Neon.
+- Tablet benchmark: `TABLET=1 LABEL=x node scripts/measure-playability.mjs`. This machine is shared and often near full CPU from other programs, so compare builds with `scripts/ab-tablet.sh`, which alternates them round by round, then `node scripts/compare-tablet.mjs`. Never compare two runs taken at different times.
+- Browser suites with real bots must isolate what they test: extend the match, freeze bots, and filter grenades and clouds by owner. Wait on the state the check reads, DOM included, never on a fixed delay. Failed checks write `failures.json` through `scripts/lib/failure-diagnostics.mjs`.
+- Timing checks that sample with requestAnimationFrame add the measured frame gaps to their tolerance. A frame on a loaded machine is longer than the tolerance itself.
 - Never take a screenshot in a run that measures timing. It stalls rAF across the whole browser.
 - Emulated mobile proves events and layout, never physical device performance. Say so in reports.
 - Never assume your changes work; always test.

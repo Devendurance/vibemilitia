@@ -174,6 +174,8 @@ interface OnlineProbe {
     pauseBotLoot: (paused: boolean) => void;
     pauseLoot: (paused: boolean) => void;
     extendMatch: (durationMs: number) => void;
+    extendClouds: (durationMs: number) => void;
+    extendLoot: (durationMs: number) => void;
     resetPickups: () => void;
   };
   combatLog: Array<{
@@ -279,6 +281,10 @@ export class OnlineScene extends Phaser.Scene {
   private aimLatency: number[] = [];
   private fireLatency: number[] = [];
   private frameLog: number[] = [];
+  private cullFrame = 0;
+  private culled = 0;
+  private stepStartedAt = 0;
+  private stepWorkMs = 0;
   private zoomChanges = 0;
   private lastWorldZoom = 0;
   private lastAudioMatchId: string | null = null;
@@ -326,6 +332,8 @@ export class OnlineScene extends Phaser.Scene {
         pauseBotLoot: () => undefined,
         pauseLoot: () => undefined,
         extendMatch: () => undefined,
+        extendClouds: () => undefined,
+        extendLoot: () => undefined,
         resetPickups: () => undefined,
       },
       combatLog: [],
@@ -360,7 +368,9 @@ export class OnlineScene extends Phaser.Scene {
     this.debugGraphics = this.add.graphics().setDepth(200);
     this.crosshair = this.add.graphics().setDepth(300);
     this.inputController = new InputController(this);
-    this.renderScaler?.setChangeListener(() => this.applyCameraScale());
+    this.renderScaler?.setChangeListener(() => this.onQualityChange());
+    this.game.events.on(Phaser.Core.Events.PRE_STEP, this.markStepStart, this);
+    this.game.events.on(Phaser.Core.Events.POST_RENDER, this.markStepEnd, this);
     this.applyCameraScale();
     this.resizeHandler = () => this.applyCameraScale();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.resizeHandler);
@@ -428,6 +438,7 @@ export class OnlineScene extends Phaser.Scene {
       getProbe: () => ({
         ...this.probe,
         textureMemory: () => this.textureMemory(),
+        renderLoad: () => this.renderLoad(),
         ready: this.ready,
         snapshot: this.latestSnapshot,
         hud: this.bridge.getSnapshot(),
@@ -456,6 +467,10 @@ export class OnlineScene extends Phaser.Scene {
         render: {
           scale: this.renderScaler?.scale ?? 1,
           frameMs: this.frameMsEma,
+          effects: this.renderScaler?.effects ?? "full",
+          preference: this.renderScaler?.preference ?? "auto",
+          renderer: this.renderScaler?.renderer ?? "",
+          adaptive: this.renderScaler?.adaptiveState ?? null,
         },
         viewport: this.viewportTelemetry(),
         input: {
@@ -571,6 +586,12 @@ export class OnlineScene extends Phaser.Scene {
           extendMatch: (durationMs: number) => {
             this.room.send("debug-extend-match", { durationMs });
           },
+          extendLoot: (durationMs: number) => {
+            this.room.send("debug-extend-loot", { durationMs });
+          },
+          extendClouds: (durationMs: number) => {
+            this.room.send("debug-extend-clouds", { durationMs });
+          },
           resetPickups: () => {
             this.room.send("debug-reset-pickups");
           },
@@ -615,7 +636,12 @@ export class OnlineScene extends Phaser.Scene {
     const dtMs = Math.min(delta, 50);
     this.frameMsEma += (delta - this.frameMsEma) * 0.05;
     this.latchSentThisFrame = false;
-    this.renderScaler?.observeFrame(delta);
+    this.renderScaler?.observeFrame(
+      this.game.loop.rawDelta,
+      this.stepWorkMs,
+      touchInput.aimActive || touchInput.fire || touchInput.moveX !== 0 || Boolean(this.lastFrame?.fire),
+    );
+    this.cullOffCamera();
     this.frameLog.push(Math.round(this.game.loop.rawDelta * 10) / 10);
     if (this.frameLog.length > 600) this.frameLog.shift();
     const localView = this.views.get(this.room.sessionId);
@@ -643,7 +669,9 @@ export class OnlineScene extends Phaser.Scene {
       this.packetTick = 0;
     }
 
-    if (live) {
+    // No input is sent while dead, so a press latched then would fire on the
+    // first packet after respawn: a grenade key during death threw at the spawn.
+    if (live && local?.alive) {
       this.pendingJump ||= frame.jumpPressed;
       this.pendingReload ||= frame.reloadPressed;
       if (frame.weaponSlotPressed !== null) {
@@ -894,6 +922,21 @@ export class OnlineScene extends Phaser.Scene {
     this.backdrop = null;
   }
 
+  private markStepStart(): void {
+    this.stepStartedAt = performance.now();
+  }
+
+  private markStepEnd(): void {
+    this.stepWorkMs = performance.now() - this.stepStartedAt;
+  }
+
+  private onQualityChange(): void {
+    this.applyCameraScale();
+    const level = this.renderScaler?.effects ?? "full";
+    this.effects.setLevel(level);
+    for (const view of this.views.values()) view.setEffectsLevel(level);
+  }
+
   private applyCameraScale(): void {
     const pixelScale = this.renderScaler?.scale ?? 1;
     const zoom = this.renderScaler?.worldZoom ?? 1;
@@ -901,6 +944,34 @@ export class OnlineScene extends Phaser.Scene {
     if (this.lastWorldZoom !== 0 && zoom !== this.lastWorldZoom) this.zoomChanges += 1;
     this.lastWorldZoom = zoom;
     for (const view of this.views.values()) view.setLabelScale(1 / Math.min(1, zoom));
+  }
+
+  /** What the GPU is drawing right now, for benchmarks and the diagnostics view. */
+  private renderLoad(): {
+    objects: number;
+    culled: number;
+    sprites: number;
+    particles: number;
+    projectiles: number;
+  } {
+    let sprites = 0;
+    let particles = 0;
+    for (const child of this.children.list) {
+      const object = child as Phaser.GameObjects.GameObject & { visible?: boolean };
+      if (object.visible === false) continue;
+      if (object.type === "ParticleEmitter") {
+        particles += (object as Phaser.GameObjects.Particles.ParticleEmitter).getAliveParticleCount();
+      } else if (object.type === "Image" || object.type === "Sprite") {
+        sprites += 1;
+      }
+    }
+    return {
+      objects: this.children.length,
+      culled: this.culled,
+      sprites,
+      particles,
+      projectiles: this.latestSnapshot?.projectiles.length ?? 0,
+    };
   }
 
   /** Sum of width x height x 4 over every loaded texture source. */
@@ -944,6 +1015,7 @@ export class OnlineScene extends Phaser.Scene {
 
   private createView(participant: OnlineCombatantSnapshot, isLocal: boolean): void {
     const view = new CombatantView(this, participant, isLocal);
+    view.setEffectsLevel(this.renderScaler?.effects ?? "full");
     const pixelScale = this.renderScaler?.scale ?? 1;
     view.setLabelScale(1 / Math.min(1, this.cameras.main.zoom / pixelScale));
     this.views.set(participant.id, view);
@@ -1609,8 +1681,67 @@ export class OnlineScene extends Phaser.Scene {
 
   private onEvents(events: OnlineEvent[]): void {
     this.applyEvents(events);
-    // Events are sparse and players feel them, so the HUD does not wait a tick.
-    this.publishHud(true);
+    // With seven bots firing, a whole-HUD render per event batch cost more than
+    // the render loop on a slow tablet. Only what the player feels skips the tick.
+    const local = this.room.sessionId;
+    const felt = events.some(
+      (event) =>
+        ("ownerId" in event && event.ownerId === local) ||
+        ("victimId" in event && event.victimId === local) ||
+        ("killerId" in event && event.killerId === local) ||
+        ("playerId" in event && event.playerId === local),
+    );
+    if (felt) this.publishHud(true);
+  }
+
+  /**
+   * Phaser draws everything on the display list, on camera or not. The world is
+   * several screens wide, so most objects cost a draw and show nothing. The camera
+   * filter skips them without touching `visible`, which game state owns.
+   */
+  private cullOffCamera(): void {
+    this.cullFrame = (this.cullFrame + 1) % 6;
+    if (this.cullFrame !== 0) return;
+    const camera = this.cameras.main;
+    const view = camera.worldView;
+    let culled = 0;
+    for (const child of this.children.list) {
+      const object = child as Phaser.GameObjects.Image;
+      // Graphics draw in world space from their origin, and particles outlive it.
+      if (object.scrollFactorX !== 1 || object.type === "Graphics" || object.type === "ParticleEmitter") {
+        continue;
+      }
+      const container = object.type === "Container";
+      if (container && object.x === 0 && object.y === 0) continue;
+      const margin = container ? 320 : 140;
+      const width = object.displayWidth || 0;
+      const height = object.displayHeight || 0;
+      const left = object.x - (object.originX ?? 0.5) * width;
+      const top = object.y - (object.originY ?? 0.5) * height;
+      const off =
+        left + width < view.x - margin ||
+        left > view.right + margin ||
+        top + height < view.y - margin ||
+        top > view.bottom + margin;
+      if (off) {
+        object.cameraFilter |= camera.id;
+        culled += 1;
+      } else {
+        object.cameraFilter &= ~camera.id;
+      }
+    }
+    this.culled = culled;
+  }
+
+  /** Effects off camera cost the same and show nothing. */
+  private onCamera(x: number, y: number, margin = 120): boolean {
+    const view = this.cameras.main.worldView;
+    return (
+      x > view.x - margin &&
+      x < view.right + margin &&
+      y > view.y - margin &&
+      y < view.bottom + margin
+    );
   }
 
   private applyEvents(events: OnlineEvent[]): void {
@@ -1638,8 +1769,11 @@ export class OnlineScene extends Phaser.Scene {
           });
           if (this.combatLog.length > 80) this.combatLog.shift();
           if (!predicted) {
-            this.playMuzzle(event.weaponId, event.x, event.y);
-            this.playWeaponSound(event.weaponId, own);
+            if (this.onCamera(event.x, event.y)) this.playMuzzle(event.weaponId, event.x, event.y);
+            // Reduced mode keeps the cue from nearby fights and drops the rest.
+            if (own || this.renderScaler?.effects !== "reduced" || this.onCamera(event.x, event.y, 400)) {
+              this.playWeaponSound(event.weaponId, own);
+            }
           }
           break;
         }
@@ -1657,6 +1791,10 @@ export class OnlineScene extends Phaser.Scene {
           });
           if (this.combatLog.length > 80) this.combatLog.shift();
           const toxic = event.source === "toxic";
+          if (!this.onCamera(event.x, event.y)) {
+            if (event.victimId === this.room.sessionId) this.localDamageSeq += 1;
+            break;
+          }
           if (event.source === "rocket") {
             this.effects.damageNumber(
               event.x,
@@ -1715,12 +1853,14 @@ export class OnlineScene extends Phaser.Scene {
               : localEffect === "elimination-toxic"
                 ? "toxic"
                 : undefined;
-          this.effects.eliminationBurst(
-            event.x,
-            event.y - 52,
-            event.weaponName.includes("STINKING") ? "toxic" : "impact",
-            effectStyle,
-          );
+          if (this.onCamera(event.x, event.y)) {
+            this.effects.eliminationBurst(
+              event.x,
+              event.y - 52,
+              event.weaponName.includes("STINKING") ? "toxic" : "impact",
+              effectStyle,
+            );
+          }
           if (event.killerId === this.room.sessionId) {
             if (event.killerId !== event.victimId) {
               this.lastPlayerKill = {
@@ -1740,7 +1880,7 @@ export class OnlineScene extends Phaser.Scene {
           break;
         }
         case "respawn": {
-          this.effects.spawn(event.x, event.y);
+          if (this.onCamera(event.x, event.y)) this.effects.spawn(event.x, event.y);
           break;
         }
         case "pickup-collected": {
@@ -2334,6 +2474,8 @@ export class OnlineScene extends Phaser.Scene {
     if (this.sceneReadyTimer !== null) window.clearTimeout(this.sceneReadyTimer);
     this.sceneReadyTimer = null;
     this.renderScaler?.setChangeListener(null);
+    this.game.events.off(Phaser.Core.Events.PRE_STEP, this.markStepStart, this);
+    this.game.events.off(Phaser.Core.Events.POST_RENDER, this.markStepEnd, this);
     if (this.resizeHandler) {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.resizeHandler);
       this.resizeHandler = null;

@@ -1,3 +1,4 @@
+import type { EffectsLevel } from "@/game/online/adaptiveQuality";
 import Phaser from "phaser";
 import { ALL_PLAYER_WEAPONS } from "@/game/config/gameplay";
 import { getCharacterSkin } from "@/game/characters/roster";
@@ -260,6 +261,10 @@ export class CombatantView {
 
   onHit(): void {
     this.damageFlashMs = 90;
+  }
+
+  setEffectsLevel(level: EffectsLevel): void {
+    this.visuals.setEffectsLevel(level);
   }
 
   destroy(): void {

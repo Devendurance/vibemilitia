@@ -76,5 +76,7 @@ for (const [name, options] of SUITES) {
   console.log(`${name}: ${code === 0 ? "ok" : "FAILED"} ${pass} passed, ${fail.length} failed, ${entry.seconds}s`);
   for (const line of fail) console.log(`   ${line.slice(0, 180)}`);
   if (entry.tail) console.log(entry.tail.join("\n").slice(-500));
+  // VERBOSE=1 prints each suite's full output.
+  if (process.env.VERBOSE === "1") console.log(output);
   writeFileSync("artifacts/playability/regressions.json", JSON.stringify(summary, null, 2));
 }

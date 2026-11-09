@@ -9,6 +9,8 @@ import { GameCanvas } from "@/components/game/GameCanvas";
 import { PracticeCanvas } from "@/components/game/PracticeCanvas";
 import { GameHud } from "@/components/game/GameHud";
 import { AudioSettings } from "@/components/game/AudioSettings";
+import { PerformanceOverlay } from "@/components/game/PerformanceOverlay";
+import { QualitySettings } from "@/components/game/QualitySettings";
 import { TouchControls } from "@/components/game/TouchControls";
 import { TouchSettingsPanel } from "@/components/game/TouchSettingsPanel";
 import { BetaFeedback } from "@/components/online/BetaFeedback";
@@ -102,6 +104,7 @@ export function GameShell({
             playerName={playerName}
           />
         )}
+        {legacyDrill ? null : <PerformanceOverlay mode="practice" pingMs={null} />}
         <GameHud
           bridge={activeBridge}
           mode={legacyDrill ? "local" : "practice"}
@@ -179,6 +182,7 @@ export function GameShell({
                 </button>
               </div>
               <AudioSettings />
+              <QualitySettings />
               {touchMode ? <TouchSettingsPanel /> : null}
               <div className="settings-card__controls">
                 <span className="mono-label">CONTROLS</span>

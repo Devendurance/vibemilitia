@@ -45,6 +45,8 @@ const probe = (page) =>
       countdownMs: Math.round(value.snapshot?.countdownRemainingMs ?? 0),
       countdownDurationMs: Math.round(value.snapshot?.countdownDurationMs ?? 0),
       remainingMs: Math.round(value.snapshot?.remainingMs ?? 0),
+      elapsedMs: Math.round(value.snapshot?.elapsedMs ?? 0),
+      durationMs: value.snapshot?.durationMs ?? 0,
       hudPhase: hud?.getAttribute("data-hud-phase"),
       hudCountdown: Number(hud?.getAttribute("data-hud-countdown") ?? -1),
       clockText:
@@ -57,6 +59,9 @@ const probe = (page) =>
   });
 
 try {
+  // The lobby page loads before the room exists, so a slow load cannot eat the
+  // countdown the card is checked against.
+  await pageB.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await pageA.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   await pageA.waitForTimeout(700);
   await pageA.locator('[data-testid="create-room"]').click();
@@ -96,7 +101,6 @@ try {
   );
 
   const roomId = initial.roomId;
-  await pageB.goto(`${baseUrl}/online`, { waitUntil: "networkidle" });
   const roomCard = pageB.locator(`[data-room-id="${roomId}"]`);
   await roomCard.waitFor({ timeout: 15000 });
   const cardDuring = {
@@ -132,10 +136,13 @@ try {
     live.hudPhase === "live" && live.identityText.includes("LIVE"),
     `phase=${live.hudPhase} pill=${live.identityText}`,
   );
+  // Elapsed restarts at live. The page may read the snapshot late, but remaining
+  // plus elapsed is the server clock and must still be the full 90 seconds.
+  const liveForMs = live.elapsedMs;
   check(
     "match clock starts at 90 seconds",
-    live.remainingMs > 88_000,
-    `${live.remainingMs}ms`,
+    live.durationMs === 90_000 && Math.abs(live.remainingMs + liveForMs - 90_000) < 120,
+    `${live.remainingMs}ms left after ${liveForMs}ms live`,
   );
 
   const lobbyDeadline = Date.now() + 5000;

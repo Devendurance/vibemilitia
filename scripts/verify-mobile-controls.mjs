@@ -296,6 +296,11 @@ async function twinStick(label, throttle) {
   await refill(page);
   const retained = (await state(page)).aim;
   const tapBefore = (await state(page)).ammo;
+  // Server shot times and quality changes, so an extra shot can be explained.
+  const tapMark = await page.evaluate(() => {
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    return { log: probe.combatLog.length, history: probe.viewport.history.length, at: probe.snapshot.elapsedMs };
+  });
   const taps = 5;
   for (let tap = 0; tap < taps; tap += 1) {
     await touch(cdp, "touchStart", [right(1.2)]);
@@ -305,11 +310,20 @@ async function twinStick(label, throttle) {
   }
   await page.waitForTimeout(150);
   const tapAfter = await state(page);
+  const tapTrace = await page.evaluate((mark) => {
+    const probe = window.__VIBE_MILITIA_ONLINE__.getProbe();
+    const own = probe.combatLog.filter((entry) => entry.type === "shot" && entry.ownerId === probe.sessionId);
+    return {
+      shotsAt: own.filter((entry) => entry.atMs >= mark.at).map((entry) => entry.atMs - mark.at),
+      quality: probe.viewport.history.slice(mark.history).map((event) => `${event.reason}:${event.renderScale}`),
+      worstFrame: Math.max(...probe.frames.slice(-40)),
+    };
+  }, tapMark);
   // A throttled main thread can deliver the release a frame late, which the
   // server rightly treats as a longer press. One extra shot is the limit.
   const tapSlack = throttle > 1 ? 1 : 0;
   const tapShots = tapBefore - tapAfter.ammo;
-  check(`${label}: 6 each tap fires exactly one shot`, tapShots >= taps && tapShots <= taps + tapSlack, `${tapShots} shots from ${taps} taps`);
+  check(`${label}: 6 each tap fires exactly one shot`, tapShots >= taps && tapShots <= taps + tapSlack, `${tapShots} shots from ${taps} taps ${JSON.stringify(tapTrace)}`);
   check(`${label}: 6 tap keeps the retained aim`, angleGap(tapAfter.aim, retained) < 0.02, `${retained.toFixed(2)} -> ${tapAfter.aim.toFixed(2)}`);
 
   // 7. Legal cadence on an automatic and on a slow weapon.
@@ -678,10 +692,17 @@ try {
   const recordCountdown = (page) =>
     page.addInitScript(() => {
       window.__cd = [];
-      const log = (entry) => window.__cd.push({ at: Date.now(), t: performance.now(), ...entry });
+      // A change is only seen on the next frame, so each entry carries the
+      // frame gap it was detected across: that is the measurement's resolution.
+      let previous = performance.now();
+      let gap = 0;
+      const log = (entry) => window.__cd.push({ at: Date.now(), t: performance.now(), gap, ...entry });
       let lastKey = "";
       let lastPhase = "";
       const step = () => {
+        const now = performance.now();
+        gap = now - previous;
+        previous = now;
         const element = document.querySelector('[data-testid="match-countdown"]');
         const key = element ? `${element.dataset.stage}:${element.dataset.digit ?? ""}` : "none";
         if (key !== lastKey) {
@@ -701,14 +722,27 @@ try {
     const digits = log.filter((entry) => entry.stage === "count");
     const order = digits.map((entry) => entry.digit).join(",");
     check(`16 ${label}: final seconds run 3, 2, 1`, order.endsWith("3,2,1"), order);
-    const gaps = digits.slice(-3).slice(1).map((entry, index) => entry.t - digits.slice(-3)[index].t);
-    check(`16 ${label}: digits are one second apart`, gaps.length === 2 && gaps.every((gap) => Math.abs(gap - 1000) < 170), gaps.map((gap) => gap.toFixed(0)).join(" "));
+    // Tolerances are the product limit plus the frame gaps the two observations
+    // were made across. On a loaded machine one frame alone can take 150 ms.
+    const last3 = digits.slice(-3);
+    const gaps = last3.slice(1).map((entry, index) => ({
+      ms: entry.t - last3[index].t,
+      slack: entry.gap + last3[index].gap,
+    }));
+    check(
+      `16 ${label}: digits are one second apart`,
+      gaps.length === 2 && gaps.every((gap) => Math.abs(gap.ms - 1000) < 170 + gap.slack),
+      gaps.map((gap) => `${gap.ms.toFixed(0)}±${gap.slack.toFixed(0)}`).join(" "),
+    );
     const go = log.find((entry) => entry.stage === "go");
     const live = log.find((entry) => entry.phase === "live");
-    check(`17 ${label}: GO lands on the authoritative live transition`, go && live && Math.abs(go.t - live.t) < 120, go && live ? `${(go.t - live.t).toFixed(0)} ms` : "missing");
+    const goSlack = go && live ? go.gap + live.gap : 0;
+    check(`17 ${label}: GO lands on the authoritative live transition`, go && live && Math.abs(go.t - live.t) < 120 + goSlack, go && live ? `${(go.t - live.t).toFixed(0)} ms, frames ${goSlack.toFixed(0)} ms` : "missing");
     const lastDigit = digits.at(-1);
-    check(`17 ${label}: no dead pause between 1 and GO`, go && lastDigit && go.t - lastDigit.t < 1250, go && lastDigit ? `${(go.t - lastDigit.t).toFixed(0)} ms` : "missing");
-    const after = log[log.indexOf(go) + 1];
+    const pauseSlack = go && lastDigit ? go.gap + lastDigit.gap : 0;
+    check(`17 ${label}: no dead pause between 1 and GO`, go && lastDigit && go.t - lastDigit.t < 1250 + pauseSlack, go && lastDigit ? `${(go.t - lastDigit.t).toFixed(0)} ms, frames ${pauseSlack.toFixed(0)} ms` : "missing");
+    // Phase entries interleave with stage entries, so take the next stage change.
+    const after = log.slice(log.indexOf(go) + 1).find((entry) => "stage" in entry);
     check(`16 ${label}: GO clears`, after && after.stage === null, after ? `${(after.t - go.t).toFixed(0)} ms` : "stuck");
     traces[`countdown-${label}`] = log;
   };
@@ -825,7 +859,7 @@ try {
       judgeCountdown("online 300 ms", logC);
       const goC = logC.find((entry) => entry.stage === "go");
       const goD = logD.find((entry) => entry.stage === "go");
-      check("P4 two clients show GO together", goD && Math.abs(goC.at - goD.at) < 200, goD ? `${Math.abs(goC.at - goD.at)} ms apart` : "second client saw no GO");
+      check("P4 two clients show GO together", goD && Math.abs(goC.at - goD.at) < 200 + goC.gap + goD.gap, goD ? `${Math.abs(goC.at - goD.at)} ms apart, frames ${(goC.gap + goD.gap).toFixed(0)} ms` : "second client saw no GO");
       await c.context.close();
       await d.context.close();
       stack.proxy.set({ rttMs: 0, jitterMs: 0 });

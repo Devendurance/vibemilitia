@@ -413,11 +413,31 @@ try {
     for (const weaponId of weapons) {
       const id = await probe(page, (p) => p.sessionId);
       await hooks(page, "giveWeapon", id, weaponId);
-      await page.waitForTimeout(120);
+      // The swap is authoritative, so the HUD ammo must belong to the new gun
+      // before it can be compared. Fixed delays read the previous gun's count.
+      await page
+        .waitForFunction(
+          (wanted) => {
+            const p = window.__VIBE_MILITIA_ONLINE__.getProbe();
+            const self = p.snapshot.participants.find((e) => e.id === p.sessionId);
+            return self.weaponId === wanted && p.hud.weaponId === wanted;
+          },
+          weaponId,
+          { timeout: 5000 },
+        )
+        .catch(() => undefined);
       await hooks(page, "setAim", 1800, 1200);
       const ammoBefore = (await selfOf(page)).hud.ammo;
-      await hooks(page, "fireOnce");
-      await page.waitForTimeout(260);
+      // The previous gun's cooldown can still hold the trigger, so try again
+      // until a round leaves or the slowest cadence has passed twice.
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        await hooks(page, "fireOnce");
+        const shot = await page
+          .waitForFunction((before) => window.__VIBE_MILITIA_ONLINE__.getProbe().hud.ammo < before, ammoBefore, { timeout: 450 })
+          .then(() => true)
+          .catch(() => false);
+        if (shot) break;
+      }
       const state = await probe(page, (p) => ({
         weapon: p.snapshot.participants.find((e) => e.id === p.sessionId).weaponId,
         ammo: p.hud.ammo,
